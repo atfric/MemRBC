@@ -3,7 +3,7 @@
 
 cff-version: 1.2.0
 title: >-
-  MembraneRBC - a numerical modeling laboratory for the stomatocyte-discocyte-echinocyte-transformation of Red Blood Cell shape
+  MemRBC - a numerical modeling laboratory for the stomatocyte-discocyte-echinocyte-transformation of Red Blood Cell shape
 message: >-
   if you use components of this software, please cite
   acordingly.
