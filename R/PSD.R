@@ -1,0 +1,84 @@
+# MemRBC the R package for spectral shape modeling of red blood cells
+# (C) 2025 Stephan Frickenhaus
+
+# CITATION
+# when using this software for publications you must cite it as:
+#  Frickenhaus, S. (2025). MembraneRBC - a numerical modeling laboratory for the stomatocyte-discocyte-echinocyte-transformation of Red Blood Cell shape, ZENODO, DOI: https://doi.org/10.5281/zenodo.13908340
+
+#
+# ORIGINAL CITATION (->first version)
+# S. (2024). MembraneR3 - A spectral model of membrane shape based on Helfrich spontaneous curvature in R. Zenodo. https://doi.org/10.5281/zenodo.13627757 ")}
+#
+
+#' Penalized Steepest Descend
+#'
+#' run PSD on an existing membrane object to reduce energy by gradient of energy.
+#' A more efficient minimizer may be the PNEM.
+#' @param M The input membrane with initial data and reference
+#' @param nsteps (=100) number of PSDC steps to be performed
+#' @param del (=1e-6) step-size
+#' @param plt (=FALSE) for plotting
+#' @param pltfreq (=10) for plotting every pltfreq step
+#' @param LAfreq (=100) storage frequency into list of coefficients $LA
+#' @return membrane object with updates from MMC with data:
+#' @return LA: list of recorded coefficients A
+#' @return A: last coefficients
+#' @return C: last curvature
+#' @return E: last total energy
+#' @return E_PSD: all recorded total energies
+#' @return PSDiter; total PSD steps, incl. previous calls
+#' @return history: history of App-calls that created the result
+#' @examples
+#' M <- MakeStandardRBC(L=5)
+#' plot(M)
+#' M <- PSD(M,nsteps=10000,del=1e-6,)
+#' plot(M)
+#' M
+#' attributes(last(M$LA))
+#' @export
+PSD <- function(M,nsteps=100,del=1e-6,plt=FALSE,pltfreq=10,LAfreq=100,ncores=5,filter_strength=0.0)
+{ cl=match.call()
+run_id=rlang::hash(M)
+#M.Rcpp<<-TRUE
+#M.Rcpp_ncores<<-ncores
+t0=proc.time()
+if(is.null(M$proc_time)) M$proc_time<-0
+Filter=(1+filter_strength*1/sqrt(M$bas$G.tk))
+E_PSD=C_PSD=rep(0.0,nsteps)
+A=M$A;grd=M$grd;bas=M$bas;Ref=M$Ref
+if (is.null(M$LA)) LA=M$LA else LA=list(M$A)
+for (i in 1:nsteps) {
+  E<-E_FullModel_Penalty_AV(A,grd,bas,Ref)
+  C <- updateX(A,grd,bas)
+  S<-SEN(A,grd,bas,Ref,E_SCM(A,grd,bas,C))
+  G<-Grad_FullModel_Penalty_AV(A,grd,bas,Ref,S)
+  G<-G*Filter
+  A=A-del*matrix(G,ncol=3)
+  cat("PSD:",i,":E:",E$E/M.Es,":C:",E$Curv,":del:",del,":C0",M.C0,":F:",filter_strength,"\n")
+  if(plt & (i%%pltfreq==0)) {rgl::clear3d();plot3b(C$X,grd);rgl::title3d(paste("PSD",i,"E",round(E$E/M.Es,4),"C",round(E$Curv,4)))}
+  attr(A,"method")="PSD"
+  attr(A,"E")<-E$E
+  attr(A,"C")<-E$Curv
+  attr(A,"C0")<-M.C0
+  attr(A,"Target")<-bas$Target
+  attr(A,"M.rho")<-M.rho
+  attr(A,"run_id")<-run_id
+  if (i %%LAfreq==0) LA[[length(LA)+1]]<-A
+  E_PSD[i]=E$E
+  C_PSD[i]=E$Curv
+}
+M$A=A
+E=E_FullModel_Penalty_AV(A,grd,bas,Ref)
+M$E=E$E; M$C=E$Curv
+if (is.null(M$E_PSD)) M$E_PSD=E_PSD else  M$E_PSD=c(M$E_PSD,E_PSD)
+if (is.null(M$C_PSD)) M$C_PSD=C_PSD else  M$C_PSD=c(M$C_PSD,C_PSD)
+if (is.null(M$PSDiter)) M$PSDiter=i else M$PSDiter=M$PSDiter+i
+M$last_App_called="PSD"
+M$history=append(M$history,list(cl))
+M$LA=LA
+M$PSD_filter_strength<-filter_strength
+t1=proc.time()
+M$proc_time <- M$proc_time + t1-t0
+
+return(M)
+} # end of PSD
