@@ -1,1 +1,10 @@
 inst/doc
+/.Rproj.user
+/data_inp
+/Rcpp_src
+repair-data.R
+vignettes/images/clipboard-1721551514.png
+/.Rc
+create.R
+create_data.R
+develop.R
