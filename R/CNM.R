@@ -9,7 +9,7 @@
 # ORIGINAL CITATION (->first version)
 # Frickenhaus S. (2024). MembraneR3 - A spectral model of membrane shape based on Helfrich spontaneous curvature in R. Zenodo. https://doi.org/10.5281/zenodo.13627757 ")}
 #
-s
+
 
 #' Constraint Newton Minimizer
 #'
