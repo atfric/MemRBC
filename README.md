@@ -1,5 +1,5 @@
 # MemRBC
-
+MemRBC is a result of open science research. It demonstrates the use of hi-level apps in a light-weight object oriented approach in R, keeping metadata and lineage recorded systematically for reproducibility and self-documentation. 
 MemRBC is the R package for modeling red blood cell shape. It is a spectral model, based on spherical harmonics functions for a continuous parametrerization of 3D shape. Besides usual Helfrich, area difference elasticity energy and spontaneous curvature, the model includes a shear-elastic network component to model spectrin network mechanics in the same numerical scheme.
 
 MemRBC gives a set of high-level routines to the user - the Apps - to perform typical modeling tasks like energy minimization or Montecarlo dynamics simulation. From the codes behind these Apps, the user may develop his/her own extensions and modifications, and take insight in the backbone code infrastructure.

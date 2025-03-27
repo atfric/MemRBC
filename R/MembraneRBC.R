@@ -1092,6 +1092,7 @@ return(List::create(Named("H")=H,_("G")=G0,
 
 citation.MemRBC();
 utils::data(M.mu,M.C0,M.mu,M.Ka,M.K_b,M.K_ADE,M.Es,M.rho,M.a2,M.a3,M.a4,M.b0,M.b1,M.b2,M.rho,M.Rcpp,M.Rcpp_ncores,package = "MemRBC",envir = .GlobalEnv)
+M.scr1=M.scr2=-1
 }
 
 HAVE_DEPRECATED=FALSE
