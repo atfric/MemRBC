@@ -24,7 +24,7 @@ load_param_RBC<-function(msg)
 #
 
 #' @export
-citation.MemRBC<-function() {cat("when using this software for publications you must cite it as:\n Frickenhaus, S. (2025). MembraneRBC - a numerical modeling laboratory for the stomatocyte-discocyte-echinocyte-transformation of Red Blood Cell shape, ZENODO, DOI: https://doi.org/10.5281/zenodo.13908340 \n")}
+citation.MemRBC<-function() {cat("when using this software for publications you must cite it as:\n Frickenhaus, S. (2025). MemRBC - a numerical modeling laboratory for the stomatocyte-discocyte-echinocyte-transformation of Red Blood Cell shape, ZENODO, DOI: https://doi.org/10.5281/zenodo.13908340 \n")}
 
 
 .onLoad <- function(libname, pkgname) {
