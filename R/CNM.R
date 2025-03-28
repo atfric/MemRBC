@@ -119,6 +119,7 @@ CNM<-function(M,nsteps=5,del=0.3, diag.reg=0.0,
     attr(A,"C0")<-M.C0
     attr(A,"Target")<-bas$Target
     attr(A,"Eigs")<-Eig # only in CNM Eigenvalues of H' are part of A attributes
+    attr(A,"EigsH")<-Eig.H
     attr(A,"|delta_Newton|")<-NewtonNorm
     attr(A,"FullNorm")<-FullNorm
     attr(A,"iter")<-iter
@@ -144,6 +145,7 @@ CNM<-function(M,nsteps=5,del=0.3, diag.reg=0.0,
   M$E <- E
   M$C <- h2$Curv
   M$Eig <- Eig
+  M$Eig.H<-Eig.H
   if (is.null(M$E_CNM)) M$E_CNM<-E_CNM else M$E_CNM<-c(M$E_CNM,E_CNM)
   M$CNMiter <- M$CNMiter+iter
   M$LA <- LA # return iterated solutions list

@@ -1781,7 +1781,6 @@ MakeGrid_GaussLegendre<-function(n=25,uv_fac=1,comment="spherical coordinates Ga
   q=q[,1:k]
   x=sin(grd$u)*cos(grd$v);y=sin(grd$u)*sin(grd$v);z=cos(grd$u)
   rgl::mesh3d(x=x,y=y,z=z,triangles=q) -> M
- # str(M)
 
   if(check_plt){
     # correct:
@@ -1809,7 +1808,7 @@ MakeGrid_GaussLegendre<-function(n=25,uv_fac=1,comment="spherical coordinates Ga
 }
 
 
-# display f data on object obj, repaired indexing
+# display f data on object obj
 #' @export
 imag.obj<-function(obj,f) {
   cols=rainbow(100); rgl::shade3d(obj,meshcolor="vertices",col=cols[as.integer(1+99*(f-min(f))/diff(range(f)))]) }

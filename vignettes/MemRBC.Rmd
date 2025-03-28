@@ -15,6 +15,8 @@ options(width=800)
 
 MemRBC - the R package for spectral shape modeling of red blood cells, (C) 2025 Stephan Frickenhaus
 
+## Background
+
 MemRBC is the Red Blood Cell Membrane shape virtual research lab. This document aims at facilitating the first use of MemRBC. Also some background is given on numerical methods and implementation details.
 
 The core of MemRBC is a spectral numerical model of cellular shape, based on spherical harmonics. This means that the membrane shape is represented as real-valued coefficients $A$ of a series of spherical harmonics. It is important to know that $A$ as well as gradients of energy $G$ have 3 columns, each for a spatial dimension. Thus, the matrix of spatial points $X$ can be computed by three matrix-vector products as $X_s=Y*A_s$ , where column index $s\in \{1,2,3\}$ is the spatial dimension index for (x,y,z), and $Y$ are the precomputed spherical harmonics for spherical coordinates $(u_i,v_i)$ covering the 2D angular space $(0...\pi,0...2\pi)$. The number of spatial points $i=1...N$ is dictated by the integration scheme. The standard scheme implemented here is a Gauss-Legendre-Simpson scheme, in which the $v-$ angle is discretized equidistantly by Simpson rule, and $u$ are given at Gauss-Legendre points. The latter scheme avoids spatial points at the north and south pole. In consequence, in 3D surface plots one may locate the two poles as tiny holes.
@@ -31,18 +33,18 @@ Apps enabling curvature constraint ("C") require the target curvature to be spec
 
 |  |  |  |  |  |  |
 |------------|------------|------------|------------|------------|------------|
-| Name | Method | Constraints | Penalized | Gradient | Hessian |
+| **Name** | **Method** | **Constraints** | **Penalized** | **Gradient** | **Hessian** |
 | MMC | Metropolis Montecarlo | A V | yes | no | no |
-| MMCC | Metropolis Montecarlo Curvature | A V C | yes | no | no |
-| SDRC | Steepest Descend Rosen Constraint | A V C | no | yes | no |
+| MMCC | Metropolis Montecarlo Curvature | A V C\* | yes | no | no |
+| SDRC | Steepest Descend Rosen Constraint | A V [C]\* | no | yes | no |
 | PSD | Penalized Steepest Descend | A V | yes | yes | no |
-| PSDC | Penalized Steepest Descend Curvature | A V [C]\* | yes | yes | no |
+| PSDC | Penalized Steepest Descend Curvature | A V C\* | yes | yes | no |
 | PNEM | Penalized Newton Equation of Motion | A V | yes | yes | no |
 | CNM | Constraint Newton Minimization | A V [C]\* | no | yes | yes |
 | GAM | Genetic Algorithm Minimization | A V | yes | no | no |
-| ALM | Augmented Lagrangian Minimization | A V C | no | yes | no |
+| ALM | Augmented Lagrangian Minimization | A V [C]\* | no | yes | no |
 
-: \*by `SetConstraints()` one may feed a C-constraint into membrane objects basis `$bas`
+: \* [C]: by `SetConstraints()` one may set as third constraint integrated curvature C into a membrane object M's basis `M$bas`, i.e. the constraint is then taken into consideration on the basis of its gradient in ALM, CNM, SDRC . The apps MMCC and PSDC, in contrast, always imply the C-constraint, but as penalty term, like they do for area and volume.
 
 ## Global parameters
 
@@ -72,7 +74,7 @@ Users should check regularly that - besides SEN parameters - `M.C0` and constrai
 
 ## Demonstration
 
-You load global parameters with `load_param_MemRBC()`. There is a demo dataset M1 you can load and inspect. If you want the parameters from the membrane object `M1` to be set globally, use `SetParams(M1).`
+You load global standard parameters with `load_param_MemRBC()`. There is a demo dataset `M1` you can load and inspect. If you want the parameters from the membrane object `M1` to be set globally for further processing, use `SetParams(M1)` after `data(M1)`.
 
 ```{r, start, echo =TRUE}
 library(MemRBC)
@@ -84,7 +86,8 @@ SetParams(M1)
 
 # modify target volume in basis
 M1$bas$Target["Volume"]=95
-save_MemRBC(M1,"M1_v95.rdat") # saves with modified $Target
+save_MemRBC(M1,"M1_v95.rdat") # saves object with modified $Target
+save_MemRBC(M1,"M1_v95_full_basis.rdat",reduce_basis = FALSE) # saves object with modified $Target and full basis, i.e. basis need not be recomputed on load_MemRBC.
 
 ```
 
@@ -95,11 +98,10 @@ rgl::rglwidget() # only needed inside html-vignette
 
 A standard membrane of spectral order 9 has now been loaded as `M1`. Parameters of `M` are shown and the shape is plotted in 3D.
 
-Initial curvature C is reported to be 81.01442, and the 1056 integration points are on a 32 x 33 grid. The stored coefficients are in `M$A`, and `M$LA` is a list for keeping coefficients of further simulation steps.
+Initial curvature C is reported to be 81.01442, and the 1056 integration points are on a 32 x 33 grid. The stored coefficients are in `M$A`, and `M$LA` is a list ready for keeping coefficients of further simulation steps.
 
 ```{r, prepareMMC, message=TRUE, warning=TRUE, webgl=TRUE}
-MakeStandardRBC(L=7)->M
-plot(M)
+MakeStandardRBC(L=7,prn=TRUE)->M
 rgl::rglwidget(width=300,height=250)
 ```
 
@@ -110,16 +112,16 @@ for (i in 1:3){ # loop may go upto 40
   }
 save_MemRBC(M,"M_L7_to_Echinocyte.rdat")
 sink() # terminate sink()
-plot(M)
+plot(M) # only plot last
 rgl::rglwidget(width=300,height=250)
 ```
 
-A set of 3 curvature constraint Metropolis-Montecarlo simulations is performed with increase of target curvature by 1 unit per cycle. in M\$LA every 10 accepted steps, coefficients are recorded. 100 steps is only for short testing.
+A set of 3 curvature constraint Metropolis-Montecarlo simulations is performed with increase of target curvature by 1 unit per cycle. in `M$LA` every 10 accepted steps, coefficients are recorded. `nsteps=100` steps is only for short testing in vignette creation.
 
-One may change the loop from 1:3 to 1:42, to drive the shape to more extreme echinocyte-like shapes with C=120. However, it is necessary to simulate with increased number of steps, e.g., nsteps=2500 or higher, and also the spectral order should be higher, say 15.\
-The final result is saved to disk in the current folder. Text-output is redirected to file by the sink()-command.
+One may change the loop from 1:3 to 1:42, to drive the shape to more extreme echinocyte-like shapes with C=120. However, it is necessary to simulate with increased number of steps, e.g., nsteps=2500 or higher, and also the spectral order should be higher, say 15, or 18, like in provided data `M18_SDEx`, x=1...8.\
+The final result is saved to disk in the current folder. Text-output is redirected to file by the `sink()-`command.
 
-The following command allows to analyse the recorded MMC in terms of curvature and energy at accepted Montecarlo steps, sampled along the trajectory in a data frame M\$Sample. As third column, M\$Sample\$Cnt records the number of Metropolis rejections + 1 at the same energy. This is useful to evaluate thermodynamic ensemble expectation values of the recorded area, curvature and energy. For example, M\$Sample could allow for free-energy-perturbation analysis.
+The following command allows to analyse the recorded `MMC` in terms of curvature and energy at accepted Montecarlo steps, sampled along the trajectory in a data frame `M$Sample`. As third column, `M$Sample$Cnt` records the number of Metropolis rejections + 1 at the same energy. This is useful to evaluate thermodynamic ensemble expectation values of the recorded area, curvature and energy. For example, `M$Sample` could allow for some free-energy-perturbation analysis.
 
 ```{r plot, R.options = list(width=900,height=900)}
 PlotSample(M) # can have differente colors for multiple runs
@@ -234,7 +236,6 @@ unlist(parallel::clusterEvalQ(cl,M.C0))
 L_MMC<-parallel::clusterEvalQ(cl,M<-MMC(M4,30))
 # save results
 endup<-parallel::clusterEvalQ(cl,save_MemRBC(M,paste("M4-MMC-par-",tid,".rdat",sep="")))
-parallel::stopCluster(cl)
 
 #L_MMC contains all M objects from the cluster processes
 sapply(L_MMC,Energy) 
@@ -242,19 +243,19 @@ sapply(L_MMC,Energy)
 
 ## Constraint Newton Minimizer
 
-A Newton minimization of a pre-computed stomatocyte shape of $l\le10$ goes like this ( $C_0=-3$ ):
+A Newton minimization of a pre-computed stomatocyte shape of $l\le4$ goes like this ( $C_0=-3$ ):
 
 ```{r CNM}
-data("S10_3");
-SetParams(S10_3) # remember to set C0 and others correctly
-
-CNM(S10_3,5,thresh=1e-3,plt=FALSE)->S10_3_cnm
-plot(S10_3_cnm$E_CNM)
+data("S4");
+SetParams(S4) # remember to set C0 and others correctly
+S4
+CNM(S4,5,thresh=1e-3,plt=FALSE)->S4_cnm
+plot(S4_cnm$E_CNM/M.Es,ylab=expression(E[CNM]),xlab="CNM iteration")
 ```
 
-The constraint values for the `CNM()` need to be stored in the basis of the membrane object as `S10_3$bas$Target` before. From `CNM`, the Lagrangian multipliers are given in `S10_3_cnm$Lambda`. The text output from `CNM` gives information on the convergence in energy and Lagrangian multiplier $\lambda$. CNM exits if \|delta\| reported in output text is below CNM-parameter `Mtol_Newton`.
+The constraint values for the `CNM()` need to be stored in the basis of the membrane object as `S4$bas$Target` before. From `CNM`, the Lagrangian multipliers are given in `S4_cnm$Lambda`. The text output from `CNM` gives information on the convergence in energy and Lagrangian multiplier $\lambda$. CNM exits if \|delta\| reported in output text is below CNM-parameter `Mtol_Newton`.
 
-It is important to notice that inversion of Hessian in CNM may produce large jumps in coefficients, due to degeneracy (zero or almost zero eigenvalues). Therefore the pseudoinverse is applied, and directions of Hessian with absolute eigenvaules below CNM-parameter `threshold` are removed from the inverse. We have observed several times that negative eigenvalues appear with absolute value below 1e-4, leading to divergence. These are successfully suppressed by setting `threshold=1e-4`. However, one should take care to to suppress directions that do not correspond to degeneracy. One should therefore reduce the threshold more and more when recalling `CNM()`. CNM returns the eigensystem of the constraint Hessian as attr(M\$A,"Eigs"). The first two eigenvalues correpond to the Jacobian of constraint functions, in our notation negative.
+It is important to notice that inversion of Hessian in CNM may produce large jumps in coefficients, due to degeneracy (zero or almost zero eigenvalues). Therefore the pseudoinverse is applied, and directions of Hessian with absolute eigenvaules below CNM-parameter `threshold` are removed from the inverse. We have observed several times that negative eigenvalues appear with absolute value below 1e-4, leading to divergence. These are successfully suppressed by setting `threshold=1e-4`. However, one should take care to to suppress directions that do not correspond to degeneracy. One should therefore reduce the threshold more and more when recalling `CNM()`. CNM returns the eigensystem of the constraint Hessian as attr(M\$A,"Eigs"). The first two eigenvalues correspond to the Jacobian of constraint functions (in our notation they are always negative).
 
 \
 One may retrieve and analyse all eigenvalues with `MemStab(S10_3_cnm)->M; M$Stab$EigH$values.`
@@ -271,6 +272,7 @@ In the following, it is demonstrated how poles may be rotated, e.g. to land on t
 data("M_stomatocyte_L12")
 SetParams(M_stomatocyte_L12)
 rotUV(M_stomatocyte_L12,pi/2,3*pi/4)->M1
+rgl::clear3d()
 plot(M1)
 rgl::rglwidget()
 rgl::title3d("pole shifted shape")
@@ -285,7 +287,7 @@ rgl::title3d("pole shifted shape")
 
 The rotated shape is part of the provided data. You may show the difference in energy in the following way:
 
-```{r StomatoRotDiffm }
+```{r StomatoRotDiffm,webgl=TRUE }
 data("M_stomatocyte_L12_rotated")
 SetParams(M_stomatocyte_L12_rotated) # needed after data() to take over parameters
 Energy(M_stomatocyte_L12_rotated)
@@ -299,35 +301,25 @@ Energy(M_stomatocyte_L12)
 pracma::Norm(M_stomatocyte_L12$A-M_stomatocyte_L12_rotated$A)
 
 # plot SEN data alpha and beta
-#two_screens3d()
-#two_draw3d(M_stomatocyte_L12_rotated$A, M_stomatocyte_L12_rotated)
+two_screens3d()
+two_draw3d(M_stomatocyte_L12_rotated$A, M_stomatocyte_L12_rotated)
+#rgl::rglwidget()
+
+
 ```
+
+### ![](images/clipboard-3284433238.png)
 
 ### Data for lipid vesicle shape studies
 
-For completeness, we also include data for lipid vesicle shape studies, like the reference shape Undustick (see <https://zenodo.org/records/13627757>).
+For completeness, we also include data for lipid vesicle shape studies, like the reference shape Undustick (see <https://zenodo.org/records/13627757>). The original $l\le17$ data is rotated by pi/2 for less mesh distortion, and constraints set to $A=4\pi$ and $V=0.55\ 4\pi/3$ (see `data(U17R)`). Furthermore, the basis was reduced to leading $v$-order $m\le1$ by `ReduceM1()`. The result can be loaded with `data(U17RR)`.
 
-SEN and area difference elasicity are de-activated by setting moduli to zero.
+In the objects `U17R` and `U17RR`, SEN and area difference elasticity are de-activated by setting moduli to zero. Furthermore, $K_b=2$ is set (`M.K_b`) to have the original energy reporting (with energy scale `M.Es=16*pi)`.
 
-`data_MemRBC("US_L17_minim"); SetParams(US_L17_minim)`
-
-`plot(US_L17_minim)`
-
-`data_MemRBC("US_L17_rotated");SetParams(US_L17_rotated)`
-
-`plot(US_L17_rotated)`
-
-`# not yet finalized Undustick, de-novo from MemRBC: data_MemRBC("US_L10_de_novo")`
-
-![Result of CNM on rotated Undustick membrane of area 140nm\^2 (basis reduced to $m\le1$ ) with $%l\le17$ loaded by `data("U17R"); SetParams(U17R); PSD(U17R,100)->U17R`. The shear stress parameters displayed did not enter energy. ](images/clipboard-3669985927.png)
-
-The `unlist(Quantities(U17R))` reported for the CNM-results (preserved in data("u17rr")) and the Lagrangian multipliers $\lambda_{A,V}$ are:
-
-```         
-     Area    Volume      Curv        Wb  
-     139.99999  85.49325 130.41239 -54.19321 
-     
-     la_A: -0.232144  la_V: 2.959906
+```{r reduceBasisM1}
+data("U17R"); SetParams(U17R) 
+ReduceM1(U17R)->U17RR
+Energy(U17RR)
+Quantities(U17RR)
+unlist(U17RR$Params)
 ```
-
-Area, volume and curvature correspond to the Undustick reduced quantities a=1. v=0.55, c=1.55.

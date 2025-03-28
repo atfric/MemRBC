@@ -274,8 +274,8 @@ MemPCA<-function(M)
 #' two_screens3d(x=650,y=300)
 #' @export
 two_screens3d<-function(x=400,y=400){
-  rgl::open3d();M.scr2<<-rgl::cur3d();rgl::par3d(windowRect=c(x-30,30,2*x-30,y+30)); # draw right first
-  rgl::open3d();M.scr1<<-rgl::cur3d();rgl::par3d(windowRect=c(1,30,x+1,y+30)); # then left (for 30 pixel overlap)
+  rgl::open3d();assign("M.scr2",rgl::cur3d(),envir=.GlobalEnv);rgl::par3d(windowRect=c(x-30,30,2*x-30,y+30)); # draw right first
+  rgl::open3d();assign("M.scr1",rgl::cur3d(),envir=.GlobalEnv);rgl::par3d(windowRect=c(1,30,x+1,y+30)); # then left (for 30 pixel overlap)
   }
 
 # draw stress and shear; re-open screens if not opened (not in rgl.dev.list())
