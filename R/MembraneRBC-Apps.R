@@ -299,13 +299,13 @@ two_draw3d<-function(A,M,cont=FALSE,title="",x=400,y=400) # requires S (Stretche
     S<-SEN(A,grd,M$bas,M$Ref,Wb)
     X2Obj(grd$Obj,C$X)->O
     Rvcg::vcgClean(O,sel=1:7,silent = TRUE)->O
-    if (M.scr2 %in% rgl::rgl.dev.list()) {rgl::set3d(M.scr2);rgl::clear3d();} else { M.scr2<<-rgl::open3d();rgl::par3d(windowRect=c(x-30,30,2*x-30,y+30)); }
+    if (M.scr2 %in% rgl::rgl.dev.list()) {rgl::set3d(M.scr2);rgl::clear3d();} else { assign("M.scr2",rgl::open3d(),envir=.GlobalEnv);rgl::par3d(windowRect=c(x-30,30,2*x-30,y+30)); }
 
     imag.obj.colorbar(O,f=S$beta,clr = FALSE,par=FALSE,specular="black"); rgl::title3d(paste("beta",title))
 if(cont){    rgl::contourLines3d(O,grd$U,nlev=15,lwd=2)
   rgl::contourLines3d(O,grd$v,levels = pracma::linspace(0,2*pi,16)[-16], lwd=2)
 }
-    if (M.scr1 %in% rgl::rgl.dev.list()) {rgl::set3d(M.scr1);rgl::clear3d();} else { M.scr1<<-rgl::open3d();rgl::par3d(windowRect=c(x-30,30,2*x-30,y+30)); }
+    if (M.scr1 %in% rgl::rgl.dev.list()) {rgl::set3d(M.scr1);rgl::clear3d();} else { assign("M.scr1",rgl::open3d(),envir=.GlobalEnv);rgl::par3d(windowRect=c(x-30,30,2*x-30,y+30)); }
     imag.obj.colorbar(O,f=S$alpha,clr=FALSE,par=FALSE,specular="black");rgl::title3d(paste("alpha",title))
 if(cont){    rgl::contourLines3d(O,grd$U,nlev=15,lwd=1)
   rgl::contourLines3d(O,grd$v,nlevels=15, levels = pracma::linspace(0,2*pi,16)[-16],lwd=1)

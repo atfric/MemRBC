@@ -19,12 +19,13 @@
 #' @param M The input membrane with initial data and reference
 #' @param nsteps (=5) number of Newton steps to be performed
 #' @param del (=0.3) update factor delte (<1)
-#' @param thresh (=1e-4)threshold for pseudoinverse to suppress almost zero eigenvalues in matrix inversion
+#' @param thresh (=0)threshold for pseudoinverse to suppress almost zero sigularvalues in matrix inversion, see alternative parameter suppress_low_n
 #' @param plt (=TRUE) for plotting two figures with alpha/beta stress-shear parameters
 #' @param Mtol_Newton (=1e-4) stopping criterion for norm of gradient
 #' @param LAfreq (=1) storage frequency into list of coefficients LA
 #' @param cluster (=FALSE) for parallel Hessian using a cluster with ncores processes
 #' @param ncores (=4) for parallel Hessian with ncores
+#' @param suppress_low_n (=3) for removing n lowest eigenvalue vectors from inversion, in stead workin with threshold
 #' @return membrane object with updated data from CNM:
 #' @return LA: list of recorded coefficients A
 #' @return A: last coefficients
@@ -32,6 +33,9 @@
 #' @return E_CNM: vector of nsteps energy values
 #' @return CNMiter: number of iterations, incl. previous calls
 #' @return proc_time: aggregated processing time of all Apps called before with this object
+#' @return Eig: eigensystrem of bordered Hessian
+#' @return Eig.H: eigenvsystem of energy Hessian
+#' @return Hessian: bordered Hessian matrix, i.e. with Lagrangians
 #' @examples
 #' M <- MakeStandardRBC(L=5)
 #' plot(M)
@@ -42,8 +46,8 @@
 CNM<-function(M,nsteps=5,del=0.3, diag.reg=0.0,
               LAfreq = 1,
               Mtol_Newton=1e-4,
-              thresh=1e-4,
-              ncores=4, plt=TRUE,filter_delta=ID,cluster=FALSE) # returns a modified MemRBC
+              thresh=0.0,suppress_low_n=3, # suppose rotational degrees of freedom
+              ncores=4, plt=TRUE,plt_svd=TRUE,filter_delta=ID,cluster=FALSE) # returns a modified MemRBC
 { t0=proc.time()
   cl=match.call()
   if(is.null(M$proc_time)) M$proc_time<-0
@@ -72,11 +76,11 @@ CNM<-function(M,nsteps=5,del=0.3, diag.reg=0.0,
     if(iter==1){cat("parallel Hessian ");tictoc::toc()}
     Cons_RHS <- ConsRHS(H$h2,bas)
 
+    eigen(H$H) -> Eig.H
+    {cat("CNM:",iter,":Eig.H:",sort(Eig.H$values)[1:8],"\n")}
     Hp=ConstraintHessian(H,bas,Lambda)
-    eigen(H$H)$values -> Eig.H
-    {cat("CNM:",iter,":Eig.H:",sort(Eig.H)[1:8],"\n")}
-    eigen(Hp)$values -> Eig
-    cat("CNM:",iter,":Eig.Hp:",sort(Eig)[1:8],"\n")
+    eigen(Hp) -> Eig
+    cat("CNM:",iter,":Eig.Hp:",sort(Eig$values)[1:8],"\n")
     # NEWTON STEP
     # indices of Lambda in full solution vector
     LambdaI=(dim(H$H)[1]+1):(dim(H$H)[1]+bas$Nc)
@@ -87,13 +91,24 @@ CNM<-function(M,nsteps=5,del=0.3, diag.reg=0.0,
     RNorm<-pracma::Norm(Cons_RHS)
     cat("|Cons-f|:",crayon::red(RNorm),": Cons-f:",crayon::red(Cons_RHS),"\n")
     #  if (RNorm>RNorm1) {cat("exit by Cons Resid Norm increase \n");break} else RNorm1=RNorm
-
-    delta=  (pracma::pinv(Hp,tol = thresh) %*% RHS)[,1]
-
-    FullNorm=pracma::Norm(delta)
-    NewtonNorm=pracma::Norm(delta[-LambdaI])
-    dLambda=delta[LambdaI]
-
+    if (thresh!=0)
+      delta=  (pracma::pinv(Hp,tol = thresh) %*% RHS)[,1]
+    else
+    { s<-svd(Hp)
+      p <- 1:length(s$d)<length(s$d)-suppress_low_n+1
+      if (all(p)) {
+        mp <- s$v %*% (1/s$d * t(s$u))
+      }
+      else if (any(p)) {
+        mp <- s$v[, p, drop = FALSE] %*% (1/s$d[p] * t(s$u[,p, drop = FALSE]))
+      }
+      if (plt_svd) plot(log(s$d), col=2-as.numeric(p), pch=20, ylab=expression(log(d[i])))
+      delta=  (mp %*% RHS)[,1]
+    }
+    FullNorm <- pracma::Norm(delta)
+    NewtonNorm <- pracma::Norm(delta[-LambdaI])
+    dLambda <- delta[LambdaI]
+# experimental: filter
     delta[-LambdaI] <- filter_delta(delta[-LambdaI])
 
     A1<-c(c(A),c(Lambda)) - del * c(delta) # full update
@@ -102,11 +117,11 @@ CNM<-function(M,nsteps=5,del=0.3, diag.reg=0.0,
     cat("|delta_Newton|:",NewtonNorm,":  |delta|:",crayon::red(FullNorm),"\n")
     C0 <- C # save coordinates for possible rejection / break
     C <- updateX(A,grd,bas)
-    E_SCM(A,grd,bas,C)->h2
-    SEN(A,grd,bas,Ref1,h2)->S
-    E_SEN(A,grd,bas,S,Ref1)->w
+    E_SCM(A,grd,bas,C) -> h2
+    SEN(A,grd,bas,Ref1,h2) -> S
+    E_SEN(A,grd,bas,S,Ref1) -> w
     E <- h2$Wb + w; cat ("CNM:",iter,"E",E/M.Es,"Wb",h2$Wb/M.Es,"Ws",w/M.Es,"C0",M.C0,"C",h2$Curv,"NEWTON STEP",del,"\n",sep=":")
-    E_CNM[iter]<-E
+    E_CNM[iter] <- E
     if(plt){ two_draw3d(A,M,title = paste("CNM",iter,round(E/M.Es,3)))
 #      X2Obj(grd$Obj,C$X)->O
 #      rgl::set3d(M.scr2);rgl::clear3d();
@@ -115,24 +130,24 @@ CNM<-function(M,nsteps=5,del=0.3, diag.reg=0.0,
 #      rgl::set3d(M.scr1);rgl::clear3d();
 #      imag.obj.colorbar(O,f=S$alpha,clr=FALSE,par=FALSE,specular="black");rgl::title3d(paste(iter,"alpha"))
     }
-    attr(A,"Lambda")<-Lambda
-    attr(A,"C0")<-M.C0
-    attr(A,"Target")<-bas$Target
-    attr(A,"Eigs")<-Eig # only in CNM Eigenvalues of H' are part of A attributes
-    attr(A,"EigsH")<-Eig.H
-    attr(A,"|delta_Newton|")<-NewtonNorm
-    attr(A,"FullNorm")<-FullNorm
-    attr(A,"iter")<-iter
-    attr(A,"CNM_Cons_Resid")<-RNorm
-    attr(A,"E")<-E
-    attr(A,"V")<-h2$Volume
-    attr(A,"A")<-h2$Area
-    attr(A,"C")<-h2$Curv
-    attr(A,"method")<-"CNM"
+    attr(A,"Lambda") <- Lambda
+    attr(A,"C0") <- M.C0
+    attr(A,"Target") <- bas$Target
+    attr(A,"Eigs") <- Eig # only in CNM Eigenvalues of H' are part of A attributes
+    attr(A,"EigsH") <- Eig.H
+    attr(A,"|delta_Newton|") <- NewtonNorm
+    attr(A,"FullNorm") <- FullNorm
+    attr(A,"iter") <- iter
+    attr(A,"CNM_Cons_Resid") <- RNorm
+    attr(A,"E") <- E
+    attr(A,"V") <- h2$Volume
+    attr(A,"A") <- h2$Area
+    attr(A,"C") <- h2$Curv
+    attr(A,"method") <- "CNM"
 
     cat("dLambda:",dLambda,"\n")
     cat("Lambda:",Lambda," :mu: ",M.mu," :del:",del,"\n")
-    FullNorm0<-FullNorm
+    FullNorm0 <- FullNorm
     if(FullNorm<Mtol_Newton) {cat(crayon::green("exit by Mtol_Newton\n"));MEx=TRUE;break;} else MEx=FALSE
     if(E>E0*2.5) {cat(crayon::red("reject A and exit (by >1.5 energy increase)\n"));Lambda=Lambda0;A=A0;C=C0;break;} # indicate divergence by rapid energy increase
     E0 <- E
@@ -146,6 +161,14 @@ CNM<-function(M,nsteps=5,del=0.3, diag.reg=0.0,
   M$C <- h2$Curv
   M$Eig <- Eig
   M$Eig.H<-Eig.H
+  M$Hessian <- Hp
+  M$HessianSVD<-svd(Hp)
+  M$G<-H$G   # unconstraint gradient
+  M$G.H<-RHS # constraint gradient = for update inv(Hp) * G.H
+
+  M$H<-H$H # Hessian
+  M$Hp<-Hp # constraint ("bordered") Hessian, dim + N_constraints
+
   if (is.null(M$E_CNM)) M$E_CNM<-E_CNM else M$E_CNM<-c(M$E_CNM,E_CNM)
   M$CNMiter <- M$CNMiter+iter
   M$LA <- LA # return iterated solutions list

@@ -8,8 +8,8 @@ vignette: >
 ---
 
 ```{r, message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE }
-knitr::opts_chunk$set(  collapse = TRUE,  comment = "#>", fig.width=800)
-options(width=800)
+knitr::opts_chunk$set(  collapse = TRUE,  comment = "#>"
+                      , out.width = "100%", out.height="50%")
 
 ```
 
@@ -123,7 +123,7 @@ The final result is saved to disk in the current folder. Text-output is redirect
 
 The following command allows to analyse the recorded `MMC` in terms of curvature and energy at accepted Montecarlo steps, sampled along the trajectory in a data frame `M$Sample`. As third column, `M$Sample$Cnt` records the number of Metropolis rejections + 1 at the same energy. This is useful to evaluate thermodynamic ensemble expectation values of the recorded area, curvature and energy. For example, `M$Sample` could allow for some free-energy-perturbation analysis.
 
-```{r plot, R.options = list(width=900,height=900)}
+```{r plot,fig.dim = c(6, 6)}
 PlotSample(M) # can have differente colors for multiple runs
 ```
 
@@ -131,7 +131,7 @@ PlotSample(M) # can have differente colors for multiple runs
 
 The constraints of area and volume are implemented in Lagrangian approach in augmented Lagrangian minimizer (`ALM`) and constrained Newton minimizer (`CNM`). In `MMC` and `PSD` they are given as penalty terms with penalty constant `M.rho`. Spontaneous curvature $C_0$ controls the shapes. However, transition of integrated curvature $C$ to a stationary state takes high iteration counts and computational cost. Therefore, a constraint on $C$ is implemented additionally in `MMCC` and `PSDC`, which requires to specify the parameter `curv` as target curvature. Prescribing `curv` as third constraint restricts the shape to fixed area difference, common to strict bilayer couple models.
 
-It should be noted that within this approach, $C_0$ has no effect on shape, since the energy contribution $C_0\ C$ remains constant. In `PSDC` the effect of the curvature gradient involving $C_0 \nabla C$ should be partially canceled out by the $C$ constraint gradient $-2 \rho \nabla C$ , where $\rho$ is the penalty constant `M.rho`.
+It should be noted that within this approach, $C_0$ has no effect on shape, since the energy contribution $C_0\ C$ remains constant. However, in `PSDC` the effect of the curvature gradient involving $C_0 \nabla C$ , which is part of the energy gradient, should be modified by the additional $C$ constraint gradient $-2 \rho \nabla C$ , where $\rho$ is the penalty constant `M.rho`. Thus, it is advisable to set $C_0=0$ ( `M.C0 <- 0)`before calling `PSDC` .
 
 ```{r stomatocyte}
 data("M_stomatocyte_L12")
@@ -167,7 +167,7 @@ Cumulated contributions of the spherical harmonics series of the current coeffic
 
 In the following a comparison of energy minimization performance is made between steepest descend `PSD()` and Newton equation of motion `PNEM()` on a low spectral order stomatocyte shape.
 
-```{r stomatocyte reduced model, R.options = list(width=900,height=900)}
+```{r stomatocyte reduced model, fig.dim = c(6, 4)}
 data("L5_stomatocyte_equilib")
 SetParams(L5_stomatocyte_equilib)
 L5_stomatocyte_equilib -> M # sets C0 for next computations
@@ -210,7 +210,7 @@ rgl::rglwidget(width=300,height=300)
 
 Energy density or other local quantities can be plotted in 2D
 
-```{r imagequnatity2d,R.options = list(width=900)}
+```{r imagequnatity2d,fig.dim = c(6, 3)}
 data(L9_Stomatocyce_6); SetParams(L9_Stomatocyce_6)
 update(L9_Stomatocyce_6,"SEN")->M
 imag( TotalEnergyDensity(M$SEN),M$grd)
@@ -245,7 +245,7 @@ sapply(L_MMC,Energy)
 
 A Newton minimization of a pre-computed stomatocyte shape of $l\le4$ goes like this ( $C_0=-3$ ):
 
-```{r CNM}
+```{r CNM, fig.dim = c(6, 4)}
 data("S4");
 SetParams(S4) # remember to set C0 and others correctly
 S4
@@ -255,7 +255,8 @@ plot(S4_cnm$E_CNM/M.Es,ylab=expression(E[CNM]),xlab="CNM iteration")
 
 The constraint values for the `CNM()` need to be stored in the basis of the membrane object as `S4$bas$Target` before. From `CNM`, the Lagrangian multipliers are given in `S4_cnm$Lambda`. The text output from `CNM` gives information on the convergence in energy and Lagrangian multiplier $\lambda$. CNM exits if \|delta\| reported in output text is below CNM-parameter `Mtol_Newton`.
 
-It is important to notice that inversion of Hessian in CNM may produce large jumps in coefficients, due to degeneracy (zero or almost zero eigenvalues). Therefore the pseudoinverse is applied, and directions of Hessian with absolute eigenvaules below CNM-parameter `threshold` are removed from the inverse. We have observed several times that negative eigenvalues appear with absolute value below 1e-4, leading to divergence. These are successfully suppressed by setting `threshold=1e-4`. However, one should take care to to suppress directions that do not correspond to degeneracy. One should therefore reduce the threshold more and more when recalling `CNM()`. CNM returns the eigensystem of the constraint Hessian as attr(M\$A,"Eigs"). The first two eigenvalues correspond to the Jacobian of constraint functions (in our notation they are always negative).
+It is important to notice that inversion of Hessian in CNM may produce large jumps in coefficients, due to degeneracy (zero or almost zero eigenvalues). Therefore the pseudo-inverse is applied, and directions of Hessian with singular values below CNM-parameter `threshold` are removed from the inverse. In some cases setting `threshold=1e-4` helped for convergence. The other approach to inversion is based on dropping a number of lowest singular values by specification of parameter `suppress_low_n`, for example `suppress_low_n=3` removes three degrees of freedom, which could be due to rotational invariance of the energy functional. It is important to mention, that translational invariance cannot cause degeneracy, since the used set of basis functions $Y_{lm}$ does not contain $l=m=0$.\
+However, one should take care to to suppress directions that do not correspond to degeneracy. One should therefore reduce the threshold more and more when recalling `CNM()`. CNM returns the eigensystem of the constraint Hessian as `attr(M$A,"Eigs")`. The first two eigenvalues correspond to the Jacobian of constraint functions (in our notation they are always negative).
 
 \
 One may retrieve and analyse all eigenvalues with `MemStab(S10_3_cnm)->M; M$Stab$EigH$values.`
@@ -276,7 +277,7 @@ rgl::clear3d()
 plot(M1)
 rgl::rglwidget()
 rgl::title3d("pole shifted shape")
-# one may be insterested to see the effects -
+# one may be interested to see the effects -
 #  since the SEN referene shape is not rotated.
 # if you have time, try:
 # PSD(M1,5000,plt=TRUE)->M2

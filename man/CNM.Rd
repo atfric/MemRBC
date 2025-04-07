@@ -11,9 +11,11 @@ CNM(
   diag.reg = 0,
   LAfreq = 1,
   Mtol_Newton = 1e-04,
-  thresh = 1e-04,
+  thresh = 0,
+  suppress_low_n = 3,
   ncores = 4,
   plt = TRUE,
+  plt_svd = TRUE,
   filter_delta = ID,
   cluster = FALSE
 )
@@ -29,7 +31,9 @@ CNM(
 
 \item{Mtol_Newton}{(=1e-4) stopping criterion for norm of gradient}
 
-\item{thresh}{(=1e-4)threshold for pseudoinverse to suppress almost zero eigenvalues in matrix inversion}
+\item{thresh}{(=0)threshold for pseudoinverse to suppress almost zero sigularvalues in matrix inversion, see alternative parameter suppress_low_n}
+
+\item{suppress_low_n}{(=3) for removing n lowest eigenvalue vectors from inversion, in stead workin with threshold}
 
 \item{ncores}{(=4) for parallel Hessian with ncores}
 
@@ -51,6 +55,12 @@ E_CNM: vector of nsteps energy values
 CNMiter: number of iterations, incl. previous calls
 
 proc_time: aggregated processing time of all Apps called before with this object
+
+Eig: eigensystrem of bordered Hessian
+
+Eig.H: eigenvsystem of energy Hessian
+
+Hessian: bordered Hessian matrix, i.e. with Lagrangians
 }
 \description{
 run CNM on an existing membrane object to minimize energy under exact constraints on area and volume

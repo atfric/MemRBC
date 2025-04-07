@@ -1,7 +1,7 @@
 Package: MemRBC
 Type: Package
 Title: Red Blood Cell shape modelling code laboratory
-Version: 0.1.22
+Version: 0.1.24
 Authors@R: c(
     person(
       "Stephan", "Frickenhaus",
@@ -35,5 +35,6 @@ Imports:
 Suggests: 
     knitr,
     rmarkdown,
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    MemRBCdata
 Config/testthat/edition: 3
