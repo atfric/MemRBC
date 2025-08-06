@@ -39,6 +39,8 @@ MMC(
 
 \item{kTfreq}{(=100) number of accepted steps between two scalings of kT by kTfac}
 
+\item{filter}{(=ID) use ApplyFlt_L1 for fixed overall orientation in L1-coeffs; requires SetFlt_L1(M) before}
+
 \item{plfreq}{(=5) for plotting shape every plotfreq number of accepted steps}
 }
 \value{

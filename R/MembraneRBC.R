@@ -2399,10 +2399,12 @@ pertA_Gauss<-function(A,bas,sd,flt=FALSE){
 pertA_Unif<-function(A,bas,sd,flt=FALSE){
   N=bas$Ai_max;
   sd1=sd/sqrt(bas$G.tk);
-dA=(runif(3*N)-0.5)/2*rep(sd,3)
-dA[c(1+N,1+2*N)]=0
-dA[c(2,2+N)]=0
-dA[c(3,3+2*N)]=0
+dA=(runif(3*N)-0.5)/2*rep(sd1,3) # > version 14: changed to sd1
+
+# >version 14: filter outside, e.g. ApplyFilter_L1(A,bas), with bas$flt set
+#dA[c(1+N,1+2*N)]=0
+#dA[c(2,2+N)]=0
+#dA[c(3,3+2*N)]=0
 
 A[]=A[]+dA
 return(A)
@@ -3965,9 +3967,28 @@ cat(crayon::red("Nspic ",nspic,"\n"))
 return(list(M=M,E=E,p=p,L=L,o=o,Eo=EE[o],nspic=nspic))
 }
 
+#' @export
 history_MemRBC<-function(M)
 {
   print(paste(M$history))
-
 }
 
+#' @export
+SetFlt_L1 <- function(M)
+{ # build max-abs filter for L=1
+  mx=c(which.max(abs(M$A[1,])), which.max(abs(M$A[2,])), which.max(abs(M$A[3,])))
+  flt=c( (1:3)[-mx[1]], (1:3)[-mx[2]], (1:3)[-mx[3]])
+  M$bas$flt=flt
+  return(M)
+}
+
+#' @export
+ApplyFlt_L1<-function(A,bas)
+{ if (is.integer(bas$flt)) {
+  A[1,bas$flt[1:2]]<-0
+  A[2,bas$flt[3:4]]<-0
+  A[3,bas$flt[5:6]]<-0
+}
+  else stop("Filter not set for ApplyFlt_L1: use SetFlt_L1(M) before")
+  return(A)
+}

@@ -24,6 +24,7 @@
 #' @param nm (=FALSE) normal motion filter
 #' @param kTfac (=1.0) cooling factor (0<kTfac<1) or heating factor (kTfac>1)
 #' @param kTfreq (=100) number of accepted steps between two scalings of kT by kTfac
+#' @param filter (=ID) use ApplyFlt_L1 for fixed overall orientation in L1-coeffs; requires SetFlt_L1(M) before
 #' @return membrane object with updates from MMC with data:
 #' @return LA: list of recorded coefficients A
 #' @return A: final coefficients
