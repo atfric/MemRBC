@@ -118,12 +118,11 @@ MakeDiscocyteRBC<-function(L)
 }
 
 #' @export
-MakeStomatocyteRBC<-function(L)
+MakeStomatocyteRBC<-function(L=5 )
 {
-  data(S5, envir = environment())
-  update(S5,what=c("Grid","Basis","Ref"),n=(L+1)*5+2,L=L)->M
-  transplant(S5,M)->M1
-  M1$proc_time=S5$proc_time
-  StoreParams(M1)->M1
-  return(M1)
+  data("L5_stomatocyte_equilib", envir = environment())
+  SetParams(L5_stomatocyte_equilib)
+  S5<-L5_stomatocyte_equilib
+  update(S5,what=c("Grid","Basis","Ref"),n=(L+1)*5+2,L=L) -> M
+  return(M)
 }

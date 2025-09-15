@@ -13,3 +13,8 @@ vignettes/images/clipboard-1404360376.png
 *.tex
 LAMC-L9.gif
 LAMC-L9-5680frames.gif
+R/L12-demo-stomatocyte.R
+M_stoma_L12_rot_MMC 9 .rda
+/Research
+/R/.Rc
+R/.Rhistory
