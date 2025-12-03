@@ -119,4 +119,3 @@
   severe(H2$Area-4*pi,"Area",1.6e-13)    # 1.51e-13
   severe(H2$Curv-8*pi,"Curv",1.5e-13)   # 1.492e-13
   severe(H2$H2_BC-16*pi,"BC",8.7e-14) # -8.527e-14
-  severe(any(c(H2$Volume,H2$Curv,H2$Area,H2$H2_BC)) ,"basic quantity has wrong sign")

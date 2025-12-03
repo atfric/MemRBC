@@ -4,7 +4,7 @@
 \alias{plot.MemRBC}
 \title{plot}
 \usage{
-\method{plot}{MemRBC}(R, wire = TRUE, ...)
+\method{plot}{MemRBC}(R, wire = TRUE, wire_col = "black", ...)
 }
 \arguments{
 \item{wire}{(boolean) FALSE if  to suppress mesh quads plotted}

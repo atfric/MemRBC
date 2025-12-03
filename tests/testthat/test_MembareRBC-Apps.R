@@ -27,7 +27,7 @@ M.Rcpp
 M.Rcpp_ncores=3
 MemStab(M4,serial=FALSE)->M4a
 
-plotStabGallery(M4a)
+PlotStabGallery(M4a)
 
 Quantities(M4)
 

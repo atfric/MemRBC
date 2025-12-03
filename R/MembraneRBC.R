@@ -313,7 +313,7 @@ double N_LK_bosh(int L, int K)
   else{ return std::sqrt((2-int(K==0))*(2*L+1)*factorial(L-K)/factorial(L+K));}
 }
 
-//[[Rcpp::export(invisible = true)]]
+//[[Rcpp::export]]
 List L_Ylm(int L_max, Eigen::Map<Eigen::MatrixXd> t, Eigen::Map<Eigen::MatrixXd> p)
 {
   MatrixXd ct, plk_mat, tmp, tmp2, tmp3,theta,phi;
@@ -1724,7 +1724,7 @@ imag.obj.colorbar<-function(obj,f,limits=range(f),clr=FALSE,pal=heat.colors,widt
   col[limits[1]>f]="#000000"
   col[limits[2]<f]="#000000"
   rgl::shade3d(obj,meshcolor="vertices",col=col,...)
-  rgl::bgplot3d(fields::imagePlot(legend.only = TRUE,add=TRUE, new=FALSE,zlim = limits, col = cols) )
+  rgl::bgplot3d(fields::imagePlot(legend.only = TRUE,add=TRUE,zlim = limits, col = cols) )
 }
 
 
@@ -2103,7 +2103,6 @@ MakeGrid_GaussLegendreSimpson<-function(n=20,ua=0,ub=pi,va=0,vb=2*pi,del_Ylm=1e-
   return(grd)
 }
 
-
 # return last n elements from v; v may be list
 #' @export
 last<-function(v,n=1)
@@ -2149,7 +2148,6 @@ vectoarr_cxx<-function(x,ndof,Aimax)  return(array(x,c(ndof,Aimax,3)))
 # works also for Gauss-Legendre-Simpson mixed grid
 #    checked smaller del; produces artifacts and zeros problems in dA
 #
-
 
 # old finite difference derivatives of Ylm
 # always exclude constant terms, i.e. shifts in mean(X)
@@ -2254,6 +2252,27 @@ FitAlm <- function(X2fit,bas)
 for (k in 1:3) { m<-lm(X2fit[,k]~bas$Ylm[,]);m$coefficients[-1]->A[,k]}
 return(A)
 }
+# Weighted SPHARM fit
+#' @export
+Weighted_FitAlm <- function (X, bas, sigma = 0.001)
+{ # start iterate with l=1 ; l=0 removed by center of mass to origin
+  A <- array(0, c(dim(bas$Ylm)[2], 3)) # smoothed Fourier coeffs, start from zeros
+  B <- t(bas$Ylm[,1:3]) %*% bas$Ylm[,1:3] # portion of solver matrix for l=1 (m=-1,0,1)
+  Ycommon <- pracma::inv(B)%*%t(bas$Ylm[,1:3])
+  for (k in 1:3) A[1:3, k] <- Ycommon %*% X[, k]
+  estim <- bas$Ylm %*% A
+  for (l in 2:bas$L_max)
+  { cat("Fit order l=",l,"\r")
+    res <- X - estim # r_(l-1)
+    s <- which(bas$LM[["l"]]==l)
+    B <- t(bas$Ylm[,s]) %*% bas$Ylm[,s] # portion of solver matrix for l=1 (m=-1,0,1)
+    Ycommon <- pracma::inv(B)%*%t(bas$Ylm[,s])
+    for (k in 1:3) A[s, k] <- Ycommon %*% X[,k] * exp(-l*(l+1)*sigma)
+    estim <- bas$Ylm %*% A
+  }
+  cat("\n")
+  return(A)
+}
 
 # fit with regularization:
 # filtering high frequencies in least squares
@@ -2277,7 +2296,7 @@ inv_sph<-function(X)
 return(c(acos(X[3]/r),atan2(X[2],X[1]))) # atan2 takes care of octants
 }
 
-# give angles u,v from a starlike 3d-obnoject, to be centred
+# give angles u,v from a starlike 3d-object, to be centred
 #' @export
 radial_uv<-function(starlike_obj)
 {
@@ -3154,11 +3173,11 @@ Brechbuehler.Init.uv.2<-function(X1, Fit_order=12, InitFit=FALSE,poles.axis=2, m
     grd=MakeGrid_GaussLegendreSimpson(50)
     bas=MakeBasis_UV(Fit_order,grd$U,grd$V)
     updateX(A.init,grd,bas)->C
-    plot3d(C$X,asp=F)
+    rgl::plot3d(C$X,asp=F)
     range(A.init)
-    open3d()
-    wire3d(X)
-    writeOBJ(file.out)
+    rgl::open3d()
+    rgl::wire3d(X)
+    rgl::writeOBJ(file.out)
   } else A.init<-NULL
 
   return(list(uv=cbind(u,v),OBJ=X,L.full=L.ret,A.init=A, East=East, West=West,Inner=inner,f1=f1,f2=f2,igraph=ig,A.init=A.init,poles=p.fix))

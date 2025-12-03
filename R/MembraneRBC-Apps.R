@@ -43,14 +43,14 @@ image.MemRBC<-function(M,q=M$SEN$alpha,main=expression(alpha),...)
 #' @param wire (boolean) FALSE if  to suppress mesh quads plotted
 #' @param ... further plotting options, e.g. col="green"
 #' @export
-plot.MemRBC <- function(R,wire=TRUE,...){
-    updateX(R$A,R$grd,R$bas)->C
+plot.MemRBC <- function(R,wire=TRUE,wire_col="black",...){
+    updateX_only(R$A,R$grd,R$bas)->C
   #  Rvcg::vcgUpdateNormals(C$Obj)->O
     plot3b(C$X,R$grd,wire=FALSE,...)
     if (is.null(R$grd$ObjQ)) Obj2ObjQ(R$grd$Obj,R$grd)->Q else Q=R$grd$ObjQ
     X2ObjQ(Q,C$X)->Q
    # Q$normals=O$normals
-    if (wire) rgl::wire3d(Q,col="black",specular="black")
+    if (wire) rgl::wire3d(Q,col=wire_col,specular="black")
 }
 
 #' print
