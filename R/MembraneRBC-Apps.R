@@ -32,7 +32,7 @@ Apps.TEST=FALSE
 #' @export
 image.MemRBC<-function(M,q=M$SEN$alpha,main=expression(alpha),...)
   {
-    imag(q,M$grd,nx=M$grd$nv,ny=M$grd$nu,main=main,...)
+    imag(q,M$grd,main=main,...)
     invisible()
 }
 
@@ -53,6 +53,33 @@ plot.MemRBC <- function(R,wire=TRUE,wire_col="black",...){
     if (wire) rgl::wire3d(Q,col=wire_col,specular="black")
 }
 
+#' PlotDiff
+#' @description
+#' plot the spatial difference vectors as wireframe.
+#' A quite simmilar plot can be obtained by plot(M2-M1).
+#' @param M1,M2 membrane objects; displayed delta is M2$A-M1$A
+#' @param On3d (=FALSE) to plot on M1 surface the |dX| in color code
+#' @param ... graphics parameters to wire3d() or imag.obj.colorbar()
+#' @return named vector of changes of Quantities()
+#' @examples
+#' data(ss42denovo)
+#' data(ss42denovo_pnem)
+#' dQ <- PlotDiff(ss42denovo_pnem,ss42denovo,col="red")
+#' rgl::open3d()
+#' plot(ss42denovo_pnem-ss42denovo,col="green")
+#' @export
+PlotDiff<-function(M1,M2,On3d=FALSE,...)
+{  updateX(M2$A-M1$A,M1$grd,M1$bas)->C
+
+   X2Obj(M2$grd$Obj,C$X) -> O
+   if(!On3d)rgl::wire3d(O,...) else {
+     updateX(M1$A,M1$grd,M1$bas)->C1
+     X2Obj(M2$grd$Obj,C1$X) -> O1
+     imag.obj.colorbar(O1,apply(C$X,1,pracma::Norm),par=FALSE)
+   }
+   return( c(sapply(Quantities(M2),function(x) x)-sapply(Quantities(M1),function(x) x),apply(C$X,1,pracma::Norm)))
+}
+
 #' print
 #'
 #' print metadata from membrane object
@@ -65,6 +92,7 @@ print.MemRBC<-function(R){
     {cat("L=",R$bas$L_max,", coeff. rows",R$bas$Ai_max,"\n")
      cat(R$bas$Nc," constraints target:\n");
      print(R$bas$Target)
+     cat("Membranes recent coefficients A computed at C0=",attr(R$A,"C0"),"\n")
      if (!rlang::is_named(R$bas$Target)) message("Object constraint $Target is unnamed!")
      cat("quantities for current coeffs A: Area",Area(R)," Volume",Volume(R)," Curv",Curv(R),"\n")
     } else cat(crayon::cyan("The Basis in this Membrane is reduced to X!\nUse update(M,\"Basis\") to recreate.\n"))
@@ -138,14 +166,16 @@ plotStab<-function(M,plt_n=1,plt_scale=0.5,col1="blue",col2="red",alpha1=0.5,alp
 #' analyse membrane shape stability in terms of eigenvectors of Hessian
 #' @return M$Stab with eigensystem of Hessian of energy without constraints
 #' @export
-MemStab <- function(M, mc.cores = 5, plt=FALSE, plt_mode=1, plt_scale=0.5, serial=FALSE)
+MemStab <- function(M, mc.cores = 4, plt=FALSE, plt_mode=1, plt_scale=0.5, serial = FALSE)
   { t0=proc.time()
     if(is.null(M$proc_time)) M$proc_time=0
     cl=match.call()
     if (serial) H=FullModelHessian(M$A,M$grd,M$bas,M$Ref) else
-      H=Hessian_FullModel(M$A,M$grd,M$bas,M$Ref,del=1e-6, ncores= mc.cores)
+      H=FullModelHessian_Par(M$A,M$grd,M$bas,M$Ref, del = 5e-06,
+                             Mem_mc.cores = mc.cores, timing = TRUE, startup = TRUE,
+                             stopdown = TRUE)
     E=eigen(H$H)
-    M$Stab=list(Hessian=H,EigH=E )
+    M$Stab=list(Hessian=H, EigH=E )
     if (plt) plotStab(M,plt_mode,plt_scale)
     M$last_App_called="MemStab"
     M$history=append(M$history,list(cl))
@@ -192,7 +222,7 @@ return(mass) # could be stored as density M$rho_PNEM
 #'
 #' report some quantities from a membrane object
 #' @param M The input membrane with initial data and reference
-#' @return quantities Area, Volume, curvature Curv and bending energy Wb
+#' @return quantities Area, Volume, curvature Curv and bending energy Wb as named vector
 #'@examples
 #' data("M1")
 #' Quantities(M1)
@@ -200,7 +230,7 @@ return(mass) # could be stored as density M$rho_PNEM
 Quantities<-function(M)
 {r=E_SCM(M$A,M$grd,M$bas,updateX(M$A,M$grd,M$bas))[c("Area","Volume","Curv","Wb")]
  names(r)=c("Area","Volume","Curv","Wb")
- return(r)
+ return(unlist(r))
 }
 
 
@@ -213,19 +243,29 @@ Quantities<-function(M)
 #' data("M1")
 #' Energy(M1)
 #' @export
-Energy<-function(M)
-{updateX(M$A,M$grd,M$bas)->C
-  h2=E_SCM(M$A,M$grd,M$bas,C)
-  S=SEN(M$A,M$grd,M$bas,M$Ref,h2)
- ES=E_SEN(M$A,M$grd,M$bas,S,M$Ref)
-  r=c(h2$Wb,ES,h2$Wb+ES)
-names(r)=c("Wb","Es","E")
-if (!is.null(M$mass) & !is.null(M$Av)) {Ekin <-  0; for (j in 1:3) Ekin <- Ekin + (0.5* M$Av[,j] %*% M$mass %*% M$Av[,j])[1,1]
- r=c(r,Ekin)
- names(r)[4]="Ekin"
+Energy<-function (M)
+{
+  C <- updateX(M$A, M$grd, M$bas)
+  h2 = E_SCM(M$A, M$grd, M$bas, C)
+  if (!is.null(M$Ref)) {
+    S = SEN(M$A, M$grd, M$bas, M$Ref, h2)
+    ES = E_SEN(M$A, M$grd, M$bas, S, M$Ref)
+  }
+  else ES = 0
+  r = c(h2$Wb, ES, h2$Wb + ES)
+  names(r) = c("Wb", "Es", "E")
+  if (!is.null(M$mass) & !is.null(M$Av)) {
+    Ekin <- 0
+    for (j in 1:3) Ekin <- Ekin + (0.5 * M$Av[, j] %*% M$mass %*%
+                                     M$Av[, j])[1, 1]
+    r = c(r, Ekin)
+    names(r)[4] = "Ekin"
+  }
+  if(M$bas$Nc>0) {r[5]=sum((unlist(Quantities(M))[M$bas$QCons]-M$bas$Target)^2)
+   names(r)[5]="Econstr"}
+  return(r)
 }
-return(r)
-}
+
 
 
 #' @export
@@ -254,11 +294,11 @@ Curv<-function(M)
 #' MemPCA(M_stomatocyte_L12)->M2
 #' plot(M2)
 #' @export
-MemPCA<-function(M)
+MemPCA<-function(M,WX=rep(1,M$grd$ndof))
   { cl=match.call()
     updateX_only(M$A,M$grd,M$bas)->M$C
     princomp(M$C$X)$scores->X
-    A=FitAlm(X,M$bas)
+    A=FitAlm_Tikhonov(X = X,bas=M$bas,lambda=0,WX=WX)
     M$A=A
     M$history=append(M$history,list(cl))
     return(M)
@@ -274,8 +314,8 @@ MemPCA<-function(M)
 #' two_screens3d(x=650,y=300)
 #' @export
 two_screens3d<-function(x=400,y=400){
-  rgl::open3d();assign("M.scr2",rgl::cur3d(),envir=.GlobalEnv);rgl::par3d(windowRect=c(x-30,30,2*x-30,y+30)); # draw right first
-  rgl::open3d();assign("M.scr1",rgl::cur3d(),envir=.GlobalEnv);rgl::par3d(windowRect=c(1,30,x+1,y+30)); # then left (for 30 pixel overlap)
+  if (M.scr2 %in% rgl::rgl.dev.list()) {rgl::open3d();assign("M.scr2",rgl::cur3d(),envir=.GlobalEnv);rgl::par3d(windowRect=c(x-30,30,2*x-30,y+30))}; # draw right first
+  if (M.scr1 %in% rgl::rgl.dev.list()) {rgl::open3d();assign("M.scr1",rgl::cur3d(),envir=.GlobalEnv);rgl::par3d(windowRect=c(1,30,x+1,y+30))}; # then left (for 30 pixel overlap)
   }
 
 # draw stress and shear; re-open screens if not opened (not in rgl.dev.list())
@@ -438,13 +478,29 @@ update.MemRBC <- function(M, what=c("dA","Quantities","X"),n=0,L=5)
 #' MMC(M4,10)->M
 #' save_MemRBC(M,"Mmmc.rdat")
 #' @export
-save_MemRBC<-function(M,file="MemRBC.rdat",reduce_basis=TRUE)
-{ # the following data can be recomputed by an FillBasis of M
-  if (reduce_basis) M$bas$Ylm_u=M$bas$Ylm_v=M$bas$Ylm_uu=M$bas$Ylm_vv=M$bas$Ylm_uv=NULL
-  StoreParams(M)->M
-  cat(crayon::cyan("stored Params in saved object are:\n"));
+save_MemRBC<-function (M, file = "MemRBC.rdat",
+                       reduce_basis = TRUE,
+                       thinLA=TRUE, thinA=TRUE,
+                       thinbas=TRUE, qs2=FALSE)
+{
+  if (reduce_basis)
+    M$bas$Ylm_u = M$bas$Ylm_v = M$bas$Ylm_uu = M$bas$Ylm_vv = M$bas$Ylm_uv = NULL
+  if(thinLA) M$LA=thin_LA(M$LA)
+  if(thinA) {attr(M$A,"IM")<-NULL;attr(M$A,"Fit spatial weights")<-NULL}
+  if(thinbas) M$bas$IM<-NULL
+  M <- StoreParams(M)
+  cat(crayon::cyan("stored Params in saved object are:\n"))
   print(unlist(M$Params))
-  save(M,file=file)
+  if (qs2) qs2::qs_save(M, file = paste(file,"qs2",sep=".") )
+  else save(M, file = file)
+}
+
+#' thin_LA
+thin_LA<-function(M){
+  M$LA<-lapply(M$LA,function(x){n=names(attributes(x));attributes(x)[!(n %in% c("dim","dimnames"))]<-NULL;x})
+  attr(M$A,"IM") <- NULL
+  attr(M$A,"Fit spatial weights") <- NULL
+  return(M)
 }
 
 #' load_MemRBC
@@ -452,16 +508,29 @@ save_MemRBC<-function(M,file="MemRBC.rdat",reduce_basis=TRUE)
 #' load membrane object from file and set global data from object
 #' @return the membrane object loaded from file with $Params to set globally
 #' @examples
-#' M<-load_MemRBC("Mmmc.rdat")
+#' M<-load_MemRBC("Mmmc.rdat",qs2=FALSE) # may also have saved with qs2=TRUE
 #' M
 #' @export
-load_MemRBC<-function(file="MemRBC.rdat",unreduce_basis=TRUE)
-{ # the following data can be recomputed by an FillBasis of M
-  if (file.exists(file)) obj_name=load(file=file) else stop("Membrane file does not exists");
-  M=get(obj_name)
-  if (unreduce_basis) update(M,"Basis",L=max(M$bas$LM))->M
-  if (!is.null(M$Sample)) if(! "Id" %in% names(M$Sample)) M$Sample$Id<-1
-  if (is.null(M$Params)) {cat(crayon::red("No $Params found, now filled from environment\n"));StoreParams(M)->M} else SetParams(M)
+load_MemRBC<-function (file = "MemRBC.rdat", qs2 = FALSE)
+{
+  if (file.exists(file))
+    if (qs2)
+      obj_name = qs2::qs_read(file)
+  else obj_name = load(file = file)
+  else stop("Membrane file does not exists")
+  M = get(obj_name)
+  if (is.null(M$bas$Ylm_u))
+    M <- FillBasis_MemRBC(M)
+  if (!is.null(M$Sample))
+    if (!"Id" %in% names(M$Sample))
+      M$Sample$Id <- 1
+  if (is.null(M$Params)) {
+    cat(crayon::red("No $Params found, now filled from environment\n"))
+    M <- StoreParams(M)
+  }
+  else SetParams(M)
+  if (is.null(M$bas$Pointymmetry))
+    M$bas$Pointymmetry = FALSE
   return(M)
 }
 
@@ -524,9 +593,9 @@ transplant<-function(M1,M2,plt=FALSE)
   M2$A[]=0;
   M2$A[i,]=M1$A[i,];
   if (plt) {rgl::clear3d();plot(M2);rgl::title3d("from transplated shape coeffs")}
-  M2$history=append(M2$history,"--- transplated history follows:")
+  M2$history=append(M2$history,"--- transplanted history follows:")
   M2$history=append(M2$history,M1$history)
-  M2$history=append(M2$history,"--- transplated history end.")
+  M2$history=append(M2$history,"--- transplatned history end.")
   M2$history=append(M2$history,match.call())
   M2$Target=M1$Target
   return(M2)
@@ -646,7 +715,7 @@ PlotLSeries<-function(M,nr=4,nc=3,...)
   rgl::open3d();
   updateX(M$A,M$grd,M$bas)->C
   SEN(M$A,M$grd,M$bas,M$Ref,E_SCM(M$A,M$grd,M$bas,C))->S
-  plotLseries(nr,nc,M$A,C,M$grd,M$bas,S=S,Ref=M$Ref,rec=FALSE,...)
+  return(plotLseries(nr,nc,M$A,C,M$grd,M$bas,S=S,Ref=M$Ref,...))
 }
 
 #
@@ -686,7 +755,7 @@ rgl::open3d();rgl::plot3d(x=M[,,1],y=M[,,2],z=M[,,3],aspect=FALSE)
 Mflat=matrix(0,prod(dim(M)[1:2]),3)
 for (k in 1:3) Mflat[,k]=t(M[,,k])
  bas=MakeBasis_UV(5,t(grd$u),t(grd$v))
- A=FitAlm(X2fit = Mflat, bas )
+ A=FitAlm(Mflat, bas )
  C=updateX(A,grd,bas)
  rgl::clear3d();plot3b(C$X,grd)
 }
@@ -765,7 +834,7 @@ FitProlate_Ellipsoid_L5<- function(C0=2.562,V0=85.66)
   bas=MakeBasis_UV(5,t(grd$u),t(grd$v))
   bas$Target[2]=V0
 
-  A=FitAlm(X2fit = Mflat, bas )
+  A=FitAlm(Mflat, bas )
   C=updateX(A,grd,bas)
   rgl::clear3d();plot3b(C$X,grd)
 }
@@ -867,7 +936,7 @@ FitProlate_L5<- function(C0=2.562,V0=85.66,filter_strength=10,no_minim=TRUE)
   bas=MakeBasis_UV(5,t(grd$u),t(grd$v))
   bas$Target[2]=V0
 
-  A=FitAlm(X2fit = Mflat, bas )
+  A=FitAlm(Mflat, bas )
   C=updateX(A,grd,bas)
   rgl::clear3d();plot3b(C$X,grd)
 }
@@ -952,7 +1021,7 @@ Mflat=matrix(0,prod(dim(M)[1:2]),3)
 for (k in 1:3) Mflat[,k]=t(M[,,k])
  bas=MakeBasis_UV(L,t(grd$u),t(grd$v))
 
- A=FitAlm(X2fit = Mflat, bas )
+ A=FitAlm(Mflat, bas )
  C=updateX(A,grd,bas)
  rgl::clear3d();plot3b(C$X,grd)
 }
@@ -1038,7 +1107,7 @@ FitDiscocyte_L5<- function(C0=0,V0=100)
     Mflat=matrix(0,prod(dim(M)[1:2]),3)
     for (k in 1:3) Mflat[,k]=t(M[,,k])
     bas=MakeBasis_UV(5,t(grd$u),t(grd$v))
-    A=FitAlm(X2fit = Mflat, bas )
+    A=FitAlm(Mflat, bas )
     C=updateX(A,grd,bas)
     rgl::clear3d();plot3b(C$X,grd)
   }
@@ -1141,24 +1210,24 @@ PlotRef<-function(M,ARef=M$Ref$ARef)
 #' PNEMVM(M,1000)->M1
 #' PlotPNEM(M1)
 #' @export
-PlotPNEM<-function(M)
+PlotPNEM<-function(M,from=1,to=length(M$C_PNEM))
 { p=par()$mfrow
   par(mfrow=c(2,1),mar=c(1,3,0,0),oma=c(3,1,0.5,0.5))
   if(is.null(M$E_kin_PNEM)) {message("No PNEM data to plot"); return();}
   if (!is.null(M$type_PNEM)) col=as.factor(M$type_PNEM) else col=1
   print(table(col))
   if (is.factor(col)) {
-     plot(M$E_kin_PNEM/M.Es,pch=".",col=col,xlab="",ylab="",axes=FALSE);
+     plot(M$E_kin_PNEM[from:to]/M.Es,pch=".",col=col,xlab="",ylab="",axes=FALSE);
 
      legend("topright",legend = levels(col),pch=20,col=1:nlevels(col),cex=0.6)} else
-    { plot(M$E_kin_PNEM/M.Es,type="l",col=1,xlab="",ylab="",axes=FALSE);
+    { plot(M$E_kin_PNEM[from:to]/M.Es,type="l",col=1,xlab="",ylab="",axes=FALSE);
       legend("topright",legend="PNEM",pch=20, col=1,cex=0.6 )}
     axis(3,labels = NA,tick = NA)
     axis(2,padj=0.2)
     title(ylab=expression(E[kin]),line=2 )
     box()
   if (is.factor(col)) {
-    plot(M$E_total_PNEM/M.Es,pch=".",col=col,xlab="",ylab="");
+    plot(M$E_total_PNEM[from:to]/M.Es,pch=".",col=col,xlab="",ylab="");
 #    legend("topright",legend = levels(col),pch=20,col=1:nlevels(col),cex=0.6)
     } else
     {  plot(M$E_total_PNEM/M.Es,type="l",col=1,xlab="",ylab="");
@@ -1277,3 +1346,146 @@ ReduceM1<-function(M)
   M$bas=bas
   return(M)
 }
+
+#' GEMINI_Obj_Obj_Intersect
+#' @description
+#' this code from GEMINI intends to locate spatial intersections of 3D-objects
+#' @param S1, S2 MemRBC objects; S2=S1 is used for self-intersections
+#' @return boolean, TRUE if intersection is probable
+#' @export
+GEMINI_Obj_Obj_Intersect <- function (S1, S2 = S1)
+{
+  GEMINI_tri_tri_intersect_3d <- function(T1, T2) {
+    epsilon <- 1e-09
+    cross_prod <- function(a, b) {
+      c(a[2] * b[3] - a[3] * b[2], a[3] * b[1] - a[1] *
+          b[3], a[1] * b[2] - a[2] * b[1])
+    }
+    v1 <- T2[, 2] - T2[, 1]
+    v2 <- T2[, 3] - T2[, 1]
+    N2 <- cross_prod(v1, v2)
+    d2 <- -sum(N2 * T2[, 1])
+    dists1 <- apply(T1, 2, function(p) sum(N2 * p) + d2)
+    if (all(dists1 > epsilon) || all(dists1 < -epsilon))
+      return(FALSE)
+    v1 <- T1[, 2] - T1[, 1]
+    v2 <- T1[, 3] - T1[, 1]
+    N1 <- cross_prod(v1, v2)
+    d1 <- -sum(N1 * T1[, 1])
+    dists2 <- apply(T2, 2, function(p) sum(N1 * p) + d1)
+    if (all(dists2 > epsilon) || all(dists2 < -epsilon))
+      return(FALSE)
+    D <- cross_prod(N1, N2)
+    if (sum(D^2) < epsilon) {
+      return(FALSE)
+    }
+    compute_interval <- function(Tri, dists, D) {
+      projs <- apply(Tri, 2, function(p) sum(D * p))
+      intervals <- c()
+      for (i in 1:3) {
+        j <- (i%%3) + 1
+        s1 <- dists[i]
+        s2 <- dists[j]
+        if ((s1 > epsilon && s2 < -epsilon) || (s1 <
+                                                -epsilon && s2 > epsilon)) {
+          t <- s1/(s1 - s2)
+          p <- projs[i] + t * (projs[j] - projs[i])
+          intervals <- c(intervals, p)
+        }
+        else if (abs(s1) <= epsilon) {
+          intervals <- c(intervals, projs[i])
+        }
+        else if (abs(s2) <= epsilon) {
+          intervals <- c(intervals, projs[j])
+        }
+      }
+      if (length(intervals) == 0)
+        return(NULL)
+      return(range(intervals))
+    }
+    r1 <- compute_interval(T1, dists1, D)
+    r2 <- compute_interval(T2, dists2, D)
+    if (is.null(r1) || is.null(r2))
+      return(FALSE)
+    if (r1[2] < r2[1] || r2[2] < r1[1]) {
+      return(FALSE)
+    }
+    return(TRUE)
+  }
+  cand = GEMINI_rvcg_kdtree_candidates(S1, S2)
+  for (i in 1:dim(cand)[1]) if (GEMINI_tri_tri_intersect_3d(S1$vb[1:3,
+                                                           S1$it[, cand[i, 1]]], S2$vb[1:3, S2$it[, cand[i, 2]]]))
+    return(TRUE)
+  return(FALSE)
+}
+
+#' GEMINI_Intersect_Mem_Mem
+#' @description
+#' translate membranes to 3D objects and check for intersection
+#'
+#' @param M1,M2 MemRBC data
+#' @export
+GEMINI_Intersect_Mem_Mem<-function(M1,M2=M1)
+{return(GEMINI_Obj_Obj_Intersect( update(M1,"Obj")$grd$Obj,update(M2,"Obj")$grd$Obj))
+}
+
+#' @export
+"+.MemRBC"<-function(m1,m2)
+{m1$A=m1$A+m2$A;return(m1)}
+#' @export
+"-.MemRBC"<-function(m1,m2)
+{m1$A=m1$A-m2$A;return(m1)}
+
+#' @export
+"*.MemRBC"<-function(a,b)
+{if (class(a)=="MemRBC" & is.numeric(b)) {a$A=a$A*b;return(a)}
+ if (class(b)=="MemRBC" & is.numeric(a)) {b$A=b$A*a;return(b)}
+ warning("not correct types - return NULL")
+return(NULL)
+}
+
+GEMINI_rvcg_kdtree_candidates <- function(meshA, meshB) {
+
+  # 1. Calculate a safe search radius
+  # A safe r is the maximum distance from a triangle centroid to its furthest vertex
+  # For simplicity, we can use the average edge length or a small user-defined epsilon
+  max_edge <- max(Rvcg::vcgMeshres(meshB)$edgelength)
+  # 2. Query the KD-tree
+  # vcgKDtree finds indices of vertices in meshB closest to vertices in meshA
+  # We use the 'radius' search to catch all potential overlaps
+  kd_search <- Rvcg::vcgKDtree(meshB, meshA, k=1)
+
+  # kd_search$index contains the indices of vertices in Mesh B
+  # that are within 'max_edge' of vertices in Mesh A.
+
+  # 3. Identify Candidate Triangles
+  # Get indices of vertices in Mesh A that had at least one neighbor in B
+  hits_in_A <- which(sapply(kd_search$index, length) > 0)
+
+  if (length(hits_in_A) == 0) return(NULL)
+
+  # Map these "close" vertices of A to their Triangles
+  # A triangle is a candidate if ANY of its vertices are "hits"
+  triA_candidates <- which(colSums(matrix(meshA$it %in% hits_in_A, nrow=3)) > 0)
+
+  # For each candidate triangle in A, find the closest triangle in B
+  # We use vcgClost here because it uses a fast AABB-tree/KD-tree internally
+  # to find the EXACT closest face.
+  final_pairs <- list()
+
+  # Vectorized closest face search for the candidate centroids
+  centroidsA <- (meshA$vb[1:3, meshA$it[1, triA_candidates]] +
+                   meshA$vb[1:3, meshA$it[2, triA_candidates]] +
+                   meshA$vb[1:3, meshA$it[3, triA_candidates]]) / 3
+
+  closest_in_B <- Rvcg::vcgClost(t(centroidsA), meshB)
+
+  candidates <- data.frame(
+    triA = triA_candidates,
+    triB = closest_in_B$faceptr
+  )
+
+  return(unique(candidates))
+}
+
+

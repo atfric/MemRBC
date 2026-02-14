@@ -10,6 +10,7 @@
 # Frickenhaus S. (2024). MembraneR3 - A spectral model of membrane shape based on Helfrich spontaneous curvature in R. Zenodo. https://doi.org/10.5281/zenodo.13627757 ")}
 #
 
+# REWRITTEN for solving without bordered Hessian and corrected sign definition of multipliers Lambda
 
 #' Constraint Newton Minimizer
 #'
@@ -19,13 +20,12 @@
 #' @param M The input membrane with initial data and reference
 #' @param nsteps (=5) number of Newton steps to be performed
 #' @param del (=0.3) update factor delte (<1)
-#' @param thresh (=0)threshold for pseudoinverse to suppress almost zero sigularvalues in matrix inversion, see alternative parameter suppress_low_n
 #' @param plt (=TRUE) for plotting two figures with alpha/beta stress-shear parameters
-#' @param Mtol_Newton (=1e-4) stopping criterion for norm of gradient
+#' @param Mtol_Newton (=1e-4) stopping criterion for KKT norm and constraints norm
 #' @param LAfreq (=1) storage frequency into list of coefficients LA
 #' @param cluster (=FALSE) for parallel Hessian using a cluster with ncores processes
-#' @param ncores (=4) for parallel Hessian with ncores
-#' @param suppress_low_n (=3) for removing n lowest eigenvalue vectors from inversion, in stead workin with threshold
+#' @param ncores (=4) for parallel Hessian on ncores CPU-cores
+#' @param keepEig (=FALSE) to keep eigensystem as attributes in A (and thus LA[[]] -> high memory demands)
 #' @return membrane object with updated data from CNM:
 #' @return LA: list of recorded coefficients A
 #' @return A: last coefficients
@@ -33,149 +33,243 @@
 #' @return E_CNM: vector of nsteps energy values
 #' @return CNMiter: number of iterations, incl. previous calls
 #' @return proc_time: aggregated processing time of all Apps called before with this object
-#' @return Eig: eigensystrem of bordered Hessian
-#' @return Eig.H: eigenvsystem of energy Hessian
-#' @return Hessian: bordered Hessian matrix, i.e. with Lagrangians
+#' @return Eig.H: eigensystem of last energy+constraints Hessian
+#' @return Grad: final energy gradient
+#' @return Jacobian: constraint Jacobian
+#' @return Hessian: energy Hessian matrix
+#' @return ConsHessians: Lagrangian Hessians from active constraints
 #' @examples
-#' M <- MakeStandardRBC(L=5)
+#' data(L9__Stomatocyce_6); D5->M
+#' M.C0=-6
 #' plot(M)
-#' M <- MMC(M,nsteps=10000,kT=0.00411,kTfac=0.99,kTfreq=100)
+#' M <- CNM(M,nsteps=10,cluster=TRUE)
 #' plot(M)
 #' M
 #' @export
-CNM<-function(M,nsteps=5,del=0.3, diag.reg=0.0,
-              LAfreq = 1,
-              Mtol_Newton=1e-4,
-              thresh=0.0,suppress_low_n=3, # suppose rotational degrees of freedom
-              ncores=4, plt=TRUE,plt_svd=TRUE,filter_delta=ID,cluster=FALSE) # returns a modified MemRBC
-{ t0=proc.time()
-  cl=match.call()
-  if(is.null(M$proc_time)) M$proc_time<-0
-  if(!exists("M.Rcpp")) stop("Cannot process - probably load_param_MemRBC has not been called.")
-  M.Rcpp<<-TRUE
-  M.Rcpp_ncores<<-ncores
-  E0=1000
-  if (is.null(M$LA)) LA=list(M$A) else LA=M$LA# to return the iterated solutions
-  if (is.null(M$CNMiter)) M$CNMiter=0
-  E_CNM=rep(0,nsteps)
-
-  A=M$A;grd=M$grd;bas=M$bas; Ref1=M$Ref
-  if( is.null(M$Lambda)) M$Lambda=rep(1,M$bas$Nc)
-
-  Lambda=M$Lambda
-  if(plt) two_screens3d()
-  for (iter in (1:nsteps )) { # bas changed to bas everywher
-    if(iter==1)tictoc::tic()
-    A0=A
-    Lambda0=Lambda
-    if(iter==1)tictoc::tic()
-    if (cluster)
-       {H<-FullModelHessian_Par(A,grd,bas,Ref1,del=1e-6,Mem_mc.cores = ncores,timing=iter==1) } else
-         {H<-Hessian_FullModel(A,grd,bas,Ref1,1e-6,ncores = ncores)} # del is forward finite difference parameter
-    diag(H$H) = diag(H$H) * ( 1 + diag.reg)
-    if(iter==1){cat("parallel Hessian ");tictoc::toc()}
-    Cons_RHS <- ConsRHS(H$h2,bas)
-
-    eigen(H$H) -> Eig.H
-    {cat("CNM:",iter,":Eig.H:",sort(Eig.H$values)[1:8],"\n")}
-    Hp=ConstraintHessian(H,bas,Lambda)
-    eigen(Hp) -> Eig
-    cat("CNM:",iter,":Eig.Hp:",sort(Eig$values)[1:8],"\n")
-    # NEWTON STEP
-    # indices of Lambda in full solution vector
-    LambdaI=(dim(H$H)[1]+1):(dim(H$H)[1]+bas$Nc)
-    ConsJ=ConsJacobian(H$g2,bas)
-    #H$G has full energy gradient; add Lagr. terms here
-    GG <- c(H$G) + ConsJ[1,]*Lambda[1]; for (ii in 2:bas$Nc) GG = GG + ConsJ[ii,]*Lambda[ii]
-    RHS <- c(GG,Cons_RHS)
-    RNorm<-pracma::Norm(Cons_RHS)
-    cat("|Cons-f|:",crayon::red(RNorm),": Cons-f:",crayon::red(Cons_RHS),"\n")
-    #  if (RNorm>RNorm1) {cat("exit by Cons Resid Norm increase \n");break} else RNorm1=RNorm
-    if (thresh!=0)
-      delta=  (pracma::pinv(Hp,tol = thresh) %*% RHS)[,1]
-    else
-    { s<-svd(Hp)
-      p <- 1:length(s$d)<length(s$d)-suppress_low_n+1
-      if (all(p)) {
-        mp <- s$v %*% (1/s$d * t(s$u))
-      }
-      else if (any(p)) {
-        mp <- s$v[, p, drop = FALSE] %*% (1/s$d[p] * t(s$u[,p, drop = FALSE]))
-      }
-      if (plt_svd) plot(log(s$d), col=2-as.numeric(p), pch=20, ylab=expression(log(d[i])))
-      delta=  (mp %*% RHS)[,1]
+CNM <- function (M, nsteps = 5, del = 0.3, del_control = FALSE, diag.reg = 0,
+                 pinv = TRUE, LAfreq = 1, Mtol_Newton = 1e-04, ncores = 4,
+                 keepEig2A = FALSE, plt = TRUE, cluster = FALSE, use_serial_cpp = FALSE)
+{
+  t0 = proc.time()
+  if (del_control)
+    alpha = NA
+  else del = NA
+  cl = match.call()
+  if (is.null(M$Ref))
+    stop("CNM needs SEN Reference; use MakeRef(M)->M;  If done so,  to switch off SEN, set M.mu=M.Ka=0.")
+  if (is.null(M$proc_time))
+    M$proc_time <- 0
+  if (!exists("M.Rcpp"))
+    stop("Cannot process - probably load_param_MemRBC has not been called.")
+  M.Rcpp <<- TRUE
+  M.Rcpp_ncores <<- ncores
+  E0 = 1000
+  if (is.null(M$LA))
+    LA = list(M$A)
+  else LA = M$LA
+  if (is.null(M$CNMiter))
+    M$CNMiter = 0
+  CNM_data = matrix(0, ncol = 10, nrow = nsteps)
+  A = M$A
+  grd = M$grd
+  bas = M$bas
+  Ref1 = M$Ref
+  if (is.null(M$Lambda))
+    Lambda = rep(1, bas$Nc)
+  else Lambda = M$Lambda
+  names(Lambda) = bas$Cons[1:bas$Nc]
+  for (iter in (1:nsteps)) {
+    if (iter == 1)
+      tictoc::tic()
+    A0 = A
+    Lambda0 = Lambda
+    if (iter == 1)
+      tictoc::tic()
+    if (cluster) {
+      H <- FullModelHessian_Par(A, grd, bas, Ref1, del = 1e-06,
+                                Mem_mc.cores = ncores, timing = iter == 1, startup = iter ==
+                                  1, stopdown = iter == nsteps)
+    } else H <- FullModelHessian(A, grd, bas, Ref1, del = 1e-06)
+  
+#    else { # this is incomplete Hessian, not better performing than cluster version
+#      if (use_serial_cpp) {
+#        warning("no Hessian of constraints in serial C++ Hessian")
+#        H <- Hessian_FullModel(A, grd, bas, Ref1, 1e-06,
+#                               ncores = ncores)
+#      }
+    diag(H$H) <- diag(H$H) * (1 + diag.reg)
+    if (iter == 1) {
+      cat("parallel Hessian ")
+      tictoc::toc()
     }
-    FullNorm <- pracma::Norm(delta)
-    NewtonNorm <- pracma::Norm(delta[-LambdaI])
-    dLambda <- delta[LambdaI]
-# experimental: filter
-    delta[-LambdaI] <- filter_delta(delta[-LambdaI])
-
-    A1<-c(c(A),c(Lambda)) - del * c(delta) # full update
-    A[]<-A1[-LambdaI]   # now store the updated primal
-    Lambda=A1[LambdaI]  #  and dual
-    cat("|delta_Newton|:",NewtonNorm,":  |delta|:",crayon::red(FullNorm),"\n")
-    C0 <- C # save coordinates for possible rejection / break
-    C <- updateX(A,grd,bas)
-    E_SCM(A,grd,bas,C) -> h2
-    SEN(A,grd,bas,Ref1,h2) -> S
-    E_SEN(A,grd,bas,S,Ref1) -> w
-    E <- h2$Wb + w; cat ("CNM:",iter,"E",E/M.Es,"Wb",h2$Wb/M.Es,"Ws",w/M.Es,"C0",M.C0,"C",h2$Curv,"NEWTON STEP",del,"\n",sep=":")
-    E_CNM[iter] <- E
-    if(plt){ two_draw3d(A,M,title = paste("CNM",iter,round(E/M.Es,3)))
-#      X2Obj(grd$Obj,C$X)->O
-#      rgl::set3d(M.scr2);rgl::clear3d();
-#      imag.obj.colorbar(O,f=S$beta,clr = FALSE,par=FALSE,specular="black"); rgl::title3d(paste(iter,"beta"))
-
-#      rgl::set3d(M.scr1);rgl::clear3d();
-#      imag.obj.colorbar(O,f=S$alpha,clr=FALSE,par=FALSE,specular="black");rgl::title3d(paste(iter,"alpha"))
+    ConsJ <- t(sapply(H$g2[bas$Cons[1:bas$Nc]], c))
+    if (iter == 1) {
+      Lambda <- (-pracma::pinv(ConsJ %*% t(ConsJ)) %*%
+                   ConsJ %*% H$G)[, 1]
+      cat(crayon::green("estimate Lambda0:", paste(Lambda,
+                                                   collapse = " "), "\n"))
     }
-    attr(A,"Lambda") <- Lambda
-    attr(A,"C0") <- M.C0
-    attr(A,"Target") <- bas$Target
-    attr(A,"Eigs") <- Eig # only in CNM Eigenvalues of H' are part of A attributes
-    attr(A,"EigsH") <- Eig.H
-    attr(A,"|delta_Newton|") <- NewtonNorm
-    attr(A,"FullNorm") <- FullNorm
-    attr(A,"iter") <- iter
-    attr(A,"CNM_Cons_Resid") <- RNorm
-    attr(A,"E") <- E
-    attr(A,"V") <- h2$Volume
-    attr(A,"A") <- h2$Area
-    attr(A,"C") <- h2$Curv
-    attr(A,"method") <- "CNM"
-
-    cat("dLambda:",dLambda,"\n")
-    cat("Lambda:",Lambda," :mu: ",M.mu," :del:",del,"\n")
-    FullNorm0 <- FullNorm
-    if(FullNorm<Mtol_Newton) {cat(crayon::green("exit by Mtol_Newton\n"));MEx=TRUE;break;} else MEx=FALSE
-    if(E>E0*2.5) {cat(crayon::red("reject A and exit (by >1.5 energy increase)\n"));Lambda=Lambda0;A=A0;C=C0;break;} # indicate divergence by rapid energy increase
+    names(Lambda) <- names(Lambda0) <- bas$Cons[1:bas$Nc]
+    Hfull = H$H
+    for (i in bas$Cons[1:bas$Nc]) Hfull <- Hfull + Lambda[i] *
+      H$L[[i]]
+    Cons <- ConsRHS(H$h2, bas)
+    Eig.H <- eigen(Hfull)
+    if (all(Eig.H$values > 0))
+      cat(crayon::white(crayon::bgGreen("all Eigs show convexity \n")))
+    if (diag.reg == 0)
+      iH = mypinv(Hfull)
+    else iH = pracma::inv(Hfull)
+    if (attr(iH, "removed") > 0)
+      cat(crayon::red("removed ", attr(iH, "removed"),
+                      "\n"))
+    v <- iH %*% H$G
+    Lambda_QP <- (pracma::pinv(ConsJ %*% iH %*% t(ConsJ)) %*%
+                    (Cons - ConsJ %*% v))[, 1]
+    names(Lambda) <- names(Lambda_QP) <- bas$Cons[1:bas$Nc]
+    GG <- c(H$G) + t(ConsJ) %*% Lambda_QP
+    KKTnorm <- pracma::Norm(GG)
+    cat(crayon::blue("KKT Norm:", KKTnorm))
+    RNorm <- pracma::Norm(Cons)
+    cat(" |Cons|:", crayon::red(RNorm), "\n")
+    delta <- (-iH %*% GG)[, 1]
+    if (del_control) {
+      A <- A + del * delta
+    }
+    C0 <- C
+    C <- updateX(A, grd, bas)
+    h2 <- E_SCM(A, grd, bas, C)
+    S <- SEN(A, grd, bas, Ref1, h2)
+    w <- E_SEN(A, grd, bas, S, Ref1)
+    E <- h2$Wb + w
+    if (del_control)
+      cat("CNM", iter, crayon::green("E"), crayon::green(E/M.Es),
+          "Wb", h2$Wb/M.Es, "Ws", w/M.Es, "C0", M.C0, "C",
+          h2$Curv, "del", del, "\n", sep = ":")
+    if (!del_control) {
+      mu = max(abs(Lambda)) + 1
+      alpha = 1
+      current_merit = E + mu * sum(abs(Cons))
+      while (alpha > 1e-04) {
+        A1 = A + alpha * delta
+        C <- updateX(A1, grd, bas)
+        h2 <- E_SCM(A1, grd, bas, C)
+        S <- SEN(A1, grd, bas, Ref1, h2)
+        w <- E_SEN(A1, grd, bas, S, Ref1)
+        E <- h2$Wb + w
+        Cons_next = ConsRHS(h2, bas)
+        next_merit = E + mu * sum(abs(Cons_next))
+        if (next_merit < current_merit)
+          break
+        alpha = alpha * 0.5
+        cat("lowering alpha:", alpha, "\r")
+      }
+      A = A + alpha * delta
+      Lambda = Lambda + alpha * (Lambda_QP - Lambda)
+      cat("Lambda (updated):", Lambda, "Lambda_QP:", Lambda_QP,
+          "\n")
+      cat("\nCNM", iter, crayon::green("E"), crayon::green(E/M.Es),
+          "Wb", h2$Wb/M.Es, "Ws", w/M.Es, "C0", M.C0, "C",
+          h2$Curv, "alpha", alpha, "\n", sep = ":")
+    }
+    if (del_control)
+      Lambda = Lambda + del * (Lambda_QP - Lambda)
+    CNM_data[iter, ] <- c(E, h2$Wb, w, KKTnorm, RNorm, h2$Curv,
+                          M.C0, iter, del, alpha)
+    if (plt)
+      two_draw3d(A, M, title = paste("CNM", iter, round(E/M.Es,
+                                                        3)))
+    attr(A, "Lambda") <- Lambda
+    attr(A, "C0") <- M.C0
+    attr(A, "Target") <- bas$Target
+    if (keepEig2A) {
+      attr(A, "EigsH") <- Eig.H
+    }
+    attr(A, "KKTNorm") <- KKTnorm
+    attr(A, "iter") <- iter
+    attr(A, "CNM_Cons_Resid") <- RNorm
+    attr(A, "E") <- E
+    attr(A, "V") <- h2$Volume
+    attr(A, "A") <- h2$Area
+    attr(A, "C") <- h2$Curv
+    attr(A, "method") <- "CNM"
+    MEx = FALSE
+    if (max(KKTnorm, RNorm) < Mtol_Newton) {
+      cat(crayon::green("exit by Mtol_Newton on max(KKTnorm, ConsNorm)\n"))
+      MEx = TRUE
+      break
+    }
+    if (file.exists("STOP_CNM.txt")) {
+      cat(crayon::red("exit by presence of file STOP_CNM\n"))
+      file.remove("STOP_CNM.txt")
+      MEx = TRUE
+      break
+    }
+    if (E > E0 * 1.5) {
+      cat(crayon::red("reject A and exit (by > E*0.5 energy increase)\n"))
+      Lambda = Lambda0
+      A = A0
+      C = C0
+      break
+    }
     E0 <- E
-    if(iter==1){cat("Full Constrained Newton Step ");tictoc::toc()}
-    if (iter%%LAfreq==0) LA[[length(LA)+1]] <- A
-  } # end of constraint Newton iteration loop
-  M$A <- A;
+    if (iter == 1) {
+      cat("Full Constrained Newton Step ")
+      tictoc::toc()
+    }
+    if (iter%%LAfreq == 0)
+      LA[[length(LA) + 1]] <- A
+  }
+  M$A <- A
   M$Lambda <- Lambda
-  M$SEN <- S;
+  M$SEN <- S
   M$E <- E
   M$C <- h2$Curv
-  M$Eig <- Eig
-  M$Eig.H<-Eig.H
-  M$Hessian <- Hp
-  M$HessianSVD<-svd(Hp)
-  M$G<-H$G   # unconstraint gradient
-  M$G.H<-RHS # constraint gradient = for update inv(Hp) * G.H
-
-  M$H<-H$H # Hessian
-  M$Hp<-Hp # constraint ("bordered") Hessian, dim + N_constraints
-
-  if (is.null(M$E_CNM)) M$E_CNM<-E_CNM else M$E_CNM<-c(M$E_CNM,E_CNM)
-  M$CNMiter <- M$CNMiter+iter
-  M$LA <- LA # return iterated solutions list
+  M$Eig.H <- Eig.H
+  M$Grad <- H$G
+  M$Jacobian <- ConsJ
+  M$Hessian <- H$H
+  M$ConsHessians <- H$L
+  M$CNMiter <- M$CNMiter + iter
+  M$LA <- LA
+  if (is.null(M$CNM_data))
+    M$CNM_data = CNM_data
+  else M$CNM_data = rbind(M$CNM_data, CNM_data)
+  colnames(M$CNM_data) = c("E", "Wb", "Ws", "KKTnorm", "RNorm",
+                           "C", "M.C0", "iter", "del", "alpha")
   M$last_App_called <- "CNM"
-  M$history <- append(M$history,cl)
+  M$history <- append(M$history, cl)
   t1 <- proc.time()
   M$proc_time <- M$proc_time + t1 - t0
-
   return(M)
-}# end of CNM
+}
+
+# end of CNM
+
+
+mypinv<-function (A, tol = .Machine$double.eps^(2/3))
+{
+  stopifnot(is.numeric(A) || is.complex(A), is.matrix(A))
+  s <- svd(A)
+  rem=0
+  if (is.complex(A))
+    s$u <- Conj(s$u)
+  p <- (s$d > max(tol * s$d[1], 0))
+  if (all(p)) {
+    mp <- s$v %*% (1/s$d * t(s$u))
+  }
+  else if (any(p)) {
+    mp <- s$v[, p, drop = FALSE] %*% (1/s$d[p] * t(s$u[,
+                                                       p, drop = FALSE]))
+    rem=sum(!p)
+  }
+  else {
+    mp <- matrix(0, nrow = ncol(A), ncol = nrow(A))
+  }
+  attr(mp,"removed")=rem
+  attr(mp,"diag_4")=s$d[order(abs(s$d))][1:4]
+  attr(mp,"thresh")=max(tol * s$d[1], 0)
+  return(mp)
+}
+
+

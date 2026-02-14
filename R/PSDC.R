@@ -39,53 +39,84 @@
 #' attributes(last(M$LA))
 #' attr(M$A,"method")
 #' @export
-PSDC <- function(M,curv=Curv(M),nsteps=100,del=1e-6,plt=FALSE,pltfreq=10,LAfreq=100,ncores=5)
+PSDC <- function (M, curv = Curv(M), nsteps = 100, del = 1e-06, plt = FALSE,
+                  pltfreq = 10, LAfreq = 100, ncores = 5)
 {
-  t0=proc.time()
-  if(is.null(M$proc_time)) M$proc_time<-0
-
-  cl=match.call()
-  run_id=rlang::hash(M)
-  M.Rcpp<<-TRUE
-  M.Rcpp_ncores<<-ncores
-E_PSD=C_PSD=rep(0.0,nsteps)
-A=M$A;grd=M$grd;bas=M$bas;Ref=M$Ref
-bas$Nc=3;bas$Target=c(bas$Target,curv);bas$Cons=c("gradA","gradV","gradC");
-bas$TNorm=c(bas$TNorm,curv);bas$Qcons=c("Area","Volume","Curv");
-names(bas$Target)=bas$Qcons
-if (is.null(M$LA)) LA=M$LA else LA=list(M$A)
-tictoc::tic()
-for (i in 1:nsteps) {
-  E<-E_FullModel_Penalty_AVC(A,grd,bas,Ref)
-  C <- updateX(A,grd,bas)
-  S<-SEN(A,grd,bas,Ref,E_SCM(A,grd,bas,C))
-  G<-Grad_FullModel_Penalty_AVC(A,grd,bas,Ref,S)
-  A=A-del*matrix(G,ncol=3)
-  cat("PSDC:",i,":E:",E$E/M.Es,":C:",E$Curv,":del:",del,"\n")
-  if(plt & (i%%pltfreq==0)) {rgl::clear3d();plot3q(C$X,grd);rgl::title3d(paste("PSDC",i,"E",round(E$E/M.Es,4),"C",round(E$Curv,4)))}
-  if (i ==100) {cat("100 steps took ");tictoc::toc();}
-  attr(A,"E")<-E$E
-  attr(A,"C")<-E$Curv
-  attr(A,"C0")<-M.C0
-  attr(A,"Target")<-bas$Target
-  attr(A,"run_id")<-run_id
-  attr(A,"M.rho")<-M.rho
-  attr(A,"method")="PSDC"
-  if (i %%LAfreq==0) LA[[length(LA)+1]]<-A
-  E_PSD[i]=E$E
-  C_PSD[i]=E$Curv
+  t0 = proc.time()
+  if (is.null(M$proc_time))
+    M$proc_time <- 0
+  cl = match.call()
+  run_id = rlang::hash(M)
+  M.Rcpp <<- TRUE
+  M.Rcpp_ncores <<- ncores
+  E_PSD = C_PSD = rep(0, nsteps)
+  A = M$A
+  grd = M$grd
+  bas = M$bas
+  Ref = M$Ref
+  bas$Nc = 3
+  bas$Target = c(bas$Target, curv)
+  bas$Cons = c("gradA", "gradV", "gradC")
+  bas$TNorm = c(bas$TNorm, curv)
+  bas$QCons = c("Area", "Volume", "Curv")
+  names(bas$Target) = bas$QCons
+  if (is.null(M$LA))
+    LA = M$LA
+  else LA = list(M$A)
+  tictoc::tic()
+  for (i in 1:nsteps) {
+    E <- E_FullModel_Penalty(A, grd, bas, Ref)
+    C <- updateX(A, grd, bas)
+    S <- SEN(A, grd, bas, Ref, E_SCM(A, grd, bas, C))
+    G <- Grad_FullModel_Penalty(A, grd, bas, Ref, S)
+    A = A - del * matrix(G, ncol = 3)
+    cat("PSDC:", i, ":E:", E$E/M.Es, ":C:", E$Curv, ":del:",
+        del, "\n")
+    if (plt & (i%%pltfreq == 0)) {
+      rgl::clear3d()
+      plot3q(C$X, grd)
+      rgl::title3d(paste("PSDC", i, "E", round(E$E/M.Es,
+                                               4), "C", round(E$Curv, 4)))
+    }
+    if (i == 100) {
+      cat("100 steps took ")
+      tictoc::toc()
+    }
+    attr(A, "E") <- E$E
+    attr(A, "C") <- E$Curv
+    attr(A, "C0") <- M.C0
+    attr(A, "Target") <- bas$Target
+    attr(A, "run_id") <- run_id
+    attr(A, "M.rho") <- M.rho
+    attr(A, "method") = "PSDC"
+    if (i%%LAfreq == 0)
+      LA[[length(LA) + 1]] <- A
+    E_PSD[i] = E$E
+    C_PSD[i] = E$Curv
+    if (file.exists("STOP_PSDC.txt")) {
+      cat(crayon::red("exit by presence of file STOP_PSDC\n"))
+      file.remove("STOP_PSDC.txt")
+      break
+    }
+  }
+  M$A = A
+  E = E_FullModel_Penalty(A, grd, bas, Ref)
+  M$E = E$E
+  M$C = E$Curv
+  if (is.null(M$E_PSD))
+    M$E_PSD = E_PSD
+  else M$E_PSD = c(M$E_PSD, E_PSD)
+  if (is.null(M$C_PSD))
+    M$C_PSD = C_PSD
+  else M$C_PSD = c(M$C_PSD, C_PSD)
+  if (is.null(M$PSDiter))
+    M$PSDiter = i
+  else M$PSDiter = M$PSDiter + i
+  M$last_App_called = "PSDC"
+  M$history = append(M$history, cl)
+  M$LA = LA
+  t1 = proc.time()
+  M$proc_time <- M$proc_time + t1 - t0
+  return(M)
 }
-M$A=A
-E=E_FullModel_Penalty_AV(A,grd,bas,Ref)
-M$E=E$E;M$C=E$Curv
-if (is.null(M$E_PSD)) M$E_PSD = E_PSD else  M$E_PSD = c(M$E_PSD,E_PSD)
-if (is.null(M$C_PSD)) M$C_PSD = C_PSD else  M$C_PSD = c(M$C_PSD,C_PSD)
-if (is.null(M$PSDiter)) M$PSDiter = i else M$PSDiter = M$PSDiter + i
-M$last_App_called="PSDC"
-M$history=append(M$history,list(cl))
-M$LA=LA
-t1=proc.time()
-M$proc_time <- M$proc_time + t1-t0
-
-return(M)
-} # end of PSD
+# end of PSD

@@ -107,6 +107,7 @@ rgl::rglwidget(width=300,height=250)
 
 ```{r MMCCcompute, webgl=TRUE}
 sink("MMCC_L7.txt") # redirect console output to file
+M.C0=-4
 for (i in 1:3){ # loop may go upto 40 
     MMCC(M,curv=Curv(M)+1,nsteps = 100 ,plt=FALSE,LAfreq=10)->M
   }
@@ -154,7 +155,7 @@ plot(M12)
 rgl::rglwidget(width=300,height=300)  
 ```
 
-The reference stomatocyte shape for C0=-6.5 was iterated at room temperature (kT=0.00411 aJ) for 100 steps under approximately constant curvature C=70.
+The reference stomatocyte shape for C0=-6.5 was iterated at room temperature (kT=0.00411 aJ, a stands for atto) for 100 steps under approximately constant curvature C=70.
 
 A plot of a series of shapes is generated with PlotLSeries:
 
@@ -222,6 +223,7 @@ title("Energy density of L9 stomatocyte")
 To compute a set of MMC trajectories of different C0, a simple parallel cluster can be used as follows:
 
 ```{r parMMC}
+if (FALSE){
 parallel::makeCluster(4) -> cl
 startup<-parallel::clusterEvalQ(cl,library("MemRBC"))
 # give each process an identifier tid:
@@ -233,12 +235,14 @@ startup<-parallel::clusterEvalQ(cl,M.C0<-c(-6,-4,-2,0)[tid])
 #report that C0 is set
 unlist(parallel::clusterEvalQ(cl,M.C0))
 #perform only 30 mmc steps; 
-L_MMC<-parallel::clusterEvalQ(cl,M<-MMC(M4,30))
+M4$C0=M.C0
+L_MMC<-parallel::clusterEvalQ(cl,M<-MMC(M4,30,C0=M.C0))
 # save results
 endup<-parallel::clusterEvalQ(cl,save_MemRBC(M,paste("M4-MMC-par-",tid,".rdat",sep="")))
 
 #L_MMC contains all M objects from the cluster processes
 sapply(L_MMC,Energy) 
+}
 ```
 
 ## Constraint Newton Minimizer
@@ -247,10 +251,10 @@ A Newton minimization of a pre-computed stomatocyte shape of $l\le4$ goes like t
 
 ```{r CNM, fig.dim = c(6, 4)}
 data("S4");
-SetParams(S4) # remember to set C0 and others correctly
+SetParams(S4) # remember to set C0 and others correctly, e.g. to M.C0
 S4
-CNM(S4,5,thresh=1e-3,plt=FALSE)->S4_cnm
-plot(S4_cnm$E_CNM/M.Es,ylab=expression(E[CNM]),xlab="CNM iteration")
+CNM(S4,5,plt=FALSE)->S4_cnm
+plot(S4_cnm$CNM_data[,1]/M.Es,ylab=expression(E[CNM]),xlab="CNM iteration")
 ```
 
 The constraint values for the `CNM()` need to be stored in the basis of the membrane object as `S4$bas$Target` before. From `CNM`, the Lagrangian multipliers are given in `S4_cnm$Lambda`. The text output from `CNM` gives information on the convergence in energy and Lagrangian multiplier $\lambda$. CNM exits if \|delta\| reported in output text is below CNM-parameter `Mtol_Newton`.
@@ -279,7 +283,7 @@ rgl::rglwidget()
 rgl::title3d("pole shifted shape")
 # one may be interested to see the effects -
 #  since the SEN referene shape is not rotated.
-# if you have time, try:
+# if you have time and energy, try:
 # PSD(M1,5000,plt=TRUE)->M2
 # M2 # Energy 1.39
 # CNM(M2,20)
@@ -313,14 +317,4 @@ two_draw3d(M_stomatocyte_L12_rotated$A, M_stomatocyte_L12_rotated)
 
 ### Data for lipid vesicle shape studies
 
-For completeness, we also include data for lipid vesicle shape studies, like the reference shape Undustick (see <https://zenodo.org/records/13627757>). The original $l\le17$ data is rotated by pi/2 for less mesh distortion, and constraints set to $A=4\pi$ and $V=0.55\ 4\pi/3$ (see `data(U17R)`). Furthermore, the basis was reduced to leading $v$-order $m\le1$ by `ReduceM1()`. The result can be loaded with `data(U17RR)`.
-
-In the objects `U17R` and `U17RR`, SEN and area difference elasticity are de-activated by setting moduli to zero. Furthermore, $K_b=2$ is set (`M.K_b`) to have the original energy reporting (with energy scale `M.Es=16*pi)`.
-
-```{r reduceBasisM1}
-data("U17R"); SetParams(U17R) 
-ReduceM1(U17R)->U17RR
-Energy(U17RR)
-Quantities(U17RR)
-unlist(U17RR$Params)
-```
+For completeness, we also include data for lipid vesicle shape studies, like the reference shape Undustick (see <https://zenodo.org/records/13627757>). The original $l\le17$ data is rotated by pi/2 for less mesh distortion, and constraints set to $A=4\pi$ and $V=0.55\ 4\pi/3$ (see `data(U17R)`).

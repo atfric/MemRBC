@@ -10,14 +10,11 @@
 # Frickenhaus S. (2024). MembraneR3 - A spectral model of membrane shape based on Helfrich spontaneous curvature in R. Zenodo. https://doi.org/10.5281/zenodo.13627757 ")}
 #
 
-
 #
 #  global standard model parameters
 #' @export
 load_param_RBC<-function(msg)
-{
-  data(M.mu,M.C0,M.mu,M.Ka,M.K_b,M.K_ADE,M.Es,M.rho,M.a2,M.a3,M.a4,M.b0,M.b1,M.b2,M.rho,M.Rcpp,M.Rcpp_ncores,M.scr1,M.scr2,package = "MemRBC",envir = .GlobalEnv)
-}
+{  data(M.mu,M.C0,M.mu,M.Ka,M.K_b,M.K_ADE,M.Es,M.rho,M.a2,M.a3,M.a4,M.b0,M.b1,M.b2,M.rho,M.Rcpp,M.Rcpp_ncores,M.scr1,M.scr2,M.muk,M.lam,package = "MemRBC",envir = .GlobalEnv) }
 
 #
 # M.xxx parameters to be set in main program
@@ -55,6 +52,216 @@ using namespace Rcpp;
 using Eigen::Map;                       // maps rather than copies
 using Eigen::MatrixXd;                  // variable size matrix, double precision
 using Eigen::VectorXd;                  // variable size vector, double precision
+
+
+
+// for a faster version of cotan Laplacian GEMINI-Pro was ask
+// to derive a R to C++ translation for Rcpp
+
+//GEMINI
+// [[Rcpp::depends(RcppEigen)]]
+#include <RcppEigen.h>
+#include <Eigen/Sparse>
+#include <vector>
+#include <cmath>
+
+using namespace Rcpp;
+using namespace Eigen;
+
+// Typedef for the sparse matrix (double precision)
+typedef SparseMatrix<double> SpMat;
+typedef Triplet<double> T;
+
+// [[Rcpp::export]]
+SpMat GEMINI_get_cotan_Laplacian_cxx(List mesh) {
+
+  // 1. Extract data from R rgl mesh object
+  // mesh$vb is a 4xN matrix (homogeneous coords), we need the top 3 rows
+  MatrixXd V_full = as<MatrixXd>(mesh["vb"]);
+  int n_verts = V_full.cols();
+
+  // mesh$it is a 3xM matrix of triangle indices (1-based)
+  MatrixXi F = as<MatrixXi>(mesh["it"]);
+  int n_faces = F.cols();
+
+  // 2. Prepare triplets for Sparse Matrix
+  // Each face has 3 edges. Each edge affects 4 entries in the matrix
+  // (2 diagonal, 2 off-diagonal) per face.
+  // Reserve memory to prevent re-allocation.
+  std::vector<T> tripletList;
+  tripletList.reserve(n_faces * 12);
+
+  // 3. Loop over faces
+  for(int i = 0; i < n_faces; ++i) {
+    // Get indices (convert 1-based R to 0-based C++)
+    int idx0 = F(0, i) - 1;
+    int idx1 = F(1, i) - 1;
+    int idx2 = F(2, i) - 1;
+
+    // Get vertices
+    Vector3d v0 = V_full.block<3,1>(0, idx0);
+    Vector3d v1 = V_full.block<3,1>(0, idx1);
+    Vector3d v2 = V_full.block<3,1>(0, idx2);
+
+    // Compute edge vectors
+    Vector3d e0 = v1 - v0;
+    Vector3d e1 = v2 - v1;
+    Vector3d e2 = v0 - v2;
+
+    // Compute Cotangents of the angles opposite to edges
+    // Cot(angle at v0) uses edges connected to v0: (v1-v0) and (v2-v0)
+    // Careful with directions for dot product: u.v / |uxv|
+    // We can use the squared edge lengths or cross products.
+    // Explicit vector formulation is safest:
+
+    // Angle at 0 (between v1-v0 and v2-v0) -> Opposite edge e1 (v1-v2)
+    Vector3d u0 = v1 - v0;
+    Vector3d v0_vec = v2 - v0;
+    double cot0 = u0.dot(v0_vec) / u0.cross(v0_vec).norm();
+
+    // Angle at 1 (between v2-v1 and v0-v1) -> Opposite edge e2 (v2-v0)
+    Vector3d u1 = v2 - v1;
+    Vector3d v1_vec = v0 - v1;
+    double cot1 = u1.dot(v1_vec) / u1.cross(v1_vec).norm();
+
+    // Angle at 2 (between v0-v2 and v1-v2) -> Opposite edge e0 (v0-v1)
+    Vector3d u2 = v0 - v2;
+    Vector3d v2_vec = v1 - v2;
+    double cot2 = u2.dot(v2_vec) / u2.cross(v2_vec).norm();
+
+    // Handle degenerate triangles (area ~ 0 -> inf cotan)
+    if (!std::isfinite(cot0)) cot0 = 0.0;
+    if (!std::isfinite(cot1)) cot1 = 0.0;
+    if (!std::isfinite(cot2)) cot2 = 0.0;
+
+    // 4. Push triplets
+    // Weight w = 0.5 * cot(angle)
+    // The Laplacian L = D - W.
+    // For an edge connecting i,j with weight w:
+    // L(i,j) -= w
+    // L(j,i) -= w
+    // L(i,i) += w
+    // L(j,j) += w
+
+    double w0 = 0.5 * cot0; // Associated with Edge opposite vertex 0 (between 1 and 2)
+    double w1 = 0.5 * cot1; // Associated with Edge opposite vertex 1 (between 0 and 2)
+    double w2 = 0.5 * cot2; // Associated with Edge opposite vertex 2 (between 0 and 1)
+
+    // Edge (1,2) gets w0
+    tripletList.push_back(T(idx1, idx2, -w0));
+    tripletList.push_back(T(idx2, idx1, -w0));
+    tripletList.push_back(T(idx1, idx1, w0));
+    tripletList.push_back(T(idx2, idx2, w0));
+
+    // Edge (0,2) gets w1
+    tripletList.push_back(T(idx0, idx2, -w1));
+    tripletList.push_back(T(idx2, idx0, -w1));
+    tripletList.push_back(T(idx0, idx0, w1));
+    tripletList.push_back(T(idx2, idx2, w1));
+
+    // Edge (0,1) gets w2
+    tripletList.push_back(T(idx0, idx1, -w2));
+    tripletList.push_back(T(idx1, idx0, -w2));
+    tripletList.push_back(T(idx0, idx0, w2));
+    tripletList.push_back(T(idx1, idx1, w2));
+  }
+
+  // 5. Construct sparse matrix
+  SpMat L(n_verts, n_verts);
+  L.setFromTriplets(tripletList.begin(), tripletList.end());
+
+  return L;
+}
+//GEMINI END
+
+//GEMINI BEGIN
+//#include <Rcpp.h>
+#include <cmath>
+
+//using namespace Rcpp;
+
+// [[Rcpp::export]]
+NumericMatrix GEMINI_compute_mesh_stretches(NumericMatrix V, NumericMatrix x, IntegerMatrix F) {
+    // V: N x 3 matrix of reference vertices
+    // x: N x 3 matrix of current vertices
+    // F: M x 3 matrix of face indices (0-indexed)
+
+    int n_faces = F.nrow();
+    NumericMatrix stretches(n_faces, 2);
+
+    for (int i = 0; i < n_faces; i++) {
+        // 1. Get vertex indices for this face
+        int i1 = F(i, 0), i2 = F(i, 1), i3 = F(i, 2);
+
+        // 2. Map coordinates to local Vec3-like structures
+        auto get_vec = [](NumericMatrix mat, int row) {
+            return (double[]){mat(row, 0), mat(row, 1), mat(row, 2)};
+        };
+
+        double v1[3] = {V(i1,0), V(i1,1), V(i1,2)}, v2[3] = {V(i2,0), V(i2,1), V(i2,2)}, v3[3] = {V(i3,0), V(i3,1), V(i3,2)};
+        double c1[3] = {x(i1,0), x(i1,1), x(i1,2)}, c2[3] = {x(i2,0), x(i2,1), x(i2,2)}, c3[3] = {x(i3,0), x(i3,1), x(i3,2)};
+
+        // 3. Reference edges and local 2D basis
+        double E1[3] = {v2[0]-v1[0], v2[1]-v1[1], v2[2]-v1[2]};
+        double E2[3] = {v3[0]-v1[0], v3[1]-v1[1], v3[2]-v1[2]};
+
+        // n_ref = E1 x E2
+        double nr[3] = {E1[1]*E2[2]-E1[2]*E2[1], E1[2]*E2[0]-E1[0]*E2[2], E1[0]*E2[1]-E1[1]*E2[0]};
+        double L_E1 = sqrt(E1[0]*E1[0] + E1[1]*E1[1] + E1[2]*E1[2]);
+
+        // Local basis u, v for reference
+        double u[3] = {E1[0]/L_E1, E1[1]/L_E1, E1[2]/L_E1};
+        double vr_raw[3] = {u[1]*nr[2]-u[2]*nr[1], u[2]*nr[0]-u[0]*nr[2], u[0]*nr[1]-u[1]*nr[0]};
+        double L_vr = sqrt(vr_raw[0]*vr_raw[0] + vr_raw[1]*vr_raw[1] + vr_raw[2]*vr_raw[2]);
+        double v[3] = {vr_raw[0]/L_vr, vr_raw[1]/L_vr, vr_raw[2]/L_vr};
+
+        // Project reference into 2D: U = [E1.u, E2.u; 0, E2.v]
+        double U11 = L_E1;
+        double U12 = E2[0]*u[0] + E2[1]*u[1] + E2[2]*u[2];
+        double U22 = E2[0]*v[0] + E2[1]*v[1] + E2[2]*v[2];
+
+        // 4. Current edges and local 2D basis
+        double e1[3] = {c2[0]-c1[0], c2[1]-c1[1], c2[2]-c1[2]};
+        double e2[3] = {c3[0]-c1[0], c3[1]-c1[1], c3[2]-c1[2]};
+
+        double nc[3] = {e1[1]*e2[2]-e1[2]*e2[1], e1[2]*e2[0]-e1[0]*e2[2], e1[0]*e2[1]-e1[1]*e2[0]};
+        double L_e1 = sqrt(e1[0]*e1[0] + e1[1]*e1[1] + e1[2]*e1[2]);
+
+        double uu[3] = {e1[0]/L_e1, e1[1]/L_e1, e1[2]/L_e1};
+        double vc_raw[3] = {uu[1]*nc[2]-uu[2]*nc[1], uu[2]*nc[0]-uu[0]*nc[2], uu[0]*nc[1]-uu[1]*nc[0]};
+        double L_vc = sqrt(vc_raw[0]*vc_raw[0] + vc_raw[1]*vc_raw[1] + vc_raw[2]*vc_raw[2]);
+        double vv[3] = {vc_raw[0]/L_vc, vc_raw[1]/L_vc, vc_raw[2]/L_vc};
+
+        // Project current into 2D: u_mat = [e1.uu, e2.uu; 0, e2.vv]
+        double u11 = L_e1;
+        double u12 = e2[0]*uu[0] + e2[1]*uu[1] + e2[2]*uu[2];
+        double u22 = e2[0]*vv[0] + e2[1]*vv[1] + e2[2]*vv[2];
+
+        // 5. Deformation Gradient F = u_mat * inv(U)
+        double F11 = u11 / U11;
+        double F12 = (-u11 * U12 / (U11 * U22)) + (u12 / U22);
+        double F21 = 0.0;
+        double F22 = u22 / U22;
+
+        // 6. SVD of F via eigenvalues of C = F^T * F
+        double C11 = F11*F11 + F21*F21;
+        double C12 = F11*F12 + F21*F22;
+        double C22 = F12*F12 + F22*F22;
+
+        double tr = C11 + C22;
+        double det = C11*C22 - C12*C12;
+        double gap = sqrt(std::max(0.0, tr*tr/4.0 - det));
+
+        stretches(i, 0) = sqrt(std::max(0.0, tr/2.0 + gap)); // lambda1
+        stretches(i, 1) = sqrt(std::max(0.0, tr/2.0 - gap)); // lambda2
+    }
+
+    return stretches;
+}
+
+//GEMINI END
+
+
 
 void reshape(MatrixXd &x,unsigned int const r, unsigned int const c )	// slow:copies to a temp matrix, but does it Matlab style
 {
@@ -485,7 +692,6 @@ List L_Ylm_u(int L_max, Eigen::Map<Eigen::MatrixXd> t,Eigen::Map<Eigen::MatrixXd
   }
   return(List::create(Named("Ylm_u")=Y_T,Named("P_T")=P_T));
 }
-
 
 
 //[[Rcpp::export(invisible = true)]]
@@ -940,7 +1146,7 @@ List updateX_only_cxx(NumericMatrix A, List grd, List bas)
   return(C);
 }
 
-//[[Rcpp::export]]
+//     not exported, not to be used //[[Rcpp::export]]
 List Hessian_SCM_SEN_cxx(NumericMatrix A,List grd, List bas, List Ref, double del, int ncores, double C0, double K_b, double K_ADE)
 { int Aimax=bas["Ai_max"];
   NumericMatrix H(Aimax*3,Aimax*3);
@@ -954,18 +1160,18 @@ List Hessian_SCM_SEN_cxx(NumericMatrix A,List grd, List bas, List Ref, double de
   Function E_SEN("E_SEN");
   Function Grad_SEN("Grad_SEN");
   Function Grad_SCM("Grad_SCM");
-  Function synth12("synth12"); //    function(A,C,i,j,k) # spatial k
+ // Function synth12("synth12"); //    function(A,C,i,j,k) # spatial k
   Function mat2vec("mat2vec");
   Function matdiff2vec("matdiff2vec");
   Function matadd2vec("matadd2vec");
   Function symmetrize("symmetrize");
   List C=updateX(A,grd,bas);
   List h20=E_SCM(A,grd,bas,C);
-  List  S0=SEN(A,grd,bas,Ref,h20);
+  List S0=SEN(A,grd,bas,Ref,h20);
   // double  ES=E_SEN(A,grd,bas,S,Ref);
   List Gh20=Grad_SCM(h20,grd,bas,C);
   List GS0=Grad_SEN(A,grd,bas,Gh20,S0,Ref);
-//  NumericVector G0 = matadd2vec(Gh20["grad_SCM"] , GS0["grad_SEN"]);
+
   NumericVector G0 = NumericVector(Gh20["grad_SCM"])+NumericVector(GS0["grad_SEN"]);
   A0=A;
   l=0;
@@ -977,9 +1183,9 @@ List Hessian_SCM_SEN_cxx(NumericMatrix A,List grd, List bas, List Ref, double de
   NumericVector D;
   NumericVector G1;
 //
-// #define PARHESS
+// #define PARHESS 1 //
 // calling R-functions seems to be not thread safe, crashes in the following
-//
+// if PARHESS is defined
 #ifdef PARHESS
 #pragma omp parallel num_threads(ncores) private(k,l,i,A,C,h2,S,Gh2,GS,G,D,G1)
 #endif
@@ -992,19 +1198,25 @@ List Hessian_SCM_SEN_cxx(NumericMatrix A,List grd, List bas, List Ref, double de
     {
       A(i,k)=A(i,k)+del;
       C=updateX(A,grd,bas);
-      A(i,k)=A(i,k)-del;
-      // sweeping through C$X_uv instead of full update
+
+      // sweeping through C$X instead of full update; R-code:
       //  C=synth12(A,C,l,l+1, i, i+1,del); // better inline this; use R-numbering
       //  if (i>0) C$X[,k] = C$X[,k] - bas$Ylm[,i]*del # remove del term
-      //  if(j<dim(A)[1]) C$X[,k] = C$X[,k] + bas$Ylm[,j]*del
+      //  if(j<dim(A)[1]) C$X[,k] = C$X[,k] + bas$Ylm[,j]*del %*% A...
       h2=E_SCM_cxx(A,grd,bas,C,C0,K_b,K_ADE);
       S=SEN(A,grd,bas,Ref,h2);
       // double  ES=E_SEN(A,grd,bas,S,Ref);
       Gh2=Grad_SCM_cxx(h2,grd,bas,C,C0,ncores,K_b,K_ADE);
       GS=Grad_SEN(A,grd,bas,Gh2,S,Ref);
       G1 = NumericVector(Gh2["grad_SCM"]) + NumericVector(GS["grad_SEN"]);
-      D = NumericVector(G1-G0);
-      H(_,l)=D;
+      D = NumericVector(G1-G0)/del;
+      A(i,k)=A(i,k)-del;
+#ifdef PARHESS
+      #pragma omp critical
+#endif
+      {
+      H(_,l)=D; // symmetrize outside this call
+      }
     }
   }
 } // parallel
@@ -1028,17 +1240,14 @@ List Hessian_SCM_cxx(NumericMatrix A,List grd, List bas, List Ref, double del, i
   Function E_SEN("E_SEN");
   Function Grad_SEN("Grad_SEN");
   Function Grad_SCM("Grad_SCM");
-  Function synth12("synth12"); //    function(A,C,i,j,k) # spatial k
+ // Function synth12("synth12"); //    function(A,C,i,j,k) # spatial k
   Function mat2vec("mat2vec");
   Function matdiff2vec("matdiff2vec");
   Function matadd2vec("matadd2vec");
   Function symmetrize("symmetrize");
   List C=updateX(A,grd,bas);
   List h20=E_SCM(A,grd,bas,C);
-//  List  S0=SEN(A,grd,bas,Ref,h20);
-  // double  ES=E_SEN(A,grd,bas,S,Ref);
   List Gh20=Grad_SCM(h20,grd,bas,C);
-//  List GS0=Grad_SEN(A,grd,bas,Gh20,S0,Ref);
   NumericVector G0 = NumericVector(Gh20["grad_SCM"]); // +NumericVector(GS0["grad_SEN"]);
   A0=A;
   l=0;
@@ -1065,19 +1274,17 @@ List Hessian_SCM_cxx(NumericMatrix A,List grd, List bas, List Ref, double del, i
     {
       A(i,k)=A(i,k)+del;
       C=updateX(A,grd,bas);
-      A(i,k)=A(i,k)-del;
+
       // sweeping through C$X_uv instead of full update
       //  C=synth12(A,C,l,l+1, i, i+1,del); // better inline this; use R-numbering
       //  if (i>0) C$X[,k] = C$X[,k] - bas$Ylm[,i]*del # remove del term
       //  if(j<dim(A)[1]) C$X[,k] = C$X[,k] + bas$Ylm[,j]*del
       h2=E_SCM_cxx(A,grd,bas,C,C0,K_b,K_ADE);
- //     S=SEN(A,grd,bas,Ref,h2);
-      // double  ES=E_SEN(A,grd,bas,S,Ref);
       Gh2=Grad_SCM_cxx(h2,grd,bas,C,C0,ncores,K_b,K_ADE);
-  //    GS=Grad_SEN(A,grd,bas,Gh2,S,Ref);
-      G1 = NumericVector(Gh2["grad_SCM"]) ;//+ NumericVector(GS["grad_SEN"]);
+      G1 = NumericVector(Gh2["grad_SCM"]) ;
       D = NumericVector(G1-G0);
       H(_,l)=D;
+      A(i,k)=A(i,k)-del;
     }
   }
 } // parallel
@@ -1086,8 +1293,8 @@ return(List::create(Named("H")=H,_("G")=G0,
                   _("gradV")=Gh20["gradV"],
                   _("gradC")=Gh20["gradC"],
                   _["g2"]=Gh20,_["h2"]=h20));
-}
-')
+  }
+ ')
 } # sourceCPP
 
 citation.MemRBC();
@@ -1102,8 +1309,8 @@ M.TEST=FALSE
 
 # for tests: show severe deviation from zero as error
 #' @export
-severe<-function(q, what="some test", tol=1e-12)
-{ testthat::test_that(what,{testthat::expect_equal(q,0)})}
+severe<-function(q1,q2, what="some test", tol=1e-12)
+{ testthat::test_that(what,{testthat::expect_equal(q1,q2,tolerance=tol)})}
 #{cat(q,":");if (all(abs(q)>tol)) {stop("severe imprecision, STOP")} else
 #  cat(crayon::green("OK:",what,"\n"))
 #}
@@ -1142,10 +1349,14 @@ severe<-function(q, what="some test", tol=1e-12)
 
 # Bending energy , returns list with "Wb" as bending energy
 #' @export
-E_SCM <- function(A,grd,bas,C,plt=FALSE,dbg=FALSE,clp=FALSE) # dbg=TRUE means no stop on NA
-{ if(!M.Rcpp) return(E_SCM_R(A,grd,bas,C,plt=FALSE,dbg=FALSE,clp=FALSE))
-  return(E_SCM_cxx(A,grd,bas,C,M.C0,M.K_b,M.K_ADE)) # no plotting in cxx
+E_SCM <- function (A, grd, bas, C, plt = FALSE, dbg = FALSE, clp = FALSE)
+{
+  if (!M.Rcpp)
+    return(E_SCM_R(A, grd, bas, C, plt = FALSE, dbg = FALSE,
+                   clp = FALSE))
+  return(E_SCM_cxx(A, grd, bas, C, M.C0, M.K_b, M.K_ADE))
 }
+
 
 # Bending energy , returns list with "Wb" as bending energy
 #' @export
@@ -1165,37 +1376,20 @@ E_SCM_R <- function(A,grd,bas,C,plt=FALSE,dbg=FALSE,clp=FALSE) # dbg=TRUE means 
   normal[,2] <- Zu *Xv  - Xu *Zv
   normal[,3] <- Xu *Yv  - Yu *Xv
   n<-normal # tb normalized in n hereafter
-  #  if(!dbg & any(is.na(n))) stop("one or more NA in normal!")
   # normalization of normals / some may be 0 (at poles, where dv=0)
   Nn <- apply(normal,1,pracma::Norm)
   if (sum(Nn==0)>0) stop("ERROR: zeros in ||normal||")
   iNn<-1/Nn
-  #  iNn[is.infinite(iNn)]<-0 # a hack for problematic points; suppress by * inn[i]
   # normalize to unit normals
   for (k in 1:3) n[,k]<-n[,k]*iNn # second fundamental needs unit n
-  #n[is.na(n)]<-0 # replace NAs
-  #n[is.infinite(n)]<-0 # replace Infs
   # fundamental form I
   E  <- Xu*Xu + Yu*Yu + Zu*Zu
   FF <- Xu*Xv + Yu*Yv + Zu*Zv
   G  <- Xv*Xv + Yv*Yv + Zv*Zv
-  #  if (!dbg & any(is.na(E))) stop("one or more NA in E!")
-  #  if (!dbg & any(is.na(FF))) stop("one or more NA in F!")
-  #  if (!dbg & any(is.na(G))) stop("one or more NA in G!")
   dA <- sqrt(E*G-FF*FF) # eqals Nn, this is sqrt(det(g)) with metric tensor g
-  #  area element dA = sqrt(det(g)) * du * dv
-  #cat("max diff dA-Nn:",max(abs(dA-Nn)),"\n")
-  #cat("min dA:",min(dA),"\n")
-  # if(any(dA==0)) {cat(which(dA==0)); warning("one or more zeros in dA!") }
   (Area=int2d_s(dA,grd))
-  # inverse area element = 1/(sqrt(det(g))
-  ##w=which(dAsqrt(grd$dU*grd$dV))
-  ##matrix(dA,grd$nv+1,grd$nu+1)
   inn<-1/dA
-  # if (sum(dA==0)>0) warning(yellow("one or more dA == 0; set inverse to zero."))
-  # inn[dA<bas$del]<-0 # otherwise problems with infinity/NAs and outliers in gradient H2
-  # inn[is.na(inn)]<-0
-  #inn[is.infinite(inn)]<-0
+
   inn2<-inn^2
   dV <-   1/3*(C$X[,1]*n[,1]+C$X[,2]*n[,2]+C$X[,3]*n[,3]) * dA # dA for integration
   (Volume<-int2d_s(dV,grd))
@@ -1267,10 +1461,6 @@ Grad_SCM_R <- function(Wb, grd, bas,C,int2d_m=int2d_matrix)
   Xuu<-C$X_uu[,1]; Yuu<-C$X_uu[,2]; Zuu<-C$X_uu[,3];
   Xuv<-C$X_uv[,1]; Yuv<-C$X_uv[,2]; Zuv<-C$X_uv[,3];
   Xvv<-C$X_vv[,1]; Yvv<-C$X_vv[,2]; Zvv<-C$X_vv[,3];
-  # diff of normals
-  #  normal[,1] <- Yu *Zv  - Zu *Yv (e1)
-  #  normal[,2] <- Zu *Xv  - Xu *Zv  (e2)
-  #  normal[,3] <- Xu *Yv  - Yu *Xv   (e3)
   dNaz<-dNay<-dNax<-array(0.0,c(Nuv,Ai_max,3))
   for (j in 1:Ai_max) {
     #  dNax[i,,1] <- 0 # normal [,1] is indep of X[,1]-derivs ; terms like this eliminated in code below
@@ -1286,12 +1476,8 @@ Grad_SCM_R <- function(Wb, grd, bas,C,int2d_m=int2d_matrix)
     #  dNaz[i,,3] <- 0 no z-dep in normal[,3]
   }
   ddV<-array(0.0,c(Nuv,Ai_max,3)) # dV=1/3.0*(X[,1]*n[,1]+X[,2]*n[,2]+X[,3]*n[,3])*dA
-  #   for(k in 1:3) for (i in 1:Nuv) ddV[i,,k] <- (H2$normal[i,k]*Ylm[i,]) # worked in aij-simpson
-  #   correct by nloptr::check.derivatives
   for(k in 1:3) for (j in 1:Ai_max) ddV[,j,k] <- (H2$normal[,k]*bas$Ylm[,j]) # normal = n*dA
-  # second term ~ dNormal * X checked to be zero
 
-  # gradients of first fundamentals
   dE<-dF<-dG<-array(0.0,c(Nuv,Ai_max,3))
   for (k in 1:3)
     for (j in 1:Ai_max){
@@ -1469,6 +1655,22 @@ Vec2Spat<-function(V,grd)
 { return(matrix(V,grd$nu,grd$nv))
 }
 
+#' MakeRef
+#' @description
+#' Build reference from input coefficients Aref and store in M.
+#' If missing and demanded, M$Ref and M$SEN are computed here.
+#' This helps plotting SEN colors like in PNEM and other Apps.
+#' usually Aref comes from an slightly oblate shape of 90-95% of the target volume 100.
+#' @param M MemRBC object
+#' @param Aref Reference shape coefficients for SEN
+#' @return MemRBC object with Ref and SEN set.
+#' @export
+MakeRef<-function(M,Aref){
+  M$Ref=Ref4CauchyGreen(Aref,M$grd,M$bas)
+  h2=E_SCM(Aref,M$grd,M$bas,updateX(Aref,M$grd,M$bas))
+  M$SEN=SEN(Aref,M$grd,M$bas,M$Ref,h2)
+}
+
 
 #' @export
 Ref4CauchyGreen <- function(A,grd,bas,loop=FALSE)
@@ -1505,26 +1707,26 @@ return(list( tgi=tgi, giPrep=giPrep, h2ref=h2ref, v=h2ref$Volume ,a=h2ref$Area ,
 
 # compute stretch parameters (alpha, beta) from SEN
 #' @export
-SEN<-function(A,grd,bas,Ref,Wb_cur)
+SEN<-function (A, grd, bas, Ref, Wb_cur)
 {
-  h2cur<-Wb_cur # current E_SCM needed
-  G <- vmat4_2lmat(h2cur$E, h2cur$FF, h2cur$FF, h2cur$G) # needed for gradients
-  RightCauchyGreen <- vmatmat_2lmat(Ref$giPrep,G)
-  m <- 0.5*sapply(RightCauchyGreen, function(x) c(x[1,1]+x[2,2])) # half trace = m
+  h2cur <- Wb_cur
+  G <- vmat4_2lmat(h2cur$E, h2cur$FF, h2cur$FF, h2cur$G)
+  RightCauchyGreen <- vmatmat_2lmat(Ref$giPrep, G)
+  m <- 0.5 * sapply(RightCauchyGreen, function(x) c(x[1, 1] +
+                                                      x[2, 2]))
   alpha <- h2cur$dA/Ref$h2ref$dA - 1
-  beta <- m/(alpha+1) - 1
-#  H2_glob$alpha<<-alpha # avoid globals
-#  H2_glob$beta<<-beta
-  return(list(alpha=alpha, beta=beta, m=m, h2cur=h2cur,A=A, G=G))
+  beta <- m/(alpha + 1) - 1
+  return(list(alpha = alpha, beta = beta, m = m, h2cur = h2cur,
+              A = A, G = G))
 }
 
-# energy of Shear-Elastiv Network (SEN)
+# energy of Shear-Elastic Network (SEN)
 #' @export
 E_SEN<-function(A,grd,bas,S,Ref)
-{
+{ if (!is.null(Ref)){
   WS<- M.Ka/2 * IntegS((M.a2*S$alpha^2+M.a3*S$alpha^3+M.a4*S$alpha^4)*Ref$h2ref$dA,grd) +
     + M.mu*IntegS( ( (M.b0+M.b1*S$alpha)*S$beta + M.b2*S$beta^2)*Ref$h2ref$dA, grd)
-  return(WS)
+  return(WS)} else return(0)
 }
 
 
@@ -1693,25 +1895,21 @@ synthX<-function(Y,A) # Y are precomputed spherical harmonics
 { return(Y%*%A)
 }
 
-
 # the following imag.obj... are showing data as color code on the 3d object
 #
 
-
 #' @export
 imag.obj.colorbar.simple<-function(obj,f,clr=TRUE,...) {
-  #  if(is.matrix(f)) f<-t(f)
   if(clr) rgl::clear3d()
   cols=rainbow(100);
-  # f=c(f)
   rgl::shade3d(obj,meshcolor="vertices",color=cols[(f-min(f))/diff(range(f))*99+1],...)
-  rgl::bgplot3d(fields::imagePlot(legend.only = TRUE, zlim = range(f), col = cols) )
+  rgl::bgplot3d(imagePlot(legend.only = TRUE, zlim = range(f), col = cols) )
 }
 
 
 # allow for limits to suppress outliers (color black)
 #' @export
-imag.obj.colorbar<-function(obj,f,limits=range(f),clr=FALSE,pal=heat.colors,width=550,height=480,par=TRUE,...) {
+imag.obj.colorbar<-function(obj,f,limits=range(f),clr=FALSE,pal=heat.colors,width=550,height=480,par=FALSE,...) {
   # if(is.matrix(f)) f<-t(f)
   if (min(f)==max(f)) limits=c(f-f[1]/100,f+f[1]/100)
 
@@ -1724,9 +1922,8 @@ imag.obj.colorbar<-function(obj,f,limits=range(f),clr=FALSE,pal=heat.colors,widt
   col[limits[1]>f]="#000000"
   col[limits[2]<f]="#000000"
   rgl::shade3d(obj,meshcolor="vertices",col=col,...)
-  rgl::bgplot3d(fields::imagePlot(legend.only = TRUE,add=TRUE,zlim = limits, col = cols) )
+  rgl::bgplot3d(imagePlot(legend.only = TRUE,add=TRUE,zlim = limits, col = cols) )
 }
-
 
 # this has more dense points next to 0 meridian
 #  alternative with regular v-spacing is GaussLegendreSimpson
@@ -1755,7 +1952,7 @@ MakeGrid_GaussLegendre<-function(n=25,uv_fac=1,comment="spherical coordinates Ga
   (dm=dim(grd$u))
   grd$ndof=prod(dm)
 
-  # for vectorization we also haveu and v as vectors U,V
+  # for vectorization we also have u and v as vectors U,V
   grd$U=c(grd$u)
   grd$V=c(grd$v)
 
@@ -1804,14 +2001,14 @@ MakeGrid_GaussLegendre<-function(n=25,uv_fac=1,comment="spherical coordinates Ga
   grd$type="GL"
 
   Obj2ObjQ(grd$Obj,grd)->grd$ObjQ
-  return(grd)
+  return(structure(class="MemGrd",grd))
 }
 
 
 # display f data on object obj
 #' @export
-imag.obj<-function(obj,f) {
-  cols=rainbow(100); rgl::shade3d(obj,meshcolor="vertices",col=cols[as.integer(1+99*(f-min(f))/diff(range(f)))]) }
+imag.obj<-function(obj,f,pal=rainbow) {
+  cols=pal(100); rgl::shade3d(obj,meshcolor="vertices",col=cols[as.integer(1+99*(f-min(f))/diff(range(f)))]) }
 
 #' imag
 #'
@@ -1819,8 +2016,12 @@ imag.obj<-function(obj,f) {
 #' @param field scalar field, size of grd$nv x grd$nu
 #' @param grd the grid of (u,v) on which the scalar is defined
 #' @export
-imag<-function(field,grd,nx=grd$nv,ny=grd$nu/2,...)
-  {fields::quilt.plot(grd$V,grd$U,field[],nx,ny,xlab="v",ylab="u",...);invisible()}
+imag<-function (field, grd, nx = grd$nv, ny = grd$nu/2, ...)
+{
+  fields::quilt.plot(grd$V, grd$U, field[], nx, ny, xlab = "v",
+                     ylab = "u", ...)
+  invisible()
+}
 
 #' MakeBasis_UV
 #'
@@ -1831,81 +2032,170 @@ imag<-function(field,grd,nx=grd$nv,ny=grd$nu/2,...)
 #'
 #'  @param L_max (=4) spectral order of basis
 #'  @param u,v vectors of spehrical angles u (in 0..pi) and v (in 0..2*pi).
+#'  @param only_Ylm (=FALSE) for excluding derivative computation.
 #'  @return basis, to be stored as $bas in membrane object or for other use.
 #'  The basis also contains standard constraints for area and volume, which may be modified with SetConstraints()
 #' @export
-MakeBasis_UV<-function(L_max=4,u,v)
-{ # not valid for Functionals
-  # give back Boschs Ylm with normalization 1/sqrt(4*pi)
-  Ai_max=(L_max+1)^2-1
-  LM = data.frame(l=rep(0L,Ai_max),m=rep(0L,Ai_max))
-  AI=1
-  for (l in 1:L_max) for (m in (-l):l) {LM[AI,]=c(l,m);AI<-AI+1}
-  n.v=length(u)
-  if(length(v)!=n.v) stop("u not same length like v")
-  L_Ylm=L_Ylm(L_max, u,  v)
-  Ylm=L_Ylm$Ylm[,-1] / sqrt(4*pi)
-  Ylm_v=Ylm_v(L_max, u,  v, L_Ylm$PLK)[,-1] / sqrt(4*pi)
-  Ylm_vv=Ylm_vv(L_max, u,  v, L_Ylm$PLK)[,-1] / sqrt(4*pi)
-  L_Y_u=L_Ylm_u(L_max,u,v,L_Ylm$PLK)
-  Ylm_u=L_Y_u$Ylm_u[,-1] / sqrt(4*pi)
-  Ylm_uu=Ylm_uu(L_max,u,v,L_Y_u$P_T)[,-1] / sqrt(4*pi)
-  Ylm_uv=Ylm_uv(L_max,u,v,L_Ylm$PLK,L_Y_u$P_T)[,-1] / sqrt(4*pi)
-  l=LM[,1];m=LM[,2]
-  bas=list(n.v=n.v,uv=cbind(u,v),
-           Ylm=Ylm,Ylm_u=Ylm_u,Ylm_v=Ylm_v,
-           Ylm_uu=Ylm_uu,Ylm_uv=Ylm_uv,Ylm_vv=Ylm_vv,
-           LM=LM,Ai_max=Ai_max,
-           l=l, m=m,
-           A=matrix(0,Ai_max,3), # zero amplitudes to start with
-           L_max=L_max,G.tk=l^2*(l+1)^2,
-           comment="irregular or Gauss-Legendre/Simpson basis from (u,v), computed with W. Bosch/ K. Khairy codes excluding l=0, A/V constraints set",
-           Nupd=0,
-           Lset=unique(l),
-           Mset=unique(m),
-           Nc=2, Cons=c("gradA","gradV"), # default constraints; unit sphere, spontaneous curvature model
-           QCons=c("Area","Volume"),# could be enhanced by Curv in SetConstraints
-           Target=c(140,100), # sphere values
-           TNorm =c(140,100) # ,8*pi)) # keep Norms for A, V, set C separately in SetConstraints
-  )
+MakeBasis_UV<-function (L_max = 4, u, v, Pointsymmetry = FALSE,
+                        only_Ylm=FALSE, kind="Ylm", KleinBottle=FALSE)
+{ if (kind=="Ylm") {
+  Ai_max = (L_max + 1)^2 - 1
+  LM = data.frame(l = rep(0L, Ai_max), m = rep(0L, Ai_max))
+  AI = 1
+  for (l in 1:L_max) for (m in (-l):l) {
+    LM[AI, ] = c(l, m)
+    AI <- AI + 1
+  }
+  L = LM[, 1]
+  M = LM[, 2]
+  LM1 = LM
+  if (Pointsymmetry) {
+    w = which(L%%2 > 0)
+    LM <- LM[w, ]
+    L = LM[, 1]
+    M = LM[, 2]
+  }
+  else w = (1:Ai_max)
+  Ai_max = length(L)
+  L_max = max(L)
+  n.v = length(u)
+  if (length(v) != n.v)
+    stop("u not same length like v")
+  L_Ylm = L_Ylm(L_max, u, v)
+  Ylm = L_Ylm$Ylm[, -1]/sqrt(4 * pi)
+  if (!only_Ylm){
+   Ylm_v = Ylm_v(L_max, u, v, L_Ylm$PLK)[, -1]/sqrt(4 * pi)
+   Ylm_vv = Ylm_vv(L_max, u, v, L_Ylm$PLK)[, -1]/sqrt(4 * pi)
+   L_Y_u = L_Ylm_u(L_max, u, v, L_Ylm$PLK)
+   Ylm_u = L_Y_u$Ylm_u[, -1]/sqrt(4 * pi)
+   Ylm_uu = Ylm_uu(L_max, u, v, L_Y_u$P_T)[, -1]/sqrt(4 * pi)
+   Ylm_uv = Ylm_uv(L_max, u, v, L_Ylm$PLK, L_Y_u$P_T)[, -1]/sqrt(4 * pi)
+   }
+  l = LM[, 1]
+  m = LM[, 2]
+  bas = list(n.v = n.v, uv = cbind(u, v), Ylm = Ylm[, w], LM = LM, Ai_max = Ai_max, l = l,
+             m = m, A = matrix(0, Ai_max, 3), L_max = L_max, G.tk = l^2 *
+               (l + 1)^2, Wt = l * (l + 1), comment = "(for double entries masked) irregular or Gauss-Legendre-Simpson basis from (u,v), computed with W. Bosch/ K. Khairy codes excluding l=0, A/V constraints set",
+             Nupd = 0, Lset = unique(l), Mset = unique(m), Nc = 2,
+             Cons = c("gradA", "gradV"), QCons = c("Area", "Volume"),
+             Target = c(140, 100), TNorm = c(140, 100), Pointsymmetry = Pointsymmetry)
+  names(bas$Cons) = names(bas$QCons) = names(bas$TNorm) = names(bas$Target) = c("Area","Volume")
+  if (!only_Ylm){
+    bas$Ylm_u = Ylm_u[,w];
+    bas$Ylm_v = Ylm_v[,w];
+    bas$Ylm_uu = Ylm_uu[,w];
+    bas$Ylm_uv = Ylm_uv[,w];
+    bas$Ylm_vv = Ylm_vv[,w];
+  }
+  bas$A = LM2A(bas$A, bas)
+  mask = double_uv_ind(u, v)
+  bas$mask <- ifelse(is.numeric(mask) == 0, mask, 1)
+  bas$kind=kind
+  return(bas) }
+  if (kind=="Fourier") {
+    Ai_max=L_max^2*4+1
+    n.v = length(u)
+    if (n.v!=length(v)) stop("u and v have different length in MakeBasis_UV")
+    Ylm=matrix(0.0,length(u),Ai_max)
+    if (!only_Ylm) Ylm_u=Ylm_v=Ylm_uu=Ylm_vv=Ylm_uv=matrix(0.0,length(u),Ai_max)
+    LM=matrix(NA,Ai_max,2)
+    colnames(LM)=c("L","M")
+    if (KleinBottle) uspace= (1:L)/2 else uspace= 1:L_max
+    cat("U factors:",uspace,"\n")
+    Ylm[,1]=1
+    if (!only_Ylm) {Ylm_u[,1]=Ylm_v[,1]=Ylm_vv[,1]=Ylm_uu[,1]=Ylm_uv[,1]=0}
+    k=2
+    for (i in uspace)
+     for (j in 1:L_max){
+      Ylm[,k]  = sin(i*u)*sin(j*v)
+    Ylm[,k+1] = sin(i*u)*cos(j*v)
+    Ylm[,k+2] = cos(i*u)*cos(j*v)
+    Ylm[,k+3] = cos(i*u)*sin(j*v)
 
-  names(bas$Cons)=names(bas$QCons)=names(bas$TNorm)=names(bas$Target)=c("Area","Volume")
+    if (!only_Ylm) {
+
+    Ylm_u[,k]  =  i*cos(i*u)*sin(j*v)
+    Ylm_u[,k+1]=  i*cos(i*u)*cos(j*v)
+    Ylm_u[,k+2]= -i*sin(i*u)*cos(j*v)
+    Ylm_u[,k+3]= -i*sin(i*u)*sin(j*v)
+
+    Ylm_v[,k]  =  j*sin(i*u)*cos(j*v)
+    Ylm_v[,k+1]= -j*sin(i*u)*sin(j*v)
+    Ylm_v[,k+2]= -j*cos(i*u)*sin(j*v)
+    Ylm_v[,k+3]=  j*cos(i*u)*cos(j*v)
+
+    Ylm_uu[,k]  =  i^2*Ylm[,k]
+    Ylm_uu[,k+1]=  i^2*Ylm[,k+1]
+    Ylm_uu[,k+2]=  i^2*Ylm[,k+2]
+    Ylm_uu[,k+3]=  i^2*Ylm[,k+3]
+
+    Ylm_vv[,k]  =  j^2*Ylm[,k]
+    Ylm_vv[,k+1]=  j^2*Ylm[,k+1]
+    Ylm_vv[,k+2]=  j^2*Ylm[,k+2]
+    Ylm_vv[,k+3]=  j^2*Ylm[,k+3]
+
+    Ylm_uv[,k]  = -j*i*cos(i*u)*cos(j*v)
+    Ylm_uv[,k+1]= -j*i*cos(i*u)*sin(j*v)
+    Ylm_uv[,k+2]= -i*j*sin(i*u)*sin(j*v)
+    Ylm_uv[,k+3]= -i*j*sin(i*u)*cos(j*v)
+    }
+     LM[k:(k+3),]=c(i,j)
+
+     k=k+4
+
+     }
+
+    l=LM[,1]
+    m=LM[,2]
+  w=1:Ai_max # no symmetries
+  mask = double_uv_ind(u, v)
+
+
+  bas = list(n.v = n.v, uv = cbind(u, v), Ylm = Ylm[, w], LM = LM, Ai_max = Ai_max, l = l,
+             m = m,  L_max = L_max, G.tk = l^2*m^2, Wt = l*m, comment = "Fourier basis, no cos(0)",
+             Nupd = 0, Lset = unique(l), Mset = unique(m), Nc = 2,
+             Cons = c("gradA", "gradV"), QCons = c("Area", "Volume"),
+             Target = c(140, 100), TNorm = c(140, 100),
+             Pointsymmetry = NA)
+  if (!only_Ylm) {bas$Ylm_u=Ylm_u[,w];bas$Ylm_v=Ylm_v[,w];
+                  bas$Ylm_uu=Ylm_uu[,w];bas$Ylm_uv=Ylm_uv[,w];
+                  bas$Ylm_vv=Ylm_vv[,w]}
+
+  bas$LM=LM
+  bas$uv=cbind(c(u),c(v))
+  bas$mask <- ifelse(is.numeric(mask) == 0, mask, 1)
+  bas$kind=kind
+  bas$KleinB=KleinB
+  bas$u=u;bas$v=v
+  bas$A=matrix(0,Ai_max,3)
   bas$A=LM2A(bas$A,bas)
-  return(bas)
-} # G.tk is diag Tikhonov, Gamma^T Gamma
+  return(structure(class="MemBas",bas))
+  }
+  warning ("Maybe wrong kind specified! return NULL.")
+  return(NULL)
+}
+
 
 #' updateX
 #'
-#' updates coordinates C$X and their partial derivatives wrt. u,v, like C$Xu.
+#' updates coordinates C$X and their partial derivatives wrt. u,v, like C$X_u.
 #' @param A coefficients of shape
 #' @param grd grid from on which the basis is computed
 #' @param bas basis function values $Ylm and their derivatives, like $Ylm_u.
 #' @return basis object, type is list.
 #' @export
-updateX<-function(A,grd,bas )
+updateX<-function (A, grd, bas)
 {
-  bas$Ylm %*% A -> X
-  bas$Ylm_u %*% A -> X_u
-  bas$Ylm_v %*% A -> X_v
-  bas$Ylm_uu %*% A -> X_uu
-  bas$Ylm_uv %*% A -> X_uv
-  bas$Ylm_vv %*% A -> X_vv
-  # returned value usually stored as "C" for "Coordiinates"
-  return(list(X=X,X_u=X_u,X_v=X_v,X_uu=X_uu,X_vv=X_vv,X_uv=X_uv,Amp=A))
+  X <- bas$Ylm %*% A
+  X_u <- bas$Ylm_u %*% A
+  X_v <- bas$Ylm_v %*% A
+  X_uu <- bas$Ylm_uu %*% A
+  X_uv <- bas$Ylm_uv %*% A
+  X_vv <- bas$Ylm_vv %*% A
+  return(structure(class="MemC",list(X = X, X_u = X_u, X_v = X_v, X_uu = X_uu, X_vv = X_vv,
+              X_uv = X_uv, Amp = A)))
 }
 
-# really needed? maybe for plotlseies?
-updateX_subset<-function(A,grd,bas,Ai_max=dim(A)[1])
-{
-  s=1:Ai_max
-  bas$Ylm[,s] %*% A[s,] -> X
-  bas$Ylm_u[,s] %*% A[s,] -> X_u
-  bas$Ylm_v[,s] %*% A[s,] -> X_v
-  bas$Ylm_uu[,s] %*% A[s,] -> X_uu
-  bas$Ylm_uv[,s] %*% A[s,] -> X_uv
-  bas$Ylm_vv[,s] %*% A[s,]-> X_vv
-  return(list(X=X,X_u=X_u,X_v=X_v,X_uu=X_uu,X_vv=X_vv,X_uv=X_uv,Amp=A))
-}
 
 # compute coordinates and derivatives
 # could be used instead of updateX in several places
@@ -1921,16 +2211,13 @@ updateX_subset<-function(A,grd,bas,Ai_max=dim(A)[1])
 updateX_only<-function(A,grd,bas)
 {
   bas$Ylm %*% A -> X
-  return(list(X=X,Amp=A))
+  return(structure(class="MemC_X",list(X=X,Amp=A)))
 }
 
-#
-#  make A coeffs for a unit sphere
-#
 
 #' MakeSphere
 #'
-#' compute unit sphere for given grid and basis
+#' Compute unit sphere for given grid and basis
 #' @param grd given grid
 #' @param bas given basis
 #' @param r (=1) for radius of output sphere
@@ -1940,9 +2227,9 @@ MakeSphere<-function(grd,bas,r=1)
 {
   A=bas$A; A[,]=0
   A[1,"X"]=1/0.48860251190292*r
-  A[2,"Z"]=1/0.48860251190291*r
+  A[2,"Z"]=1/0.48860251190292*r
   A[3,"Y"]=1/0.48860251190292*r
-  return(A)
+  return(structure(class="MemA",A))
 }
 
 # the central driver to 2D integration
@@ -1966,19 +2253,36 @@ return(Q[,])
 #' plot3a(updateX(M1$A,M1$grd,M1$bas,M1$)$X,M1$grd)
 #'
 #' @export
-plot3a<-function(X,grd,pnts=FALSE,clip=FALSE,col="black",alpha=1,cont=TRUE,cont.grid=FALSE,fill=TRUE,fn="z",fn_data="z",...)
+plot3a<-function (X, grd, pnts = FALSE, clip = FALSE, col = "black",
+                  alpha = 1, cont = TRUE, cont.grid = FALSE, fill = TRUE, fn = "z",
+                  fn_data = "z", ...)
 {
-  X2Obj(grd$Obj,X)->O
-  if (cont.grid)   {id<-rgl::contourLines3d(O,grd$U,col=col,levels=pracma::linspace(0,pi,12));
-  rgl::contourLines3d(O,grd$V,col=col,levels=pracma::linspace(0,2*pi,13))}
-  if (cont)   {id<-rgl::contourLines3d(O,X[,1],col=1);rgl::contourLines3d(O,X[,2],col=2);rgl::contourLines3d(O,X[,3],col=3)}
-  if(fill) {#Rvcg::vcgUpdateNormals(O)->O;
-    if(fn=="z")id<-rgl::filledContour3d(O,fn=X[,3],alpha=alpha)
-  else id<-rgl::filledContour3d(O,fn=fn_data,alpha=alpha,...)}
-  if(pnts) id<-rgl::points3d(X[,1],X[,2],X[,3],col="red",cex=2)
-  if(clip) rgl::clipplanes3d(c(0.5,0.5,0))
+  O <- X2Obj(grd$Obj, X)
+  if (cont.grid) {
+    id <- rgl::contourLines3d(O, grd$U, col = col, levels = pracma::linspace(0,
+                                                                             pi, 12))
+    rgl::contourLines3d(O, grd$V, col = col, levels = pracma::linspace(0,
+                                                                       2 * pi, 13))
+  }
+  if (cont) {
+    id <- rgl::contourLines3d(O, X[, 1], col = 1)
+    rgl::contourLines3d(O, X[, 2], col = 2)
+    rgl::contourLines3d(O, X[, 3], col = 3)
+  }
+  if (fill) {
+    if (fn == "z")
+      id <- rgl::filledContour3d(O, fn = X[, 3], alpha = alpha)
+    else id <- rgl::filledContour3d(O, fn = fn_data, alpha = alpha,
+                                    ...)
+  }
+  if (pnts)
+    id <- rgl::points3d(X[, 1], X[, 2], X[, 3], col = "red",
+                        cex = 2)
+  if (clip)
+    rgl::clipplanes3d(c(0.5, 0.5, 0))
   invisible()
 }
+
 
 #' plot3q
 #'
@@ -1990,13 +2294,16 @@ plot3a<-function(X,grd,pnts=FALSE,clip=FALSE,col="black",alpha=1,cont=TRUE,cont.
 #'  # take required data from M1
 #' plot3q(updateX(M1$A,M1$grd,M1$bas,M1$)$X,M1$grd)
 #' @export
-plot3q<-function(X,grd,col="black",alpha=1,...)
+plot3q<-function (X, grd, col = "black", alpha = 1, ...)
 {
-  plot3b(X,grd,wire=FALSE,...)
-  if (is.null(grd$ObjQ)) Obj2ObjQ(grd$Obj,grd)->Q else Q=grd$ObjQ
-  X2ObjQ(Q,X)->Q
-  rgl::wire3d(Q,col="black",specular="black")
+  plot3b(X, grd, wire = FALSE, ...)
+  if (is.null(grd$ObjQ))
+    Q <- Obj2ObjQ(grd$Obj, grd)
+  else Q = grd$ObjQ
+  Q <- X2ObjQ(Q, X)
+  rgl::wire3d(Q, col = "black", specular = "black")
 }
+
 #' plot3qs
 #'
 #' plot with coordinates C$X (after updateX) and scalar as color code
@@ -2011,28 +2318,33 @@ plot3q<-function(X,grd,col="black",alpha=1,...)
 #' plot3qs(updateX(M1$A,M1$grd,M1$bas,M1$)$X,M1$grd,M1$dA)
 #'
 #' @export
-plot3qs<-function(X,grd,s,alpha=1,specular="black",...)
-{ X2Obj(grd$Obj,X)->O;
-  Rvcg::vcgUpdateNormals(O)->O
-  col=heat.colors(100)[1+99*(s-min(s))/diff(range(s))]
-  rgl::shade3d(O,col=col,specular=specular,...)
-  if (is.null(grd$ObjQ)) Obj2ObjQ(grd$Obj,grd)->Q else Q=grd$ObjQ
-  X2ObjQ(Q,X)->Q
-    rgl::wire3d(Q,col="gray",specular="black")
+plot3qs<-function (X, grd, s, alpha = 1, specular = "black", ...)
+{
+  O <- X2Obj(grd$Obj, X)
+  O <- Rvcg::vcgUpdateNormals(O)
+  col = heat.colors(100)[1 + 99 * (s - min(s))/diff(range(s))]
+  rgl::shade3d(O, col = col, specular = specular, ...)
+  if (is.null(grd$ObjQ))
+    Q <- Obj2ObjQ(grd$Obj, grd)
+  else Q = grd$ObjQ
+  Q <- X2ObjQ(Q, X)
+  rgl::wire3d(Q, col = "gray", specular = "black")
 }
 
 
 #' @export
-plot3b<-function(X,grd,col="white",specular="black",wire=TRUE,...)
-{X2Obj(grd$Obj,X)->O;
-  Rvcg::vcgUpdateNormals(O)->O
-  rgl::shade3d(O,col=col,specular=specular,...)
-if(wire) rgl::wire3d(O,col="black",lwd=2,specular="black")
+plot3b<-function (X, grd, col = "white", specular = "black", wire = TRUE,
+                  ...)
+{
+  O <- X2Obj(grd$Obj, X)
+  O <- Rvcg::vcgUpdateNormals(O)
+  rgl::shade3d(O, col = col, specular = specular, ...)
+  if (wire)
+    rgl::wire3d(O, col = "black", lwd = 2, specular = "black")
 }
 
 
-#
-# this should be the standard!
+
 #
 #' @export
 MakeGrid_GaussLegendreSimpson<-function(n=20,ua=0,ub=pi,va=0,vb=2*pi,del_Ylm=1e-6,comment="spherical coordinates Gauss-Legendre-Simpson grid, type GLS",check_plt=FALSE) # assume spherical coordinates
@@ -2081,9 +2393,7 @@ MakeGrid_GaussLegendreSimpson<-function(n=20,ua=0,ub=pi,va=0,vb=2*pi,del_Ylm=1e-
   print(k)
   x=sin(grd$u)*cos(grd$v);y=sin(grd$u)*sin(grd$v);z=cos(grd$u)
   rgl::mesh3d(x,y,z,triangles=q, normals = list(x=x,y=y,z=z) ) -> M
- # str(M)
   #  clear3d();
-  # vcgUpdateNormals(M)->M # creates an artificial contrast at 0/2pi v-boundary
   grd$Obj<-M
   grd$comment<-comment
   grd$type="GLS"
@@ -2118,15 +2428,13 @@ last<-function(v,n=1)
 
 # you may use IntegM from c++ instead
 int2d_matrix <- function (field_m,grd,bas=NULL)
-{ #str(field_m)
-  dms=dim(field_m);
-#  print(dms)
+{ dms=dim(field_m);
   res=array(NA,dms[2:3]);
 for (i in 1:dms[2]) for (j in 1:dms[3]) res[i,j]=int2d_scalar_GLS(field_m[,i,j],grd)
 return(res)
 }
 
-# not  used
+# not used
 #' @export
 int2d_matrix_cxx <- function (field_m,grd,bas) # needed for C++-code of gradients
 { F2<-array(field_m, c( grd$ndof,bas$Ai_max,3))
@@ -2141,155 +2449,132 @@ vectomat_cxx<-function(x,Aimax)  return(matrix(x,Aimax,3))
 #' @export
 vectoarr_cxx<-function(x,ndof,Aimax)  return(array(x,c(ndof,Aimax,3)))
 
-
-#
-# create a basis on (u,v)-data, also useful for irregular arranged (u,v)
-# if you dont want l=0, put 0 in exclude=c(0,...)
-# works also for Gauss-Legendre-Simpson mixed grid
-#    checked smaller del; produces artifacts and zeros problems in dA
-#
-
-# old finite difference derivatives of Ylm
-# always exclude constant terms, i.e. shifts in mean(X)
-if (HAVE_DEPRECATED){
-MakeBasis_GaussLegendre_old<-function(L_max=4,u,v,exclude=c(0),include_m=c(),del=1e-5,altern=TRUE,old=FALSE)
-{ source("sphericalharmonics.R")
-  .sh=sphericalharmonics
-  # not valid for Functionals
-  inclm=(length(include_m)>0)
-  Ai_max<-0; for (l in 0:L_max) if(!l %in% exclude) for (m in (-l):l) if(inclm &&  m%in% include_m) Ai_max<-Ai_max+1 else {if (!inclm) Ai_max<-Ai_max+1}
-  LM = data.frame(l=rep(0L,Ai_max),m=rep(0L,Ai_max))
-
-  AI<-1; for (l in 0:L_max) if(!l %in% exclude) for (m in (-l):l) if(inclm &&  m%in% include_m) {LM[AI,]=c(l,m);AI<-AI+1} else {if (!inclm) {LM[AI,]=c(l,m);AI<-AI+1}}
-  n.v=length(u)
-  if(length(v)!=n.v) stop("u not same length like v")
-  uv=cbind(u,v)
-  Ylm<-Ylm_u<-Ylm_v<-Ylm_uu<-Ylm_uv<-Ylm_vv<-array(0.0,c(n.v,Ai_max)) # store all Ylm_u derivative values as central differences
-
-  for (i in 1:Ai_max) {    l=LM[i,1];m=LM[i,2]
-  Ylm[,i]=.sh(l,m,uv) }
-
-  uminus=u-del;  uplus=u+del
-  vminus=v-del;  vplus=v+del
-  uminus2=u-2*del;  uplus2=u+2*del
-  vminus2=v-2*del;  vplus2=v+2*del
-  if (old)   for (i in 1:Ai_max) {
-    l=LM[i,1];m=LM[i,2]
-    Ylm_u[,i]<-(.sh(l,m,cbind(uplus,v),"real")-.sh(l,m,cbind(uminus,v),"real"))/2/del
-    Ylm_v[,i]<-(.sh(l,m,cbind(u,vplus),"real")-.sh(l,m,cbind(u,vminus),"real"))/2/del
-    Ylm_uu[,i]<-(.sh(l,m,cbind(uplus,v),"real")-2*.sh(l,m,uv,"real")+.sh(l,m,cbind(uminus,v),"real"))/del^2
-    Ylm_vv[,i]<-(.sh(l,m,cbind(u,vplus),"real")-2*.sh(l,m,uv,"real")+.sh(l,m,cbind(u,vminus),"real"))/del^2
-    Ylm_uv[,i]<-(.sh(l,m,cbind(uplus,vplus),"real")-.sh(l,m,cbind(uplus,vminus),"real") -
-                   .sh(l,m,cbind(uminus,vplus),"real")+.sh(l,m,cbind(uminus,vminus),"real"))/4/del^2
-  } else
-    for (i in 1:Ai_max) {
-      l=LM[i,1];m=LM[i,2]
-
-      if(altern) Ylm_u[,i]<-(.sh(l,m,cbind(uminus2,v))-
-                               8*.sh(l,m,cbind(uminus,v))+
-                               8*.sh(l,m,cbind(uplus,v))-
-                               .sh(l,m,cbind(uplus2,v)))/12/del else
-                                 Ylm_u[,i]<-(.sh(l,m,cbind(uplus,v))
-                                             -.sh(l,m,cbind(uminus,v)))/2/del
-
-                               if(altern) Ylm_v[,i] <-  -m* .sh(l,-m,uv) else
-                                 Ylm_v[,i]<-(.sh(l,m,cbind(u,vplus))-
-                                               .sh(l,m,cbind(u,vminus)))/2/del
-                               if(altern) Ylm_uu[,i]<-  ( -.sh(l,m,cbind(uminus2,v))
-                                                          +16*.sh(l,m,cbind(uminus,v)) +
-                                                            -30*.sh(l,m,uv)
-                                                          +16*.sh(l,m,cbind(uplus,v)) +
-                                                            -.sh(l,m,cbind(uplus2,v)) )/12/del^2  else
-                                                              Ylm_uu[,i]<-(.sh(l,m,cbind(uplus,v))-2*.sh(l,m,uv)+.sh(l,m,cbind(uminus,v)))/del^2
-                                                            if(altern) Ylm_vv[,i]<- - m*m*.sh(l,m,uv) else
-                                                              Ylm_vv[,i]<-( -.sh(l,m,cbind(u,vminus2))
-                                                                            +16*.sh(l,m,cbind(u,vminus)) +
-                                                                              -30*.sh(l,m,uv)
-                                                                            +16*.sh(l,m,cbind(u,vplus)) +
-                                                                              -.sh(l,m,cbind(u,vplus2)) )/12/del^2
-
-                                                            if(altern) Ylm_uv[,i]<- -m*(+.sh(l,-m,cbind(uminus2,v)) +
-                                                                                          -8*.sh(l,-m,cbind(uminus ,v))+
-                                                                                          +8*.sh(l,-m,cbind(uplus,v))  +
-                                                                                          -.sh(l,-m,cbind(uplus2,v)) )/12/del else
-                                                                                            Ylm_uv[,i]<-(  .sh(l,m,cbind(uplus,vplus)) +
-                                                                                                             .sh(l,m,cbind(uminus,vminus)) -
-                                                                                                             .sh(l,m,cbind(uplus,vminus)) -
-                                                                                                             .sh(l,m,cbind(uminus,vplus)) )/4/del^2
-    }
-  # basis return:
-  l=LM[,1];m=LM[,2]
-  bas=list(n.v=n.v,uv=uv,
-           Ylm=Ylm,Ylm_u=Ylm_u,Ylm_v=Ylm_v,
-           Ylm_uu=Ylm_uu,Ylm_uv=Ylm_uv,Ylm_vv=Ylm_vv,
-           LM=LM,Ai_max=Ai_max,del=del,
-           l=l, m=m,
-           A=matrix(0,Ai_max,3), # zero amplitudes to start with
-           L_max=L_max,G.tk=l^2*(l+1)^2,
-           comment=paste(c("irregular or Gauss-Legendre/Simpson basis from (u,v), excluding l %in% ",exclude,"and including m %in% ",include_m),collapse=" " ),uv=cbind(uv),Nupd=0,
-           Lset=unique(l),
-           Mset=unique(m),
-           Nc=2, Cons=c("gradA","gradV"), # default constraints; unit sphere, spontaneous curvature model
-           QCons=c("Area","Volume"), # could be enhanced by Curv in SetConstraints
-           Target=c(4*pi,4/3*pi),    # sphere values
-           TNorm =c(4*pi,4/3*pi)     # ,8*pi)) # keep Norms for A, V, set C separately in SetConstraints
-  )
-  names(bas$Cons)=names(bas$QCons)=names(bas$TNorm)=names(bas$Target)=c("Area","Volume")
-  bas$A=LM2A(bas$A,bas)
-  return(bas)
-} # G.tk is diag Tikhonov, Gamma^T Gamma
-}
-
-
-
-#
-# if you have an initial form in X2fit (been computed with u,v according to basis for Ylm!!)
-#   Fit without regularization
-#
+#' FitAlm
+#' @description
+#' fit coefficients from 3d-coordinates
+#' @param X,bas input data and basis; bas$mask must be set to ecluded X points indices
+#' @param WX (=1) spatial weights, could be sin(grd$U)
 #' @export
-FitAlm <- function(X2fit,bas)
-{ A<-array(0,c(bas$Ai_max,3)) # amplitudes for x,y,z
-for (k in 1:3) { m<-lm(X2fit[,k]~bas$Ylm[,]);m$coefficients[-1]->A[,k]}
-return(A)
-}
-# Weighted SPHARM fit
-#' @export
-Weighted_FitAlm <- function (X, bas, sigma = 0.001)
-{ # start iterate with l=1 ; l=0 removed by center of mass to origin
-  A <- array(0, c(dim(bas$Ylm)[2], 3)) # smoothed Fourier coeffs, start from zeros
-  B <- t(bas$Ylm[,1:3]) %*% bas$Ylm[,1:3] # portion of solver matrix for l=1 (m=-1,0,1)
-  Ycommon <- pracma::inv(B)%*%t(bas$Ylm[,1:3])
-  for (k in 1:3) A[1:3, k] <- Ycommon %*% X[, k]
-  estim <- bas$Ylm %*% A
-  for (l in 2:bas$L_max)
-  { cat("Fit order l=",l,"\r")
-    res <- X - estim # r_(l-1)
-    s <- which(bas$LM[["l"]]==l)
-    B <- t(bas$Ylm[,s]) %*% bas$Ylm[,s] # portion of solver matrix for l=1 (m=-1,0,1)
-    Ycommon <- pracma::inv(B)%*%t(bas$Ylm[,s])
-    for (k in 1:3) A[s, k] <- Ycommon %*% X[,k] * exp(-l*(l+1)*sigma)
-    estim <- bas$Ylm %*% A
-  }
-  cat("\n")
+FitAlm <- function (X, bas, WX = rep(1, nrow(X)))
+{ A=FitAlm_Tikhonov(X,bas,lambda=0, WX = WX)
   return(A)
 }
 
-# fit with regularization:
+
+# Weighted SPHARM fit
+#' @export
+Weighted_FitAlm <- function (X, bas, sigma = 0.001, CL = 0.95)
+{
+  mask = bas$mask
+  if (is.null(mask)) {
+    warning("no mask given in basis")
+    X1 = X
+    Y = bas$Ylm
+  }
+  else {
+    X1 = X[-mask, ]
+    Y = bas$Ylm[-mask, ]
+  }
+  M <- apply(X1, 2, mean)
+  n <- dim(X1)[1]
+  alpha <- 1 - CL
+  p <- matrix(0, bas$L_max, 2)
+  if (any(abs(M) > 1e-15))
+    warning("masked X seems not centered")
+  X1 <- apply(X1, 2, function(x) x - mean(x))
+  A <- array(0, c(dim(bas$Ylm)[2], 3))
+  Asmooth <- A
+  Y <- Y[, 1:3]
+  Ycommon <- pracma::inv(t(Y) %*% Y) %*% t(Y)
+  for (k in 1:3) A[1:3, k] <- Ycommon %*% X1[, k]
+  Asmooth[1:3, ] <- A[1:3, ]
+  Xsmooth <- Y %*% A[1:3, ]
+  Xestim <- Xsmooth
+  L <- NA
+  for (l in 2:bas$L_max) {
+    cat("Fit order l=", l, "\r")
+    Xresid <- X1 - Xestim
+    s <- which(bas$LM[["l"]] == l)
+    Y <- Y[, s]
+    Ycommon <- pracma::inv(t(Y) %*% Y) %*% t(Y)
+    betal <- matrix(0, 2 * l + 1, 3)
+    for (k in 1:3) betal[, k] <- Ycommon %*% Xresid[, k]
+    A[s, ] <- betal
+    Asmooth[s, ] <- betal * exp(-l * (l + 1) * sigma)
+    Xsmooth <- Y %*% betal
+    Xestim <- Xestim + exp(-l * (l + 1) * sigma) * Xsmooth
+    SSEk <- sum((X1 - Xestim)^2)
+    SSEkm1 <- sum(Xresid^2)
+    Fk <- (SSEkm1 - SSEk)/(2 * l + 1)/(SSEkm1/(n - (l + 1)^2))
+    p_val <- pf(Fk, df1 = 2 * l + 1, df2 = (n - (l + 1)^2),
+                lower.tail = FALSE)
+    if (p_val > 1 - CL) {
+      p[l, 1] = 1
+      if (is.na(L)) {
+        L = l
+        Xresid_L = Xresid
+      }
+    }
+    p[l, 2] = (SSEkm1 - SSEk)/(2 * l + 1)
+  }
+  cat("\n")
+  colnames(p) = c("sig", "delta_SSE")
+  A <- LM2A(A, bas)
+  attr(A, "sigma_Weighted") <- sigma
+  attr(A, "conf.level_Weighted") <- CL
+  attr(Xestim, "sigma_Weighted") <- sigma
+  attr(Xestim, "conf.level_Weighted") <- CL
+  cat("sufficient L:", L, "\n")
+  return(list(A = A, X = Xestim, Asmooth = Asmooth, p.value = p,
+              sufficient_L = L, Xresid_L = ifelse(is.na(L), NA, Xresid_L),
+              sigma = sigma))
+}
+
+
+# fit with regularization and weights:
 # filtering high frequencies in least squares
 #   lambda should be tested systematically by L curve discussion
 #' @export
-FitAlm_Tikhonov<-function(X,bas,lambda=0.0385) # this lambda is random
+FitAlm_Tikhonov<-function (X, bas, lambda = 0,
+                           WX = rep(1, nrow(X)), keepIM = FALSE,
+                           newIM = FALSE)
 {
-  A<-array(0,c(dim(bas$Ylm)[2],3))
-  B=t(bas$Ylm)%*%bas$Ylm
-  # l=bas$LM[,1]
-  InvB1=pracma::inv(B + lambda * diag(bas$G.tk))
-  for (k in 1:3) A[,k]=InvB1%*%t(bas$Ylm)%*%X[,k]
+  mask = bas$mask
+  if (is.null(mask))
+    stop("no mask in bas; create at least bas$mask=1")
+  A <- matrix(0, bas$Ai_max + 1, 3)
+#  cat(dim(X),length(WX),"\n")
+
+  if (any(WX < 0))
+    warning("negative spatial weights in FitAlm_Tikhonov - abs(WX) is taken")
+  WX = abs(WX)
+  WX = WX[-mask]
+  X1 <- X[-mask, ]
+#  cat(dim(X1),length(WX),"\n")
+  if (is.null(bas$IM))
+    newIM = TRUE
+  if (newIM) {
+    Y = cbind(1, bas$Ylm[-mask, ])
+    YtW = t(Y) ; # dim 1 is coeff., dim 2 is spatial
+    for (i in 1:dim(YtW)[1]) YtW[i,]=YtW[i,]*WX[i]
+    B = YtW %*% Y
+    InvB1 = pracma::inv(B + lambda * diag(c(0, bas$G.tk)))
+    IM = InvB1 %*% YtW
+  }
+  else IM = bas$IM
+  for (k in 1:3) A[, k] = IM %*% X1[, k]
+  cat("dropped A(l=0):", A[1, ], "\n")
+  A <- LM2A(A[-1, ], bas)
+  attr(A, "lambda_Tikhonov") = lambda
+ # attr(A, "Fit spatial weights") = WX
+  if (keepIM)
+    attr(A, "IM") <- IM
   return(A)
 }
 
-
-# give angles from spherical 3D coordinates
+#' inv_sph
+#' @description
+#' give angles  (u,v) from spherical 3D point X
 #' @export
 inv_sph<-function(X)
 { r=sqrt(sum(X^2)) # see https://mathworld.wolfram.com/SphericalCoordinates.html
@@ -2313,26 +2598,100 @@ radial_uv<-function(starlike_obj)
 #
 # synthesize, but only for one spatial component in coefficients  A==A[,k] !!!
 #   for dim in 1..3: see synthX
-#synth<-function(Y,A) { res<-A[1]*Y[,1];for (i in 2:length(A)) res <- res + A[i] * Y[,i];return(res)}
 #' @export
 synth<-function(Y,A) { return(Y%*%A)}
 
-#synth_s<-function(Y,A,mx) { res<-A[1]*Y[,1];for (i in 2:mx) res <- res + A[i] * Y[,i];return(res)}
 synth_s<-function(Y,A,mx) { return(Y[,1:mx]%*%A[1:mx])}
+
+# a helper for faster finite differences
+#' @export
+synth12<-function (A, C, i, j, k, del)
+{
+  cat(sum(C$X_u), "-> \t")
+  n = dim(A)[1]
+  if (i > 0) {
+    C$X[, k] = C$X[, k] - bas$Ylm[, i] * del
+    C$X_u[, k] = C$X_u[, k] - bas$Ylm_u[, i] * del
+    C$X_v[, k] = C$X_v[, k] - bas$Ylm_v[, i] * del
+    C$X_uu[, k] = C$X_uu[, k] - bas$Ylm_uu[, i] * del
+    C$X_uv[, k] = C$X_uv[, k] - bas$Ylm_uv[, i] * del
+    C$X_vv[, k] = C$X_vv[, k] - bas$Ylm_vv[, i] * del
+  }
+  if (j <= n) {
+    C$X[, k] = C$X[, k] + bas$Ylm[, j] * del
+    C$X_u[, k] = C$X_u[, k] + bas$Ylm_u[, j] * del
+    C$X_v[, k] = C$X_v[, k] + bas$Ylm_v[, j] * del
+    C$X_uu[, k] = C$X_uu[, k] + bas$Ylm_uu[, j] * del
+    C$X_uv[, k] = C$X_uv[, k] + bas$Ylm_uv[, j] * del
+    C$X_vv[, k] = C$X_vv[, k] + bas$Ylm_vv[, j] * del
+  }
+  cat(sum(C$X_u), "\n")
+  return(C)
+}
+
+
+# k: spatial dim.
+# i: spectral order (l,m)
+# use: fwd: C=synth_update...(A,C,bas,i,k, +1e-6)
+#      reset: C=synth_update...(A,C,bas,i,k, -1e-6)
+#' @export
+synth_update<-function (C, bas, i, k,  del=1e-6)
+{
+#  cat(sum(C$X_u), "-> \t")  # X=Y*A ; X'=Y*(A+delA)=Y*A+Y*del
+    C$X[, k]    = C$X[, k] + bas$Ylm[, i] * del
+    C$X_u[, k]  = C$X_u[, k] + bas$Ylm_u[, i] * del
+    C$X_v[, k]  = C$X_v[, k] + bas$Ylm_v[, i] * del
+    C$X_uu[, k] = C$X_uu[, k] + bas$Ylm_uu[, i] * del
+    C$X_uv[, k] = C$X_uv[, k] + bas$Ylm_uv[, i] * del
+    C$X_vv[, k] = C$X_vv[, k] + bas$Ylm_vv[, i] * del
+#  cat(sum(C$X_u), "\n")
+  return(C)
+}
+
+
+# k: spatial dim.
+# i: spectral order (l,m)
+# use: fwd: C=synth_update...(A,C,bas,i,k, +1e-6)
+#      reset: C=synth_update...(A,C,bas,i,k, -1e-6)
+# should be faster than returning full changed C
+#' @export
+synth_update_inplace<-function (C, bas, i, k, del=1e-6)
+{  assign(deparse(substitute(C)), {
+
+      C$X[, k]    = C$X[, k] + bas$Ylm[, i] * del
+      C$X_u[, k]  = C$X_u[, k] + bas$Ylm_u[, i] * del
+      C$X_v[, k]  = C$X_v[, k] + bas$Ylm_v[, i] * del
+      C$X_uu[, k] = C$X_uu[, k] + bas$Ylm_uu[, i] * del
+      C$X_uv[, k] = C$X_uv[, k] + bas$Ylm_uv[, i] * del
+      C$X_vv[, k] = C$X_vv[, k] + bas$Ylm_vv[, i] * del
+      C
+  }, env = rlang::env_parent())
+
+}
+
+
+#' @export
+scale_inplace<-function (m, s)
+{
+  assign(deparse(substitute(m)), {
+    ifelse(is.numeric(s), {
+      m$A = m$A * s
+      "scaled m in place"
+    }, NULL)
+  }, env = rlang::env_parent())
+}
+
 
 
 #' @export
 deltaX_norm<-function(C1,C2)
-{ return(apply(abs(C2$X-C1$X),2,pracma::Norm))
+{ return(apply(C2$X-C1$X,2,pracma::Norm))
 }
-
 
 # save a set of coefficients A to file
 #' @export
 saveA<-function(A,file)
-{
-  save(A,file=file)
-}
+{  save(A,file=file) }
 
 # load a set of coeffs, make it compatible for the current basis bas.
 #' @export
@@ -2359,124 +2718,126 @@ loadAlm<-function(file,bas) # loads amplitudes and stores according to basis bas
 
 # rotation first around x by px, then y then z-axis
 #' @export
-rotateX<-function(X,px=pi,py=0,pz=0)
+rotateX<-function (X, px = pi, py = 0, pz = 0, transpose = FALSE)
 {
-  R.mz=matrix(c(cos(pz),-sin(pz),0,sin(pz),cos(pz),0,0,0,1),3,3)
-  R.mx=matrix(c(1,0,0, 0,cos(px),-sin(px), 0,sin(px),cos(px)),3,3)
-  R.my=matrix(c(cos(py),0,-sin(py), 0,1,0, sin(py),0,cos(py)),3,3)
-  R<-R.mz%*%R.my%*%R.mx
-  return(R%*%X)
+  R.mz = matrix(c(cos(pz), -sin(pz), 0, sin(pz), cos(pz), 0,
+                  0, 0, 1), 3, 3)
+  R.mx = matrix(c(1, 0, 0, 0, cos(px), -sin(px), 0, sin(px),
+                  cos(px)), 3, 3)
+  R.my = matrix(c(cos(py), 0, -sin(py), 0, 1, 0, sin(py), 0,
+                  cos(py)), 3, 3)
+  R <- R.mz %*% R.my %*% R.mx
+  if (transpose)
+    R <- t(R)
+  if (is.vector(X))
+    return(R %*% X)
+  else if (is.matrix(X))
+    return(t(apply(X, 1, function(x) R %*% x)))
+  else stop("X is not a 3d vector, nor a matrix of 3d vectors")
 }
 
+
 rotateXbyM<-function(X,M)
-{
-  return(M%*%X)
-}
+{ return(M%*%X)}
+
 #
 # rotate coefficients by rotating coordinates
-#   gives back a rotation error (new from fit vs. rotated coord)
+#  gives back a rotation error (new from fit vs. rotated coord)
 #  rotation order is by X,Y,Z-axis
 #
 #' @export
-rotateA <- function(A,bas,grd,px=pi/2,py=-pi/2,pz=pi/2,plt=FALSE)
-{
-  updateX(A,grd,bas)->C
-  if(plt) id1<-plot3b(C$X,grd)
-  R.mz=matrix(c(cos(pz),-sin(pz),0,sin(pz),cos(pz),0,0,0,1),3,3)
-  R.mx=matrix(c(1,0,0, 0,cos(px),-sin(px), 0,sin(px),cos(px)),3,3)
-  R.my=matrix(c(cos(py),0,-sin(py), 0,1,0, sin(py),0,cos(py)),3,3)
-  R<-R.mz%*%R.my%*%R.mx
-  X1=C$X;for (i in 1:dim(X1)[1]) X1[i,]=R%*%C$X[i,]
-  A1<-A
-  # fit new amplitudes A1 from rotated coords X1 against basis for each sp. dim.
-  for (k in 1:3)
-    lm(X1[,k]~bas$Ylm)$coefficients[-1]->A1[,k]
-  updateX(A1,grd,bas)->C1
-  if(plt){open3d();id2<-plot3b(C1$X,grd ) }
-  return(list(A=A1,C=C1,rot_err=pracma::Norm(C1$X-X1)))
+rotateA <-function (A, bas, grd, px = pi/2, py = -pi/2, pz = pi/2, plt = FALSE)
+{ C <- updateX(A, grd, bas)
+  if (plt)
+    id1 <- plot3b(C$X, grd)
+  R.mz = matrix(c(cos(pz), -sin(pz), 0, sin(pz), cos(pz), 0,
+                  0, 0, 1), 3, 3)
+  R.mx = matrix(c(1, 0, 0, 0, cos(px), -sin(px), 0, sin(px),
+                  cos(px)), 3, 3)
+  R.my = matrix(c(cos(py), 0, -sin(py), 0, 1, 0, sin(py), 0,
+                  cos(py)), 3, 3)
+  R <- R.mz %*% R.my %*% R.mx
+  X1 = C$X
+  for (i in 1:dim(X1)[1]) X1[i, ] = R %*% C$X[i, ]
+  A1 <- A
+  if (!is.matrix(bas$IM))
+  A1[, k] <- FitFast(bas,X1)
+  C1 <- updateX(A1, grd, bas)
+  if (plt) {
+    rgl::open3d()
+    id2 <- rgl::plot3b(C1$X, grd)
+  }
+  return(list(A = A1, C = C1,
+              rot_err = pracma::Norm(C1$X-X1)))
 }
 
 #
 # perturb coeffs a bit, but damped by Tikhonov diagonal
 #
 
-
-# A must not be matrix
-#' @export
-pertA_Gauss<-function(A,bas,sd,flt=FALSE){
- N=bas$Ai_max;
- sd1=sd/sqrt(bas$G.tk);
- dA<-rnorm(3*N,sd=rep(sd1,3))
- dA[c(1+N,1+2*N)]=0
- dA[c(2,2+N)]=0
- dA[c(3,3+2*N)]=0
- A[]=A[]+dA
- return(A)
-}
-
-#' @export
-pertA_Unif<-function(A,bas,sd,flt=FALSE){
-  N=bas$Ai_max;
-  sd1=sd/sqrt(bas$G.tk);
-dA=(runif(3*N)-0.5)/2*rep(sd1,3) # > version 14: changed to sd1
-
-# >version 14: filter outside, e.g. ApplyFilter_L1(A,bas), with bas$flt set
-#dA[c(1+N,1+2*N)]=0
-#dA[c(2,2+N)]=0
-#dA[c(3,3+2*N)]=0
-
-A[]=A[]+dA
-return(A)
-}
-
 #
 # shows a series of up to nr x nc images and "rep" values for the l>0 present in bas
 #
 #' @export
-plotLseries<-function(nr=4,nc=5,A,C,grd,bas,reduced=FALSE,rec=FALSE,fill=TRUE, rep="H2",stretch=TRUE,S=S,Ref=Ref )
+plotLseries<-function (nr = 4, nc = 5, A, C, grd, bas,
+                       Vals = TRUE,
+                       fill = TRUE, rep = "H2", S = NULL,
+                       Ref = NULL, stretch = !is.null(Ref))
 {
- # rgl::open3d()
-  rgl::mfrow3d(nr,nc,sharedMouse = TRUE)
-  if(rec) M=matrix(0,length(unique(bas$LM[,1])),7) # to return summed up quantities and Norm of coeffs
-  k=1
-  nrm=c(1,1,1,1,1,1,sum(abs(A[bas$LM[,1]==1,])))
-  names(nrm)=c("Area","Volume","Curv","H2","H2_BC","ES","Norm")
-  for (l in bas$Lset) # works with "exclude" in basis, but 0 may not be excluded
-  {w=which(bas$LM[,1]==l)
-  last=w[length(w)] #; print(last)
-  Y=synthX(bas$Ylm[,1:last],A[1:last,])
-  #plot3d(0,0,0,deco=FALSE,col="white")
-  A1=A;A1[]=0;A1[1:last,]=A[1:last,]
-  updateX(A1,grd,bas)->C2
-  h2<-E_SCM(A1,grd,bas,C2)
-  if (stretch) E=E_SEN(A,grd,bas,S,Ref)
-  if(rec){
-   M[k,1]=h2$Area
-   M[k,2]=h2$Volume
-   M[k,3]=h2$Curv
-   M[k,4]=h2$Wb
-   M[k,5]=h2$H2_BC
-   if(stretch) M[k,6]=E
-   M[k,7]=sum(abs(A[bas$LM[,1]==l,]))
+  rgl::mfrow3d(nr, nc, sharedMouse = TRUE)
+  if (Vals)
+    M = matrix(0, length(unique(bas$LM[, 1])), 7)
+  k = 1
+  for (l in bas$Lset) {
+    w = which(bas$LM[, 1] == l)
+    last = w[length(w)]
+    Y = synthX(bas$Ylm[, 1:last], A[1:last, ])
+    A1 = A
+    A1[] = 0
+    A1[1:last, ] = A[1:last, ]
+    C2 <- updateX(A1, grd, bas)
+    h2 <- E_SCM(A1, grd, bas, C2)
+    if (stretch)
+      E = E_SEN(A, grd, bas, S, Ref)
+    else E = 0
+    if (Vals) {
+      M[k, 1] = h2$Area
+      M[k, 2] = h2$Volume
+      M[k, 3] = h2$Curv
+      M[k, 4] = h2$Wb
+      M[k, 5] = h2$H2_BC
+      if (stretch)
+        M[k, 6] = E
+      M[k, 7] = sum(abs(A[bas$LM[, 1] == l, ]))
+    }
+    if (is.null(S))
+      S = list(alpha = 0)
+    plot3qs(Y, grd, S$alpha)
+    rgl::title3d(paste(l, ": E",
+                       round((h2$Wb + E)/M.Es,
+                              3), " C", round(h2$Curv, 3)))
+    k = k + 1
+    if (k > nr * nc)
+      (break)()
+    if (l < last(bas$Lset))
+      rgl::next3d()
   }
-  plot3qs(Y,grd,S$alpha)
-  rgl::title3d(paste(l,": E",round((h2$Wb+E)/M.Es,3)," C",round(h2$Curv,3)))
-  k=k+1
-  if(k>nr*nc) break() # exit loop if screen is full
-  if(l<last(bas$Lset)) rgl::next3d()
+  if (Vals) {
+    M1 = apply(M, 2, diff)
+    M2 = apply(M1, 2, function(x) (x)/diff(range(x)))
+    matplot(M2, type = "l", lty = 1, lwd = 2, ylab = expression(Delta *
+                                                                  Q), pch = 20)
+    matpoints(M2, pch = 20)
+    legend("topright", col = 1:6, lty = 1, lwd = 2, leg = c("A",
+                                                            "V", "C", "H2", "H2_BC", "Nrm"), pch = 20)
+    rownames(M) = paste("l=",as.character(bas$Lset))
+    colnames(M) = c("A", "V", "C", "H2", "H2_BC", "E","||A_l||")
+    M = as.data.frame(M)
+    return(M)
   }
-  if(rec){
-    M1=apply(M,2,diff)
-    M2=apply(M1,2,function(x) (x)/diff(range(x)))
-    matplot(M2,type="l",lty=1,lwd=2,ylab=expression(Delta*Q),pch=20)
-    matpoints(M2,pch=20)
-    legend("topright",col=1:6,lty=1,lwd=2,leg=c("A","V","C","H2","H2_BC","Nrm"),pch=20)
-    rownames(M)=sort(unique(bas$LM[,1]))[-1]
-  if (reduced) for (i in 1:5) M[,i]=M[,i]/nrm[i]
-  if(!reduced) colnames(M)=c("A","V","C","H2","H2_BC","Norm") else colnames(M)=c("a","v","c","h2","h2_BC","norm")
-  M=as.data.frame(M)
-  return(M)}  else return("Plot L Series done")
+  else return("Plot L Series done")
 }
+
 
 #
 # fill e.g. grd$Obj  with new coords
@@ -2505,7 +2866,7 @@ Membrane_LaplacianOBJ <- function(X)
                                          use.last.ij=FALSE)
   ig <- igraph::graph.adjacency(TN,mode="undirected",diag = FALSE)
   # remove doubles by /2
-  return(igraph::laplacian_matrix(ig,normalized = FALSE,sparse = TRUE)/2)
+  return(igraph::laplacian_matrix(ig,normalization="unnormalized",sparse = TRUE)/2)
 }
 
 # from 3D-object X compute mesh Laplacian L, normalized Ln, Diagonal D
@@ -2513,11 +2874,11 @@ Membrane_LaplacianOBJ <- function(X)
 Membrane_LaplaciansOBJ <- function(X)
 {
   ia=c(X$it[1,],X$it[2,],X$it[3,]);ja=c(X$it[2,],X$it[3,],X$it[1,])
-  N<-max(max(ia),ja); TN <- sparseMatrix(dims=c(N,N),i=ia,j=ja,x=rep(1,length(ia)),
+  N<-max(max(ia),ja); TN <- sparseMatrix::sparseMatrix(dims=c(N,N),i=ia,j=ja,x=rep(1,length(ia)),
                                          use.last.ij=FALSE)
   ig <- igraph::graph.adjacency(TN,mode="undirected",diag = FALSE)
   # recompute  u directly from Laplacian
-  L=igraph::laplacian_matrix(ig,normalized = FALSE,sparse = TRUE)/2
+  L=igraph::laplacian_matrix(ig,normalization = FALSE,sparse = TRUE)/2
   D=L;diag(D)<-0
   return(list(L=L,Ln=igraph::laplacian_matrix(ig,normalized = TRUE,sparse = TRUE),D=D))
 }
@@ -2539,7 +2900,7 @@ Membrane_Laplacian_cotan <- function(x,M) # input object x, M input matrix to fi
       k<-x$it[I[i1,3],tr]
       u1<-x$vb[1:3,i]-x$vb[1:3,k]
       v1<-x$vb[1:3,j]-x$vb[1:3,k]
-      cot<-sum(u1*v1)/sqrt(sum(cross(u1,v1)^2))
+      cot<-sum(u1*v1)/sqrt(sum(pracma::cross(u1,v1)^2))
       M[i,j] <- M[i,j] + cot;
       M[j,i] <- M[j,i] + cot;
       M[i,i] <- M[i,i] - cot;
@@ -2547,8 +2908,87 @@ Membrane_Laplacian_cotan <- function(x,M) # input object x, M input matrix to fi
     }
     if (tr%% 100 ==0 )cat(tr/N.t,"  progress cotan-Laplacian  \r")
   };
-  return(M)
+  return(-M/2) # comparable to L from GEMINI-implementation-draft
 }
+
+#' @export
+GEMINI_cotan_Laplacian_II <- function(mesh) {
+  verts <- t(mesh$vb[1:3, ])
+  faces <- t(mesh$it)
+
+  n_verts <- nrow(verts)
+  idx_A <- faces[, 1]
+  idx_B <- faces[, 2]
+  idx_C <- faces[, 3]
+  A <- verts[idx_A, ]
+  B <- verts[idx_B, ]
+  C <- verts[idx_C, ]
+
+  u_A <- B - A
+  v_A <- C - A
+  u_B <- C - B
+  v_B <- A - B
+  u_C <- A - C
+  v_C <- B - C
+  dot_A <- rowSums(u_A * v_A)
+  dot_B <- rowSums(u_B * v_B)
+  dot_C <- rowSums(u_C * v_C)
+
+  cross_x <- u_A[,2] * v_A[,3] - u_A[,3] * v_A[,2]
+  cross_y <- u_A[,3] * v_A[,1] - u_A[,1] * v_A[,3]
+  cross_z <- u_A[,1] * v_A[,2] - u_A[,2] * v_A[,1]
+
+  two_area <- sqrt(cross_x^2 + cross_y^2 + cross_z^2)
+  two_area[two_area < 1e-12] <- 1e-12
+  cot_A <- dot_A / two_area
+  cot_B <- dot_B / two_area
+  cot_C <- dot_C / two_area
+  I <- c(idx_B, idx_C,  idx_C, idx_A,  idx_A, idx_B)
+  J <- c(idx_C, idx_B,  idx_A, idx_C,  idx_B, idx_A)
+  W_vals <- c(cot_A, cot_A, cot_B, cot_B, cot_C, cot_C) * 0.5
+  W <- Matrix::sparseMatrix(i = I, j = J, x = W_vals, dims = c(n_verts, n_verts))
+  diag_vals <- Matrix::rowSums(W)
+  D <- Matrix::sparseMatrix(i = 1:n_verts, j = 1:n_verts, x = diag_vals, dims = c(n_verts, n_verts))
+  L <- D - W
+  return(L)
+}
+
+
+#' @export
+Gemini_cotan_Laplacian_I <- function(mesh) {
+  V <- t(mesh$vb[1:3, ])
+  F <- t(mesh$it)
+  n_verts <- nrow(V)
+  n_faces <- nrow(F)
+  compute_cotans <- function(i_A, i_B, i_C) {
+    u <- V[i_B, ] - V[i_A, ]
+    v <- V[i_C, ] - V[i_A, ]
+    dot_uv <- rowSums(u * v)
+    cross_prod <- cbind(
+      u[,2]*v[,3] - u[,3]*v[,2],
+      u[,3]*v[,1] - u[,1]*v[,3],
+      u[,1]*v[,2] - u[,2]*v[,1]
+    )
+    norm_cross <- sqrt(rowSums(cross_prod^2))
+    return(dot_uv / norm_cross)
+  }
+  i1 <- F[, 1]
+  i2 <- F[, 2]
+  i3 <- F[, 3]
+  cot1 <- compute_cotans(i2, i3, i1) # Angle at 1 is between (1-2) and (1-3)?
+  c1 <- compute_cotans(i1, i2, i3) # Angle at i1
+  c2 <- compute_cotans(i2, i3, i1) # Angle at i2
+  c3 <- compute_cotans(i3, i1, i2) # Angle at i3
+  I <- c(i1, i2, i2, i3, i3, i1)
+  J <- c(i2, i1, i3, i2, i1, i3)
+  W <- c(c3, c3, c1, c1, c2, c2) * 0.5
+  L_off <- Matrix::sparseMatrix(i = I, j = J, x = W, dims = c(n_verts, n_verts))
+  diagonal_vals <- Matrix::rowSums(L_off)
+  L_diag <- Matrix::Diagonal(x = diagonal_vals)
+  L <- L_diag - L_off
+  return(L)
+}
+
 
 
 
@@ -2568,8 +3008,10 @@ Membrane_Eig<-function(L,which=1:4,kind="SM")
 }
 
 #
-# plot arrows of change between two shape states
-#
+#' plot arrows of change between two shape states
+#' @param A1,A2 coefficients for the shapes
+#' @param grd2,bas2 grid and basis of second shape A2
+#' @param O1 3d object for A1
 #' @export
 imag.delta.arrowws.pca <- function(A1,A2,grd2,bas2,O1)
 {
@@ -2588,11 +3030,22 @@ imag.delta.arrowws.pca <- function(A1,A2,grd2,bas2,O1)
 }
 
 
-#
-# svd alignment, see
-# https://www.cse.wustl.edu/~taoju/cse554/lectures/lect07_Alignment.pdf
-#
-
+#' imag.delta.aligned
+#' @description
+#' svd alignment of shape coefficients into 3d-objects, see
+#' https://www.cse.wustl.edu/~taoju/cse554/lectures/lect07_Alignment.pdf
+#' and plotting of spatial difference vectors
+#'
+#' @param A1,A2 input coefficients
+#' @param grd2,bas2 grid and basis of A2
+#' @returns obj1,obj2 aligned 3d-objects
+#' @examples
+#' data(D5)
+#' data(D5c5)
+#' imag.delta.aligned(D5$A,D5c5$A,D5c5$grd,D5c5$bas)->L
+#' rgl::open3d()
+#' rgl::plot3d(L$obj1,alpha=0.6,col=1,aspect=FALSE)
+#' rgl::plot3d(L$obj2,alpha=0.6,col=2,add=TRUE)
 #' @export
 imag.delta.aligned <- function(A1,A2,grd2,bas2,shade2=FALSE)
 {
@@ -2638,6 +3091,11 @@ imag.delta.aligned <- function(A1,A2,grd2,bas2,shade2=FALSE)
 # read data from surface evolver dump file
 #  quite slow for renumbering
 #
+#' SE_2_OBJ
+#' @description
+#' Read data from surface evolver dump file.
+#' The vertices are renumbered here, taking
+#' more computing time.
 #' @export
 SE_2_OBJ <- function(f.in,f.out,comment="o")
 {
@@ -2721,8 +3179,6 @@ SE_2_OBJ <- function(f.in,f.out,comment="o")
     if (i %% 20 == 0 ) cat(round(100*i/dim(F)[1],1),"\r")
 
   }
-
-
   obj<-Rvcg::vcgClean(obj,sel=1:7)
   rgl::par3d(windowRect=c(1,20,80,82))
   rgl::clear3d()
@@ -2732,10 +3188,10 @@ SE_2_OBJ <- function(f.in,f.out,comment="o")
   return(obj)
 }
 
-#
-# read data from surface evolver dump file
-#  special case: faster if SE renumbered before dump
-#
+#' SErenumbered_2_OBJ
+#' @description
+#' Read data from surface evolver dump file
+#'  special case: faster if SE renumbered all before the dump
 #' @export
 SErenumbered_2_OBJ <- function(f.in,f.out,comment="o")
 {
@@ -2816,403 +3272,577 @@ SErenumbered_2_OBJ <- function(f.in,f.out,comment="o")
   return(obj)
 }
 
-# not used
-remVertOBJ<-function(O,w) # remove vertices from triangulation
+#' Map a 3D Mesh to a 2D Unit Circle (Disk Conformal Map)
+#'
+#' @param mesh An Rvcg mesh3d object (must be an open mesh, not a closed sphere)
+#' @param L The Cotangent Laplacian matrix. If NULL, it is computed.
+#' @param spherical (=TRUE) for giving not uv on a disk but spherical coordinates (u,v)
+#' @return A list containing the 2D coordinates and the flattened mesh.
+GEMINI_disk_conformal_map <- function(mesh, L = NULL,plt=FALSE,spherical=TRUE) {
+
+  num_verts <- ncol(mesh$vb)
+
+  if (is.null(L)) {
+    L <- GEMINI_get_cotan_Laplacian_cxx(mesh)
+  }
+  all_edges <- Rvcg::vcgGetEdge(mesh)
+  border_edges <- all_edges[all_edges$border == 1, 1:2]
+
+  if (nrow(border_edges) == 0) {
+    stop("Mesh has no boundary! (Is it a closed sphere? You must cut it first.)")
+  }
+  g_border <- igraph::graph_from_edgelist(as.matrix(border_edges), directed = FALSE)
+
+  start_node <- border_edges[1, 1]
+  dfs_res <- igraph::dfs(g_border, root = start_node, unreachable = FALSE)
+  b_indices <- as.numeric(dfs_res$order)
+  b_indices <- b_indices[!is.na(b_indices)]
+
+  n_b <- length(b_indices)
+  cum_len <- 0
+  thetas <- numeric(n_b)
+  coords <- t(mesh$vb[1:3, ])
+
+  for (i in 2:n_b) {
+    v1 <- coords[b_indices[i-1], ]
+    v2 <- coords[b_indices[i], ]
+    dist <- sqrt(sum((v1 - v2)^2))
+    cum_len <- cum_len + dist
+    thetas[i] <- cum_len
+  }
+  total_len <- cum_len + sqrt(sum((coords[b_indices[n_b],] - coords[b_indices[1],])^2)) # Close loop
+  thetas <- (thetas / total_len) * 2 * pi
+  u_fixed <- cos(thetas)
+  v_fixed <- sin(thetas)
+  if(spherical)
+  { v_fixed[v_fixed<0]=-1
+    v_fixed[v_fixed>0]=1
+    v_fixed[1]=0
+    v_fixed[which.min(u_fixed)]=0
+  }
+  all_indices <- 1:num_verts
+  interior_indices <- setdiff(all_indices, b_indices)
+  L_ii <- L[interior_indices, interior_indices]
+  L_ib <- L[interior_indices, b_indices]
+  str(L_ib)
+  str(u_fixed)
+  rhs_u <- -L_ib %*% u_fixed
+  rhs_v <- -L_ib %*% v_fixed
+  u_in <- solve(L_ii, rhs_u)
+  v_in <- solve(L_ii, rhs_v)
+  u_full <- numeric(num_verts)
+  v_full <- numeric(num_verts)
+
+  u_full[b_indices] <- u_fixed
+  u_full[interior_indices] <- as.vector(u_in)
+
+  v_full[b_indices] <- v_fixed
+  v_full[interior_indices] <- as.vector(v_in)
+  flat_mesh <- mesh
+  flat_mesh$vb[1,] <- u_full
+  flat_mesh$vb[2,] <- v_full
+  flat_mesh$vb[3,] <- 0
+  if(plt)  rgl::wire3d(flat_mesh)
+  if(spherical) { u_full=u_full*pi/2+pi/2;v_full=v_full*pi+pi}
+  return(list(uv = data.frame(u=u_full, v=v_full), mesh_flat = flat_mesh, bnd=b_indices))
+}
+
+
+#' Cut a Mesh Along a Path of Vertices
+#'
+#' Opens a closed mesh by "unzipping" it along a sequence of vertices.
+#' Interior vertices of the path are duplicated. Endpoints remain as "hinges".
+#'
+#' @param mesh An Rvcg mesh3d object.
+#' @param path A vector of integer vertex indices representing the cut path.
+#'             Must be a connected sequence of edges.
+#' @return A new mesh3d object with the cut applied (more vertices, updated faces).
+GEMINI_cut_mesh_along_path <- function(mesh, path) {
+  path=as.integer(path)
+  if(length(path) < 3) stop("Path must have at least 3 vertices to define a cut.")
+  p_inner <- path[2:(length(path)-1)]
+  n_dupes <- length(p_inner)
+  new_idx_map <- rep(0, ncol(mesh$vb))
+  new_coords <- mesh$vb[, p_inner]
+  start_new_idx <- ncol(mesh$vb) + 1
+  new_indices <- start_new_idx:(start_new_idx + n_dupes - 1)
+  faces <- t(mesh$it)
+  get_faces_on_edge <- function(u, v, face_mat) {
+    w1 <- which(face_mat == u, arr.ind = TRUE)[,1]
+    w2 <- which(face_mat == v, arr.ind = TRUE)[,1]
+    intersect(w1, w2)
+  }
+
+  get_right_sector_faces <- function(v, start_face_idx, start_edge_v1, stop_edge_v2, all_faces) {
+    sector_faces <- c()
+    current_face_idx <- start_face_idx
+    iter <- 0
+    max_iter <- 50
+    while(iter < max_iter) {
+      sector_faces <- c(sector_faces, current_face_idx)
+      f_verts <- all_faces[current_face_idx, ]
+      if (stop_edge_v2 %in% f_verts) {
+        return(sector_faces)
+      }
+      other_v <- f_verts[ !f_verts %in% c(v, ifelse(iter==0, start_edge_v1, prev_neighbor_v)) ]
+      candidates <- get_faces_on_edge(v, other_v, all_faces)
+      next_face <- setdiff(candidates, current_face_idx)
+      if(length(next_face) == 0) {
+        break
+      }
+      prev_neighbor_v <- other_v
+      start_edge_v1 <- other_v
+      current_face_idx <- next_face[1]
+      iter <- iter + 1
+    }
+    return(sector_faces)
+  }
+
+  faces_to_update <- list()
+  pivot <- path[2]
+  prev_v <- path[1]
+  next_v <- path[3]
+
+  init_faces <- get_faces_on_edge(prev_v, pivot, faces)
+  current_right_face <- init_faces[1]
+  updates <- matrix(0, nrow=0, ncol=3)
+  for (i in 1:length(p_inner)) {
+    v_idx <- p_inner[i]
+    v_new_idx <- new_indices[i]
+    v_prev <- path[i]
+    v_prev <- path[i]
+    v_curr <- path[i+1] # This is v_idx
+    v_next <- path[i+2]
+    sector_faces <- get_right_sector_faces(v_curr, current_right_face, v_prev, v_next, faces)
+    if(length(sector_faces) > 0) {
+      new_rows <- cbind(sector_faces, rep(v_curr, length(sector_faces)), rep(v_new_idx, length(sector_faces)))
+      updates <- rbind(updates, new_rows)
+      current_right_face <- sector_faces[length(sector_faces)]
+    }
+  }
+  mesh$vb <- cbind(mesh$vb, new_coords)
+  new_it <- mesh$it
+  if(nrow(updates) > 0) {
+    for(r in 1:nrow(updates)) {
+      f_idx <- updates[r, 1]
+      old_v <- updates[r, 2]
+      new_v <- updates[r, 3]
+      col_vals <- new_it[, f_idx]
+      match_pos <- which(col_vals == old_v)
+      if(length(match_pos) > 0) {
+        new_it[match_pos, f_idx] <- new_v
+      }
+    }
+  }
+  mesh$it <- new_it
+  mesh <- Rvcg::vcgUpdateNormals(mesh)
+  return(mesh)
+}
+
+#' find two extremal vertices along PC1 and some 5 paths to select from
+#' @param O 3d object
+#' @return NS=c(N,S), North and South vertex indices
+#' @return Path: list of index vectors connecting N and S by k-shortest path
+#' @examples
+#' data(SF4lr)
+#' SF4lr->O
+#' NorthSouth(O,13)->P # take 13th path
+#' P$Paths # candidate paths of vertices for cutting
+#' P$LVPath # 13th lowest var(z) path
+#' PlotPaths(O,P)
+#' O1 <- GEMINI_cut_mesh_along_path(O,P$LVPath)
+#' @export
+NorthSouth<-function(O,w=1){
+ Y=princomp(Obj2X(O))$scores
+ N=which.max(Y[,1])
+ S=which.min(Y[,1])
+ ia = c(O$it[1, ], O$it[2, ], O$it[3, ])
+ ja = c(O$it[2, ], O$it[3, ], O$it[1, ])
+  N <- max(max(ia), ja)
+ TN <- Matrix::sparseMatrix(dims = c(N, N), i = ia, j = ja,
+                           x = rep(1, length(ia)), use.last.ij = FALSE)
+ ig <- igraph::graph_from_adjacency_matrix(TN, mode = "undirected",
+                                          diag = FALSE)
+ P <- igraph::k_shortest_paths(ig, from = N, to = S, k=15)
+ v=sort(sapply(P$vpaths,function(x) {var(Y[x,3])}))
+ return(list(NS=c(N,S),Paths=P,vars=v, LVPath=(P$vpaths[[ order(v)[w] ]])))
+}
+
+#' @export
+PlotPaths<-function(O,P,LVPath=TRUE)
 {
-  N=dim(O$vb)[2]
-  if (max(w)>N ) stop("higher vertex index to remove than present in object")
-  length(w)
-  O2=O3=O
-  O2$vb<-O2$vb[,-(w)]
-
-  # make a lookup table for renumbering
-  wn=1:dim(O2$vb)[2] # for surviving vertices to renumber to
-  names(wn)=as.character(1:dim(O$vb)[2]) [-w] # filtered original indices
-
-  wa=apply(O2$it,2,function(x) any(x %in% (w)))
-  O2$it<-O2$it[,-which(wa)]
-
-  O2$it[]=wn[as.character(c(O2$it[]))]
-
-  Rvcg::vcgClean(O2,sel=1:7)->O2
-  return(O2)
+  rgl::shade3d(O,alpha=0.6,col="white")
+  if (LVPath) rgl::plot3d(Obj2X(O)[P$LVPath,],type="l",add=TRUE,col=1,lwd=6)
+  for (i in 1:length(P$Paths$vpaths))
+   rgl::plot3d(Obj2X(O)[unlist(P$Paths$vpaths[[i]]),],type="l",add=TRUE,col=i+1,lwd=1)
 }
 
 #
-# implements Brechbuehler solver to find initial (u,v)
-#
-#
-# Brechbuehler
-
+#' Brechbuehler.Init.uv.2
+#' @description
+#' computes spherical coordinates (u,v) for vertices of a 3D-object X
+#' The original algorithm from Brechbühler (1995) is implemented,
+#' but spherical areas are not iterated for refinement.
+#' The resulting (u,v) may not be optimal for fitting.
 #' @export
-Brechbuehler.Init.uv.2<-function(X1, Fit_order=12, InitFit=FALSE,poles.axis=2, mat.mode=c("cotan.lapl","cotan.chi","euclid"),file.out="Brechbuehler-init-uv-2.obj",rxy=0.01)
+Brechbuehler.Init.uv.2<-function (X1, Fit_order = 12, InitFit = FALSE, poles.axis = 2,
+                                  mat.mode = c("cotan.lapl", "cotan.chi", "euclid"), file.out = "Brechbuehler-init-uv-2.obj",
+                                  rxy = 0.01)
 {
-  X=X1
+  X = X1
   {
-    for (k in 1:3) X$vb[k,]=X$vb[k,]-mean(X$vb[k,])
-    x=t(X$vb[1:3,])
-    #
-    # original Brechbuehler 1995
-    #
-    tri=X$it
+    for (k in 1:3) X$vb[k, ] = X$vb[k, ] - mean(X$vb[k, ])
+    x = t(X$vb[1:3, ])
+    tri = X$it
     str(tri)
-    deg.v=max(table(X$it)) # maximum number of connections
-    n.v=dim(X$vb)[2]
-    nn=array(NA,c(n.v,deg.v)) #  upto nn neighbours ( == first shell addresses)
+    deg.v = max(table(X$it))
+    n.v = dim(X$vb)[2]
+    nn = array(NA, c(n.v, deg.v))
     dim(nn)
-    for (i in 1:n.v){
-      nn.i=c()
-      w.i=c(
-        tri[,which(tri[1,]==i)],
-        tri[,which(tri[2,]==i)],
-        tri[,which(tri[3,]==i)])
-      nn.i=unique(w.i)
-      #cat(i," ",i %in% nn.i,"\n")
-      nn.i=setdiff(nn.i,i)
-      #nn[i,1:(length(nn.i)-1)] <- nn.i[-which(nn.i==i)]
-      nn[i,1:(length(nn.i))] <- nn.i
+    for (i in 1:n.v) {
+      nn.i = c()
+      w.i = c(tri[, which(tri[1, ] == i)], tri[, which(tri[2,
+      ] == i)], tri[, which(tri[3, ] == i)])
+      nn.i = unique(w.i)
+      nn.i = setdiff(nn.i, i)
+      nn[i, 1:(length(nn.i))] <- nn.i
     }
-
-    X.tri=x
-
-    k.which=poles.axis
-
-    if (k.which<4)
-    { x1<-princomp(t(X1$vb[1:3,]))$scores[,1:3]
-    plot(x1[,1:2])
-    if (k.which==-3) {
-      w=(sqrt(x1[,1]^2+x1[,2]^2)<rxy)
-      f1p=which.min(x1[w,3])
-      f2p=which.max(x1[w,3])
-      f1=which(x1[,3]==x1[w,3][f1p])
-      f2=which(x1[,3]==x1[w,3][f2p])
-
-      points(x1[w,1:2],col=3,pch=19)
-      points(x1[c(f1,f2),1:2],col=2,pch=19,cex=1.3)
-    } else {
-      f1=which.min(x1[,k.which])
-      f2=which.max(x1[,k.which])}
-
-    } else
-    {
+    X.tri = x
+    k.which = poles.axis
+    if (k.which < 4) {
+      x1 <- princomp(t(X1$vb[1:3, ]))$scores[, 1:3]
+      plot(x1[, 1:2])
+      if (k.which == -3) {
+        w = (sqrt(x1[, 1]^2 + x1[, 2]^2) < rxy)
+        f1p = which.min(x1[w, 3])
+        f2p = which.max(x1[w, 3])
+        f1 = which(x1[, 3] == x1[w, 3][f1p])
+        f2 = which(x1[, 3] == x1[w, 3][f2p])
+        points(x1[w, 1:2], col = 3, pch = 19)
+        points(x1[c(f1, f2), 1:2], col = 2, pch = 19,
+               cex = 1.3)
+      }
+      else {
+        f1 = which.min(x1[, k.which])
+        f2 = which.max(x1[, k.which])
+      }
+    }
+    else {
       cat("\a")
       print("PICK NORTH AND SOUTH POLE centrally in plot")
-      princomp((t(X1$vb[1:3,])))$scores->mds
-      w.upper=which(mds[,1]>0)
-      w.lower=which(mds[,1]<0)
-      dev.new();plot(mds[w.upper,2:3],main="PICK NORTH AND SOUTH POLE from PCA (x,y) upper z here")
-      p=locator(1)
-      f1=which.min( abs(mds[w.upper,2]-p$x[1]) + abs(mds[w.upper,3]-p$y[1]))
-      plot(mds[w.lower,2:3],main="PICK NORTH AND SOUTH POLE from PCA (x,y) lower z here")
-      points(mds[w.upper,2:3],col="green",pch=".",cex=2.5)
-      points(mds[w.upper[f1],2:3],pch=20,cex=1.5,col="red")
-      p=locator(1)
-      f2=which.min( abs(mds[w.lower,2]-p$x[1]) + abs(mds[w.lower,3]-p$y[1]))
-      cat("PICKED (upper/lower indices)",f1," ",f2,"\n")
-      g1=c(which(mds[,1]==mds[w.upper[f1],1]),which(mds[,2]==mds[w.upper[f1],2]),which(mds[,3]==mds[w.upper[f1],3]))
-      g2=c(which(mds[,1]==mds[w.lower[f2],1]),which(mds[,2]==mds[w.lower[f2],2]),which(mds[,3]==mds[w.lower[f2],3]))
-      if (table(g1)==3) g1=g1[1] else stop("Error picking g1")
-      if (table(g2)==3) g2=g2[1] else stop("Error picking g2")
-      f1=g1;f2=g2;
-      cat("PICKED (vertex indices) ",f1," ",f2,"\n")
+      mds <- princomp((t(X1$vb[1:3, ])))$scores
+      w.upper = which(mds[, 1] > 0)
+      w.lower = which(mds[, 1] < 0)
+      dev.new()
+      plot(mds[w.upper, 2:3], main = "PICK NORTH AND SOUTH POLE from PCA (x,y) upper z here")
+      p = locator(1)
+      f1 = which.min(abs(mds[w.upper, 2] - p$x[1]) + abs(mds[w.upper,
+                                                             3] - p$y[1]))
+      plot(mds[w.lower, 2:3], main = "PICK NORTH AND SOUTH POLE from PCA (x,y) lower z here")
+      points(mds[w.upper, 2:3], col = "green", pch = ".",
+             cex = 2.5)
+      points(mds[w.upper[f1], 2:3], pch = 20, cex = 1.5,
+             col = "red")
+      p = locator(1)
+      f2 = which.min(abs(mds[w.lower, 2] - p$x[1]) + abs(mds[w.lower,
+                                                             3] - p$y[1]))
+      cat("PICKED (upper/lower indices)", f1, " ", f2,
+          "\n")
+      g1 = c(which(mds[, 1] == mds[w.upper[f1], 1]), which(mds[,
+                                                               2] == mds[w.upper[f1], 2]), which(mds[, 3] ==
+                                                                                                   mds[w.upper[f1], 3]))
+      g2 = c(which(mds[, 1] == mds[w.lower[f2], 1]), which(mds[,
+                                                               2] == mds[w.lower[f2], 2]), which(mds[, 3] ==
+                                                                                                   mds[w.lower[f2], 3]))
+      if (table(g1) == 3)
+        g1 = g1[1]
+      else stop("Error picking g1")
+      if (table(g2) == 3)
+        g2 = g2[1]
+      else stop("Error picking g2")
+      f1 = g1
+      f2 = g2
+      cat("PICKED (vertex indices) ", f1, " ", f2, "\n")
     }
-    (p.fix=c(f1,f2))
-    n.m=setdiff(1:n.v,p.fix) # unconstraint points for u
-
-    n=n.v-2
-    A=matrix(0,n,n)
-
-    renum=1:n # new index
-    names(renum)=as.character(n.m) # from old index
-
-    NN=NN1=list()
-    for (i in 1:n.v) {NN[[i]]<-na.omit(nn[i,])
-    NN1[[i]]<-setdiff(NN[[i]],p.fix)} # exclude poles from numbering of neighbours
-    k=1;
-    for (i in n.m)
-    { A[k,k]=length( NN[[i]] )
-    k=k+1
+    (p.fix = c(f1, f2))
+    n.m = setdiff(1:n.v, p.fix)
+    n = n.v - 2
+    A = matrix(0, n, n)
+    renum = 1:n
+    names(renum) = as.character(n.m)
+    NN = NN1 = list()
+    for (i in 1:n.v) {
+      NN[[i]] <- na.omit(nn[i, ])
+      NN1[[i]] <- setdiff(NN[[i]], p.fix)
     }
-
-    k=1;
-    for (i in n.m) # original indices n.m
-    { A[k,renum[as.character(NN1[[i]])]] <- -1
-    k=k+1}
-    #image(A)
-    range(A-t(A)) # symmetry : 0 0
-
-    b=rep(0,length(n.m)) # rhs for non-poles
-    nn.sp=NN[[p.fix[2]]]  # neighb of southpole
-    b[renum[as.character(nn.sp)]] <- pi # last line on page 157 (Brechbuehler et al 1995)
-
-    u.s<-solve(A,b)
-    u<-rep(0,n.v)
-    u[f1]<-0
-    u[f2]<-pi
-    u[n.m]<-u.s # non-pole solution
+    k = 1
+    for (i in n.m) {
+      A[k, k] = length(NN[[i]])
+      k = k + 1
+    }
+    k = 1
+    for (i in n.m) {
+      A[k, renum[as.character(NN1[[i]])]] <- -1
+      k = k + 1
+    }
+    range(A - t(A))
+    b = rep(0, length(n.m))
+    nn.sp = NN[[p.fix[2]]]
+    b[renum[as.character(nn.sp)]] <- pi
+    u.s <- solve(A, b)
+    u <- rep(0, n.v)
+    u[f1] <- 0
+    u[f2] <- pi
+    u[n.m] <- u.s
     plot(u)
-
-    u.bb.numb=c(0,u.s,pi) # for second phase to compute v
-
-    u.bb=u
+    u.bb.numb = c(0, u.s, pi)
+    u.bb = u
   }
-
-  # save u from above
-  u.0=u
-  # compare against direct solve
-  # plot(u.0,u.bb) # perfect
-
-  ia=c(X$it[1,],X$it[2,],X$it[3,]);ja=c(X$it[2,],X$it[3,],X$it[1,])
-  N<-max(max(ia),ja); TN <- Matrix::sparseMatrix(dims=c(N,N),i=ia,j=ja,x=rep(1,length(ia)),
-                                         use.last.ij=FALSE)
-  ig <-igraph::graph_from_adjacency_matrix(TN,mode="undirected",diag = FALSE)
-  # recompute  u directly from Laplacian
-  B=rep(0,n.v)
-  L=igraph::laplacian_matrix(ig,normalized = FALSE,sparse = TRUE)
-  # if (mat.mode=="cotan.lapl")   L<-cotan.Laplacian.Matrix(X,L) # overwrite sparse matrix with cotan-Laplacian
-  #  if (mat.mode=="cotan.chi")   L<-cotan.Chi.Matrix(X,L) # or with Chi-Laplacian
-  L.ret=L# give full Laplacian matrix back for later use
-  L[f1,]=0 ; L[f1,f1]=1 ; B[f1]=0  # to fix pole to zero
-  L[f2,]=0 ; L[f2,f2]=1 ; B[f2]=pi # to fix pole to pi ;
-  # later this is 2pi for East reference in v computation
-
-  solve(L,B)->u ##    re-solve for u
-  plot(u,u.0,main="compare Brechbuehler and Laplace-solver") # compare - diffenernce due to alternative Laplacian
-  #
-  # solve v with NS on v=0 and West on v=2*pi-epsilon
-
-  # create set of vertices on data-line N-pole to S-pole
-  (north.south <- igraph::shortest_paths(ig,from=f1,to=f2,output="vpath")$vpath[[1]])
-  # better take largest increases in u as north-south
-  #   check halo for better path
-  #
-  # no improvements by the following observed:
-  if(TRUE)
-    for (i in 1:3){
-      here=f1
-      north.south.new=as.numeric(north.south)
-      cnt=2 # start to set 2nd
-      while(here != f2)
-      {
-        n.here=as.numeric(neighbors(ig,here))
-        take=n.here[which.max(u[n.here])]
-        north.south.new[cnt]=take
-        here=take
-        cnt=cnt+1 # next
+  u.0 = u
+  ia = c(X$it[1, ], X$it[2, ], X$it[3, ])
+  ja = c(X$it[2, ], X$it[3, ], X$it[1, ])
+  N <- max(max(ia), ja)
+  TN <- Matrix::sparseMatrix(dims = c(N, N), i = ia, j = ja,
+                             x = rep(1, length(ia)), use.last.ij = FALSE)
+  ig <- igraph::graph_from_adjacency_matrix(TN, mode = "undirected",
+                                            diag = FALSE)
+  B = rep(0, n.v)
+  L = igraph::laplacian_matrix(ig, normalized = FALSE, sparse = TRUE)
+  L.ret = L
+  L[f1, ] = 0
+  L[f1, f1] = 1
+  B[f1] = 0
+  L[f2, ] = 0
+  L[f2, f2] = 1
+  B[f2] = pi
+  u <- solve(L, B)
+  plot(u, u.0, main = "compare Brechbuehler and Laplace-solver")
+  (north.south <- igraph::shortest_paths(ig, from = f1, to = f2,
+                                         output = "vpath")$vpath[[1]])
+  if (TRUE)
+    for (i in 1:3) {
+      here = f1
+      north.south.new = as.numeric(north.south)
+      cnt = 2
+      while (here != f2) {
+        n.here = as.numeric(igraph::neighbors(ig, here))
+        take = n.here[which.max(u[n.here])]
+        north.south.new[cnt] = take
+        here = take
+        cnt = cnt + 1
       }
-      north.south=north.south.new
+      north.south = north.south.new
     }
-
-  # check visually
-  halo=unique(unlist(ego(ig,order=1,north.south)))
-  pure.halo=setdiff(halo,north.south)
-  col=rep("black",n.v) ; col[north.south]="green"
-  col[pure.halo]="red"
-  rgl::wire3d(X,col=col,lwd=2)
-
-  # try to do it similar to Brechbuehler
-  EW=rep("",n.v)
-  here=f1
-  cnt=2 # start to set 2nd
-  done=f1
-  while(here != f2)
-  {
-    n.here=as.numeric(neighbors(ig,here))
-    take=n.here[which.max(u[n.here])] # next
-    n.take=neighbors(ig,take)
-    done=c(done,take)
-
-    (check=intersect(n.here,n.take))
-    #check=setdiff(check,EW!="") # already marked not to check
-    dV=X$vb[1:3,take]-X$vb[1:3,here]
-    dN=X$normals[1:3,here]
-    for (chk in check)
-    {dS=X$vb[1:3,chk]-X$vb[1:3,here]
-    D=det(matrix(c(dV,dS,dN),3,3)) # this is my solution to classify East vs. West
-    EW[chk]=ifelse(D<0,"E","W")
+  halo = unique(unlist(igraph::ego(ig, order = 1, north.south)))
+  pure.halo = setdiff(halo, north.south)
+  col = rep("black", n.v)
+  col[north.south] = "green"
+  col[pure.halo] = "red"
+  rgl::wire3d(X, col = col, lwd = 2)
+  EW = rep("", n.v)
+  here = f1
+  cnt = 2
+  done = f1
+  while (here != f2) {
+    n.here = as.numeric(igraph::neighbors(ig, here))
+    take = n.here[which.max(u[n.here])]
+    n.take = igraph::neighbors(ig, take)
+    done = c(done, take)
+    (check = intersect(n.here, n.take))
+    dV = X$vb[1:3, take] - X$vb[1:3, here]
+    dN = X$normals[1:3, here]
+    for (chk in check) {
+      dS = X$vb[1:3, chk] - X$vb[1:3, here]
+      D = det(matrix(c(dV, dS, dN), 3, 3))
+      EW[chk] = ifelse(D < 0, "E", "W")
     }
-    #  EW[setdiff(n.here,check) ] = " " # mark as not to check; maybe only for f1 (N)?
-    here=take
-    cnt=cnt+1 # next
+    here = take
+    cnt = cnt + 1
   }
   table(EW)
-  sum(EW!="")
-
+  sum(EW != "")
   rgl::clear3d()
-  rgl::wire3d(X,col=col,lwd=2)
-  rgl::spheres3d(t(X$vb[1:3,EW=="W"]),rad=0.05,col="green")
-  rgl::spheres3d(t(X$vb[1:3,EW=="E"]),rad=0.05,col="blue")
-
-  all(which(EW!="") %in% halo) # some more in halo to check for their neighbour on the date line!
-  rest=setdiff(pure.halo,which(EW!=""))
+  rgl::wire3d(X, col = col, lwd = 2)
+  rgl::spheres3d(t(X$vb[1:3, EW == "W"]), rad = 0.05, col = "green")
+  rgl::spheres3d(t(X$vb[1:3, EW == "E"]), rad = 0.05, col = "blue")
+  all(which(EW != "") %in% halo)
+  rest = setdiff(pure.halo, which(EW != ""))
   length(rest)
   length(pure.halo)
-
-  # just fill up with "E" between two "E"
-  East=which(EW=="E")
-  West=which(EW=="W")
-
-  # remove north/southpoles neighbours that are not to check
-  n.n=neighbors(ig,f1)
-  mark=setdiff(n.n,which(EW!=""))
-  EW[mark] =" "
-  n.s=neighbors(ig,f2)
-  mark=setdiff(n.s,which(EW!=""))
-  EW[mark] =" "
-
-  #  open3d()
-  #  wire3d(X,lwd=1)
-
-  #  spheres3d(t(X$vb[1:3,West]),rad=0.05,col="green")
-  #  spheres3d(t(X$vb[1:3,East]),rad=0.05,col="blue")
-  #  spheres3d(t(X$vb[1:3,rest]),rad=0.06,col="black")
-
-  # for vertices with only a single linkage to north wets:
-  #    take EW from the neighbours EW
-  #
-
-  rest=setdiff(rest,c(f1,f2))
-
-  for (i in rest) # rest has no poles
-  { print(i)
-    n.i=neighbors(ig,i)
-    ew=EW[n.i];
-    tb=table(ew)
+  East = which(EW == "E")
+  West = which(EW == "W")
+  n.n = igraph::neighbors(ig, f1)
+  mark = setdiff(n.n, which(EW != ""))
+  EW[mark] = " "
+  n.s = igraph::neighbors(ig, f2)
+  mark = setdiff(n.s, which(EW != ""))
+  EW[mark] = " "
+  rest = setdiff(rest, c(f1, f2))
+  for (i in rest) {
+    print(i)
+    n.i = igraph::neighbors(ig, i)
+    ew = EW[n.i]
+    tb = table(ew)
     print(tb)
-    if (any(names(tb) %in% c("W","E")))
-    {
-      if (("E" %in% names(tb)) & ("W" %in% names(tb)))
-      {cat("cannot decide EW in rest (chose W): ",i,"\n");EW[i]="W"} else
-        EW[i]=names(tb[names(tb) %in% c("W","E")])
+    if (any(names(tb) %in% c("W", "E"))) {
+      if (("E" %in% names(tb)) & ("W" %in% names(tb))) {
+        cat("cannot decide EW in rest (chose W): ", i,
+            "\n")
+        EW[i] = "W"
+      }
+      else EW[i] = names(tb[names(tb) %in% c("W", "E")])
     }
   }
-
-  # open3d()
-  #  wire3d(X,col=col,lwd=2)
-  #  spheres3d(t(X$vb[1:3,EW=="W"]),rad=0.05,col="green")
-  #  spheres3d(t(X$vb[1:3,EW=="E"]),rad=0.05,col="blue")
-
-  #update East and West indices
-  East=which(EW=="E")
-  West=which(EW=="W")
-
-
-  #
-  # now we have marked points from pure halo (that are connected with north-south-line) for being left or right from line
-  # time to use EW
-  #
-
-  # assemble linear problem from scratch for v
-  L=igraph::laplacian_matrix(ig,sparse=TRUE) # or re-use L.ret from above
-
-  B=rep(0,n.v)
-  for (i in c(f1,f2)) {L[i,which(L[i,]<0)]<-0;L[i,i]<-1} # fix poles v
-  B[f2]=pi # not actually needed; set all West to 2pi-epsilon
-  B[f1]=pi
-  epsilon=pi/length(north.south)
-
-
-  inner=setdiff(north.south,c(f1,f2))
-  for (i in inner) {L[i,which(L[i,]<0)] <-0 ; L[i,i]<-1; B[i]=0} # fix north-south to v=0 (B[inner]=0)
-
-  for (i in West){ L[i,which(L[i,]<0)] <-0 ; L[i,i]<-1; B[i]=2*pi-epsilon}
-
-  # TO CHECK : THIS CODE REMOVAL
-  #    w=which(L[i,]<0) # what is i connected with?
-  #    w1=intersect(w,north.south) # restrict to north-south
-  #    cat(w1,"\n")
-
-  #  if (length(w1)>0) L[i,w1]<-0; L[i,f2]=-length(w1) # instead of ns point to south,
-  #  where v=2 pi implies that some connections get lost because
-  #    so use |w1| as entry to compensate
-  # this is would not work with cotan matrices?
-  #
-  #alternative:
-  #   move weights into L_j,f2 one by one
-
-  B[f2]=pi
-
-  solve(L,B)->v
-  v=as.numeric(v)
+  East = which(EW == "E")
+  West = which(EW == "W")
+  L = igraph::laplacian_matrix(ig, sparse = TRUE)
+  B = rep(0, n.v)
+  for (i in c(f1, f2)) {
+    L[i, which(L[i, ] < 0)] <- 0
+    L[i, i] <- 1
+  }
+  B[f2] = pi
+  B[f1] = pi
+  epsilon = pi/length(north.south)
+  inner = setdiff(north.south, c(f1, f2))
+  for (i in inner) {
+    L[i, which(L[i, ] < 0)] <- 0
+    L[i, i] <- 1
+    B[i] = 0
+  }
+  for (i in West) {
+    L[i, which(L[i, ] < 0)] <- 0
+    L[i, i] <- 1
+    B[i] = 2 * pi - epsilon
+  }
+  B[f2] = pi
+  v <- solve(L, B)
+  v = as.numeric(v)
   cat("RANGE RESID:")
-  print(abs(range(L%*%v-B)))
-  plot(u,v,main="Brechbuehler initial")
-  points(u[East],v[East],pch=19,col=2)
-  points(u[West],v[West],pch=19,col=3)
-  points(u[inner],v[inner],pch=19,col=4)
-
-  X$texcoords=rbind(as.numeric(u),as.numeric(v))
-
-  #shade3d(X, col="white",meshColor = "vertices")
-  #  contourLines3d(X,fn=X$texcoords[1,],100,lwd=1)
-  #open3d()
-  #shade3d(X, col="white",meshColor = "vertices",texcoords=cbind(u,v))
-  #  contourLines3d(X,fn=X$texcoords[2,],100,col="red")
-
-  # jump at date line from inner to East generates quite dense countours
-  #   which is correct !!!
-
-  #  spheres3d(t(X$vb[1:3,EW=="W"]),rad=0.05,col="green")
-  #  spheres3d(t(X$vb[1:3,EW=="E"]),rad=0.05,col="blue")
-  #  open3d()
-  #  clear3d()
-  #  shade3d(X, col="white",meshColor = "vertices",textu="checkers_fine.png")
-
-  # try a fit then look for problems/overhanging triangles
-  if (InitFit)
-  {
-    uv=t(X$texcoords)
+  print(abs(range(L %*% v - B)))
+  plot(u, v, main = "Brechbuehler initial")
+  points(u[East], v[East], pch = 19, col = 2)
+  points(u[West], v[West], pch = 19, col = 3)
+  points(u[inner], v[inner], pch = 19, col = 4)
+  X$texcoords = rbind(as.numeric(u), as.numeric(v))
+  if (InitFit) {
+    uv = t(X$texcoords)
     dim(uv)
-
-    bas.i<-MakeBasis_0_irreg(Fit_order,uv[,1],uv[,2])
+    bas.i <- MakeBasis_UV(Fit_order, uv[, 1], uv[, 2])
     dim(bas.i$Ylm)
-
-    a_v<-VertexAreasOBJ(X)
-
-    A.init<-FitAlm_Tikhonov(x,bas.i,lambda = 0.1)#,weights=a_v^3)
-    grd=MakeGrid_GaussLegendreSimpson(50)
-    bas=MakeBasis_UV(Fit_order,grd$U,grd$V)
-    updateX(A.init,grd,bas)->C
-    rgl::plot3d(C$X,asp=F)
+    a_v <- VertexAreasOBJ(X)
+    A.init <- FitAlm_Tikhonov(x, bas.i, lambda = 0.1)
+    grd = MakeGrid_GaussLegendreSimpson(50)
+    bas = MakeBasis_UV(Fit_order, grd$U, grd$V)
+    C <- updateX(A.init, grd, bas)
+    rgl::plot3d(C$X, asp = F)
     range(A.init)
     rgl::open3d()
     rgl::wire3d(X)
     rgl::writeOBJ(file.out)
-  } else A.init<-NULL
-
-  return(list(uv=cbind(u,v),OBJ=X,L.full=L.ret,A.init=A, East=East, West=West,Inner=inner,f1=f1,f2=f2,igraph=ig,A.init=A.init,poles=p.fix))
+  }
+  else A.init <- NULL
+  return(list(uv = cbind(u, v), OBJ = X, L.full = L.ret, A.init = A,
+              East = East, West = West, Inner = inner, f1 = f1, f2 = f2,
+              igraph = ig, A.init = A.init, poles = p.fix,
+              north.south=north.south))
 }
 
 
+#' Obj2ObjQ
+#' @description
+#' makes a 3d-object of quads from a 3d-object of triangles (requires regular grid grd)
 #' @export
-Obj2ObjQ<-function(O,grd)
+Obj2ObjQ<-function (O, grd)
 {
-  nx=grd$nu;ny=grd$nv;
-  q=matrix(NA,4,nx*ny);k=0
-  for (i in 1:(nx-1))  for (j in 1:(ny-1)){
-    k=k+1;
-    l=(j-1)*nx+i
-    q[1,k]=l
-    q[2,k]=l+1
-    q[3,k]=l+1+nx
-    q[4,k]=l+nx
+  nx = grd$nu
+  ny = grd$nv
+  q = matrix(NA, 4, nx * ny)
+  k = 0
+  for (i in 1:(nx - 1)) for (j in 1:(ny - 1)) {
+    k = k + 1
+    l = (j - 1) * nx + i
+    q[1, k] = l
+    q[2, k] = l + 1
+    q[3, k] = l + 1 + nx
+    q[4, k] = l + nx
   }
-  # could make a closed form removing double vertices, but this woould complicate updating coords
-  rgl::qmesh3d(O$vb,indices = q[,1:k], normals = matrix(0,3,k) )-> M
+  M <- rgl::qmesh3d(O$vb, indices = q[, 1:k], normals = matrix(0,
+                                                               3, k))
   return(M)
 }
 
+#' X2ObjQ
+#' @description
+#' puts coordinates X into object O, which may be of quads
 #' @export
 X2ObjQ<-function(O,X)
-{ O$vb=rbind(t(X),1) # ingest coordinates in 3d-graphics objec
+{ O$vb=rbind(t(X),1) # ingest coordinates in 3d-graphics object
 return(O)  # quads dont allow for vcgUpdatenormals for unknown reason
 }
 
+#' MakeMemRBC
+#' @description
+#' Make a MemRBC object from coefficients, grid and basis
+#' @param A,grd,bas coeffs, grid and dasis data for MemRBC object
+#' @return MemRBC object
+#' @export
+MakeMemRBC <- function(A,G,B)
+{ return(structure(class="MemRBC",list(A=LM2A(A,B),grd=G,bas=B)))}
 
+#' @export
+CenterX<-function(X)
+{  return(apply(X,2,function(x) x-mean(x))) }
 
-#
-# create an Unduloid 3d object for a fraction or multiple of periods
-#
+#' TriMesh_Unduloid
+#' @description
+#' create an Unduloid 3d object for a fraction or  multiple periods.
+#' Unduloids may be interesting shapes to fit, see example.
+#' @examples
+#' # a special grid is made with hole at north and south pole,
+#' # ie, u starts not at zero
+#' open=0.4 # also higher work, but objects boundary is never fitted
+#' g<-MakeGrid_GaussLegendreSimpson(180,ua=open,ub=pi-open)
+#' g$ndof
+#' range(g$U)
+#' (U<-TriMesh_Unduloid(periods=4,nx=g$nu,ny=g$nv-1, a=1,c=0.1,clean=FALSE))
+#' attr(U,"H_theor") # theoretical mean curvature
+#' attr(U,"H_vcg_6") # mean from vertices with 6 neighbors
+#' #  mean curvature for other vertices is problematic in vcg
+#' b<-MakeBasis_UV(23,g$U,g$V)
+#' # one should exclude double coordinates for
+#' # the fit, so mask is needed
+#' b$mask<-double_uv_ind(b$uv[,1],b$uv[,2])
+#' CenterX(Obj2X(U)) -> X
+#' cat(dim(X)[1],"?=", g$ndof,"\n")
+#' if (dim(X)[1] == g$ndof)
+#' { # if not matching repeat with alternative n in grid
+#' rgl::plot3d(X,col=2,aspect=FALSE)
+#' X2Obj(U,X) -> U1
+#' rgl::contourLines3d(U1,b$uv[,1],levels=(0:100)*pi/100)
+#' rgl::contourLines3d(U1,b$uv[,2],40)
+#' rgl::shade3d(U1,col="grey",alpha=0.5)
+#' A<-FitAlm_Tikhonov(X,b,lambda=0) # , WX=sin(g$U))
+#' A[,3]<--A[,3] # wrong orientation correction
+#' # you may try the fit with weights, WX=sin(g$U)
+#' MakeMemRBC(A,g,b)->M
+#' rgl::open3d()
+#' rgl::plot3d(X,aspect=FALSE,alpha=0.45)
+#' plot(M,alpha=0.45,col="cyan",wire=FALSE)
+#' E=E_SCM(M$A,M$grd,M$bas,updateX(M$A,M$grd,M$bas))
+#' -E$Curv/E$Area/2 # mean curvature from integral over area
+#' attr(U,"H_vcg_6") # comparison with original
+#' imag.obj.colorbar(U1,E$curv)
+#' rgl::title3d("curvature density")
+#' X1<-updateX(M$A,M$grd,M$bas)$X
+#' M$grd$Obj<-X2Obj(M$grd$Obj,X1)
+#' rgl::shade3d(M$grd$Obj,alpha=0.2)
+#' mean(E$curv/E$dA/2)
+#' M.C0=0;M.mu=0;M.Ka=0
+#' M$bas$Target[1:2]=c(E$Area,E$Volume)
+#' save_MemRBC(M,"Unduloid.rdat")
+#' MMC(M,1000,plt=TRUE,pltfreq=2,C0=0)
+#' }
 #' @export
 TriMesh_Unduloid<-function(a=1,c=2,periods=1.0,nx=40,ny=40,shade=TRUE,wire=FALSE,clean=TRUE)
 { m=(c^2-a^2)/2;n=(c^2+a^2)/2
@@ -3222,9 +3852,13 @@ TriMesh_Unduloid<-function(a=1,c=2,periods=1.0,nx=40,ny=40,shade=TRUE,wire=FALSE
   u=pracma::linspace(-ulimdown,-ulimdown+p*periods,nx); phi=u*mu/2-pi/4
   x=Re(a*Carlson::elliptic_F(phi,k2)+c*Carlson::elliptic_E(phi,k2))
   z=Re(sqrt(m*sin(mu*u)+n))
-
+  uv=matrix(NA,ny*nx,2)
   d=2*pi/ny
   r_mat=matrix(c(cos(d),sin(d),-sin(d),cos(d)),2,2)
+
+  uv[,2]=rep(pracma::linspace(0,2*pi,ny),nx)
+  uv[,1]=rep(pracma::linspace(0,pi,nx),each=ny)
+
   X1=X=cbind(0,z)
   Y=array(NA,c(length(x),ny+1,3))
   for (i in 1:(ny+1))
@@ -3250,9 +3884,12 @@ TriMesh_Unduloid<-function(a=1,c=2,periods=1.0,nx=40,ny=40,shade=TRUE,wire=FALSE
 
   if (shade) rgl::shade3d(M,alpha=0.6,col="white")
   if (wire) rgl::wire3d(M)
-  if (clean) Rvcg::vcgClean(M)->M
-  attr(M,"H")=1/(a+c) # store theoretical value of constant mean curvature
+  if (clean) Rvcg::vcgClean(M,1:7)->M
+  attr(M,"H_theor")=1/(a+c) # store theoretical value of constant mean curvature
+  tb=table(M$it) # trick to get degree 6 vertices:
+  attr(M,"H_vcg_6")=mean(Rvcg::vcgCurve(M)$meanvb[tb==6])
   # the attribute is probably not inherited in derived objects.
+  M$uv=uv
   return(M)
 }
 
@@ -3260,148 +3897,50 @@ TriMesh_Unduloid<-function(a=1,c=2,periods=1.0,nx=40,ny=40,shade=TRUE,wire=FALSE
 #    use polynomials of degree 12 to fit to lowess fits with other data
 #
 #' @export
-Lowess_vcg_meanvbOBJ<-function(x,O) # return corrected
+Lowess_vcg_meanvbOBJ<-function(x,O) # return mean curvature
 {
   LW=list()
   LM=list()
   crv=Rvcg::vcgCurve(O)
-  tb=table(O$it)
+  tb=table(O$it)# how often a vertex is addressed
   kr=unique(tb)
   print(kr)
   plot(0,0,col=0,xlim=range(x),ylim=range(-crv$meanvb))
   for (k in kr){
+    length(x[tb==k])
+    length(crv$meanvb[tb==k])
+
     LW[[k]] = lowess(x[tb==k],-crv$meanvb[tb==k],f=0.1)
-    points(LW[[k]],type="l",lwd=3,col=k-3)
+    points(LW[[k]],type="l",lwd=3,col=k)
     xx=LW[[k]]$x;yy=LW[[k]]$y
-    LM[[k]] = polyfit(xx,yy,12)
-    points(xx,polyval(LM[[k]],xx),col=k-3,cex=1.5,lwd=2)
+    LM[[k]] = pracma::polyfit(xx,yy,12)
+    points(xx,pracma::polyval(LM[[k]],xx),col=k,cex=1.5,lwd=2)
   }
   X=Y=Z=rep(0,length(x)) # unordered return
   LX=LY=LK=list()
   for (k in kr){
-    if (k!=6) LY[[k]]=-crv$meanvb[tb==k] - polyval(LM[[k]],x[tb==k]) + polyval(LM[[6]],x[tb==k]) else LY[[6]]=-crv$meanvb[tb==6]
-    points(x[tb==k],LY[[k]],col=k-3)
+    if (k!=6) LY[[k]]=-crv$meanvb[tb==k] - pracma::polyval(LM[[k]],x[tb==k]) + pracma::polyval(LM[[6]],x[tb==k]) else LY[[6]]=-crv$meanvb[tb==6]
+    points(x[tb==k],LY[[k]],col=k)
     Y[tb==k]=LY[[k]]
     LX[[k]]=x[tb==k]
     X[tb==k]=LX[[k]]
     LK[[k]]=rep(k,sum(tb==k))
     Z[tb==k]=k
   }
-
-  return(list(x=unlist(LX),y=unlist(LY),k=unlist(LK),X=X,Y=Y,K=Z)) # k-sorted output, not good for coloring 3d object
+  return(list(x=unlist(LX),y=unlist(LY),k=unlist(LK),X=X,Y=Y,K=Z))
+  # k-sorted output, not good for coloring 3d object
 }
 
-
-
-
-
-# Filters:
-
-# must be:
-# Z is zero mode
-# X is +1 mode
-# Y is -1 mode
-
-# keep only lowest cos(i*v) and sin(i*v) terms, i.e. i=1
-# and make circular crosssections
-#' @export
-Filter_Z_AxiSymm<-function(A,bas)
-{if (!is.matrix(A)) A=LM2A(A,bas)
-  A1=A; M=bas$LM[,2]; L=bas$LM[,1]
-  for (l in bas$Lset){
-    #take the mean of cos/sin coeffs, make structure
-    #  really axisymmetric
-    a=(A[L==l & M==-1,2] + A[L==l & M==+1,1])/2
-    A1[  L==l & M==-1,2] = A1[L==l & M==+1,1] = a
-
-    A1[L==l & M!=-1, 2]=0 # sparsity pattern for axisymm.
-    A1[L==l & M!=+1, 1]=0 # sparsity "
-    A1[L==l & M!= 0, 3]=0 # pole on Z axis
-  }
-  return(A1)
-}
-
-
-# needs more thought with signs of a ...
-#' @export
-Filter_Reduced_AxiSymm<-function(A,bas)
-{ A=matrix(A,ncol=3)
-  for (i in 1:bas$L_max)
-  {
-   a=(A[(i-1)*3+1,2] - A[(i-1)*3+3,1])/2
-   A[(i-1)*3+1,2] = a
-   A[(i-1)*3+3,1] = a
-  }
-  A[c(1,2),3]   =0
-  A[c(1,3),2]   =0
-  A[c(2,3),1]   =0
-return(A)
-}
-
-
-
-
-
-#
-# keep only abs-maximal entries per (l,m)
-#   - removes partially correlated coordinates like X=1*sin, Y=0.1*sin
-#
-#' @export
-Filter_A_m<-function(A,bas,max_per_l=1)
-{
-  A1=A; A1[]<-0
-  L=bas$LM[,1];M=bas$LM[,2]
-  Ls=which(diff(L)>0)
-  Ls=c(0,Ls)
-  ll=0;
-  for (l in bas$Lset){
-    ll=ll+1
-    for (k in 1:3)
-    {w=rev(order(abs(A[L==l,k])))[1:max_per_l]
-    #     print(A[w+Ls[ll],k]);
-    A1[w+Ls[ll],k]=A[w+Ls[ll],k]
-    }
-    # cat("\n")
-  }
-  return(A1)
-}
-
-
-# reduce basis according to zero-rows in filtered A1
-#' @export
-Filter_Basis<-function(bas,A,A1)
-{
-# modify bas according to zero entries in A1
-# also give back a reduced version of A to continue work with
-del=c() # deletion candidates
-for(i in 1:bas$Ai_max) if (all(A1[i,]==0)) del=c(del,i)
-#cat("Filtering for ",del,"\n")
-rownames(bas$A)[del]->exclude
-# now reduce
-bas$Ylm <-bas$Ylm[,-del]
-bas$Ylm_u <-bas$Ylm_u[,-del]
-bas$Ylm_v <-bas$Ylm_v[,-del]
-bas$Ylm_vv<-bas$Ylm_vv[,-del]
-bas$Ylm_uu<-bas$Ylm_uu[,-del]
-bas$Ylm_uv<-bas$Ylm_uv[,-del]
-bas$LM<-bas$LM[-del,]
-bas$l=bas$LM[,1]
-bas$m=bas$LM[,2]
-bas$Lset=unique(bas$l)
-bas$Mset=unique(bas$m)
-bas$Ai_max=dim(bas$LM)[1]
-bas$comment=paste("m-filtered basis, excluded ",exclude)
-A<-A1[-del,]
-bas$A<-A
-bas$G.tk<-bas$G.tk[-del]
-return(list(bas=bas,A=A))
-}
 
 #
 # dense regions in u,v can be stretched by this
 #  - coserves triangulation quality
 #   needed for postprocessing Brechbühler
 #
+#' spreadout.uv
+#' @description Brechbuhler initial uv may be redistributed
+#' Sparse regions are contracted.
+#' @param uv : n x 2 matrix of (u,v), like $uv returned from Brechbuhler
 #' @export
 spreadout.uv<-function(uv)
 {
@@ -3448,7 +3987,11 @@ spreadout.uv<-function(uv)
   return(uv)
 }
 
-
+#' ConsIter
+#' @description
+#' Iterates coefficients to fulfill constraints.
+#' Needed in Rosen Projection methods.
+#' only SCM gradient is computed for constraint Jacobian
 #' @export
 ConsIter<-function(A,grd,bas,C,g2, Ctol=1e-3, nsteps=20,
                    prn=FALSE,del_cons=0.3,nm=FALSE,do_one=TRUE)
@@ -3469,7 +4012,7 @@ ConsIter<-function(A,grd,bas,C,g2, Ctol=1e-3, nsteps=20,
   };
   sol=rep(0,Nc) # default to return
   while ((NCons>Ctol & l<nsteps) | ( l==0 )){
-    #if (l==0 & !do_one) break; # not impolemented;
+    #if (l==0 & !do_one) break; # not implemented;
     NCons1=NCons
     dFm<-c(g2[[ bas$Cons[1] ]])
     for (ii in 2:Nc) dFm=cbind(dFm,c(g2[[bas$Cons[ii]]])) # additional constraints
@@ -3478,12 +4021,9 @@ ConsIter<-function(A,grd,bas,C,g2, Ctol=1e-3, nsteps=20,
     sol<- (- Pm %*%Cons_RHS)[,1]
     names(sol)=names(bas$Cons)
     delta <- sol[1]*dFm[,1] ; for (i in 2:Nc) delta<-delta + sol[i]*dFm[,i]
-  #  delta <- Filter_1_delta(delta) # fix the orientation of L=1 (ellipsoid)
     A <- A + del_cons * delta
-    # A<-Filter_1_A(A) # not needed if delta was filtered and A is filtered before
 
     updateX(A,grd,bas) -> C
-    #  plotA_l(delta,bas,bar=TRUE,ylab=expression(~delta*A[cons]),main="CONS")
     E_SCM(A,grd,bas,C) -> h2
     Grad_SCM(h2,grd,bas,C) -> g2
 
@@ -3504,118 +4044,167 @@ ConsIter<-function(A,grd,bas,C,g2, Ctol=1e-3, nsteps=20,
 #   constraints are treated outside with Langrangian, involving Jacobians of constraint functions, registered in basis as strings of gradient names (bas$QCons)
 #
 
-# have seen in a L=12 stomatocyte CNM that axis is tilting
-# so retry with this flag TRUE
-glob_fltZ=TRUE
-
+#' FullModelHessian
+#' @description
+#'  computes the full model Hessian
+#' of the coefficients, as used in CNM.
+#' It is based on finite differences of gradients
+#' with a symmetrization.
+#' @param del finite difference delta for coefficients
+#' @returns Full Hessian matrix, ie also constraint Jacobian
 #' @export
-FullModelHessian<-function(A,grd,bas,Ref,del=1e-5,Ctol=1e-3,nm=FALSE)
-{ tictoc::tic()
-  Ai_max=bas$Ai_max
-  C=updateX(A,grd,bas)
-  h20=E_SCM(A,grd,bas,C)
-  S=SEN(A,grd,bas,Ref,h20)
-  ES=E_SEN(A,grd,bas,S,Ref)
-  Gh20=Grad_SCM(h20,grd,bas,C)
-  GS0=Grad_SEN(A,grd,bas,Gh20,S,Ref)
-  if (glob_fltZ) G0=c(Filter_1_delta(Gh20$grad_SCM) + Filter_1_delta(GS0$grad_SEN)) else G0=c(Gh20$grad_SCM + GS0$grad_SEN) # given back as $G
-  if(nm) G0=make_delta_normal_to_surface(G0,grd,bas,h20$n)
-  H=matrix(0, Ai_max*3, Ai_max*3)
-  for (j in 1:(3*Ai_max))
-  { if (j %% 10==0) cat(" ",round(j/(3*Ai_max)*100,1),"\r")
-    A1=A; A1[j]=A1[j]+del
-    C=updateX(A1,grd,bas)
-    h2=E_SCM(A1,grd,bas,C)
-    S=SEN(A1,grd,bas,Ref,h2)
-    Gh2=Grad_SCM(h2,grd,bas,C)
-    GS=Grad_SEN(A1,grd,bas,Gh2,S,Ref)
-    if (glob_fltZ) Gj=c(Filter_1_delta(Gh2$grad_SCM) + Filter_1_delta(GS$grad_SEN)) else
-          Gj=c(Gh2$grad_SCM + GS$grad_SEN)
-    if(nm) Gj=make_delta_normal_to_surface(Gj,grd,bas,h20$n)
-    H[,j]= (Gj-G0)/del
+FullModelHessian<-function (A, grd, bas, Ref, del = 1e-06, Ctol = 0.001)
+{
+  L0 = L = list()
+  tictoc::tic()
+  Ai_max = bas$Ai_max
+  C = updateX(A, grd, bas)
+  h20 = E_SCM(A, grd, bas, C)
+  S = SEN(A, grd, bas, Ref, h20)
+  ES = E_SEN(A, grd, bas, S, Ref)
+  Gh20 = Grad_SCM(h20, grd, bas, C)
+  GS0 = Grad_SEN(A, grd, bas, Gh20, S, Ref)
+  G0 = c(Gh20$grad_SCM + GS0$grad_SEN)
+  for (i in bas$Cons[1:bas$Nc]) L[[i]] = matrix(0, Ai_max *
+                                                  3, Ai_max * 3)
+  H = matrix(0, Ai_max * 3, Ai_max * 3)
+  j = 0
+  A1 = A
+  for (k in 1:3) for (i in 1:Ai_max) {
+    j = j + 1
+    if (j%%10 == 0)
+      cat(" ", round(j/(3 * Ai_max) * 100, 1), "\r")
+    C = synth_update(C, bas, i, k, +del)
+    h2 = E_SCM(A, grd, bas, C)
+    Gh2 = Grad_SCM(h2, grd, bas, C)
+    C = synth_update(C, bas, i, k, -del)
+    A1[j] = A1[j] + del
+    S = SEN(A1, grd, bas, Ref, h2)
+    GS = Grad_SEN(A1, grd, bas, Gh2, S, Ref)
+    A1[j] = A1[j] - del
+    Gj = c(Gh2$grad_SCM + GS$grad_SEN) - G0
+    for (m in bas$Cons[1:bas$Nc]) {
+      L[[m]][, j] = (Gh2[[m]] - Gh20[[m]])/del
+    }
+    H[, j] = Gj/del
   }
+  for (m in bas$Cons[1:bas$Nc]) L[[m]] = 0.5 * (L[[m]] + t(L[[m]]))
   tictoc::toc()
-  return(list(H=(H+t(H))/2,H_fd=H,G=G0,GS=GS,g2=Gh20,
-              E=h2$Wb+ES,ES=ES,Wb=h2$Wb,h2=h20,
-              C=C,gradC=Gh20$gradC,gradA=Gh20$gradA,
-              gradV=Gh20$gradV,A=A))
+  return(list(H = (H + t(H))/2, L = L, H_fd = H, G = G0, GS = GS,
+              g2 = Gh20, E = h2$Wb + ES, ES = ES, Wb = h2$Wb, h2 = h20,
+              C = C, gradC = Gh20$gradC, gradA = Gh20$gradA, gradV = Gh20$gradV,
+              A = A))
 }
 
+
+#' ID
+#' @description a template filter for modification of
+#' coefficients.
+#' Such a filter can be used in only a few apps, like MMC.
 #' @export
 ID<-function(A,bas)
 { return(A)
 }
 
-
+#' FullModelHessian_Par
+#' @description parallel computed Hessian including constraint gradients; serial gradients but a list-parallel approach to assemble H
 #' @export
-FullModelHessian_Par<-function(A, grd, bas, Ref, del=5e-6, Ctol=1e-3, nm=FALSE, Mem_mc.cores = 4, filter_grad=ID, timing=TRUE )
+FullModelHessian_Par <- function (A, grd, bas, Ref, del = 5e-06, 
+                                  Mem_mc.cores = 4, timing = TRUE, startup = TRUE,
+                                  stopdown = TRUE)
 {
-#  cat("M.C0(Driver) ",M.C0,"P",eval(M.C0,envir = .GlobalEnv),"\n")
-
-  Ai_max=bas$Ai_max
-  C=updateX(A,grd,bas)
-  .M.C0<<-C
-  .M.Ref<<-Ref
-  .M.bas<<-bas
-  .M.grd<<-grd # these will be shared by cluster export; hence must reside in upper environment
-  h20=E_SCM(A,grd,bas,C)
-  S=SEN(A,grd,bas,Ref,h20)
-  ES=E_SEN(A,grd,bas,S,Ref)
-
-  Gh20=Grad_SCM(h20,grd,bas,C)
-  GS0=Grad_SEN(A,grd,bas,Gh20,S,Ref)
-  G0=c( Gh20$grad_SCM + GS0$grad_SEN ) # given back as $G
-  if(nm) G0=make_delta_normal_to_surface(G0,grd,bas,h20$n)
-  H=matrix(0, Ai_max*3, Ai_max*3) # to be assembled from parallel vectors
-  Lpar=list()
-  if(timing)tictoc::tic()
-  for (j in 1:(3*Ai_max))
-  { A1=A; A1[j]=A1[j]+del
-#  C=updateX(A1,grd,bas) # update now runs in client
-  Lpar[[j]]=list(A=A1,#grd=grd,bas=bas,Ref=Ref,
-                 M.C0=M.C0,M.K_ADE=M.K_ADE,M.K_b=M.K_b,
-                 M.mu=M.mu,M.Ka=M.Ka,M.a3=M.a3,M.a4=M.a4,
-                 M.b1=M.b1,M.b2=M.b2,
-                 M.Rcpp=TRUE,M.Rcpp_ncores=M.Rcpp_ncores,index=j)
+  pt0 = proc.time()
+  Ai_max = bas$Ai_max
+  C = updateX(A, grd, bas)
+  .M.C00 <<- M.C0
+  .M.Ref <<- Ref
+  .M.bas <<- bas
+  .M.grd <<- grd
+  h20 = E_SCM(A, grd, bas, C)
+  S = SEN(A, grd, bas, Ref, h20)
+  ES = E_SEN(A, grd, bas, S, Ref)
+  Gh20 = Grad_SCM(h20, grd, bas, C)
+  GS0 = Grad_SEN(A, grd, bas, Gh20, S, Ref)
+  G0 = c(Gh20$grad_SCM + GS0$grad_SEN)
+  L = L0 = list()
+  for (m in bas$Cons[1:bas$Nc]) L[[m]] = L0[[m]] = matrix(0,
+                                                          Ai_max * 3, Ai_max * 3)
+  for (m in bas$Cons[1:bas$Nc]) for (j in 1:(3 * Ai_max)) L0[[m]][,
+                                                                  j] = Gh20[[m]]
+  H = matrix(0, Ai_max * 3, Ai_max * 3)
+  Lpar = list()
+  L = list()
+  for (i in bas$Cons[1:bas$Nc]) L[[i]] = matrix(0, Ai_max *
+                                                  3, Ai_max * 3)
+  if (timing)
+    tictoc::tic()
+  A1 = A
+  for (j in 1:(3 * Ai_max)) {
+    A1[j] = A1[j] + del
+    Lpar[[j]] = list(A = A1, M.C0 = M.C0, M.K_ADE = M.K_ADE,
+                     M.K_b = M.K_b, M.mu = M.mu, M.Ka = M.Ka, M.a3 = M.a3,
+                     M.a4 = M.a4, M.b1 = M.b1, M.b2 = M.b2, M.Rcpp = TRUE,
+                     M.Rcpp_ncores = M.Rcpp_ncores, index = j)
+    A1[j] = A1[j] - del
   }
-
-  if(timing){cat("paralleliz. preperation  ");  tictoc::toc();}
-  #cat(names(Lpar[[1]]),"\n")
-  #LINUX:    mclapply(Lpar,FullHessian_Client,mc.cores=Mem_mc.cores)->LH # not done
-  #WINDOWS:  make a socket cluster
-  if(timing)tictoc::tic()
+  if (timing) {
+    cat("paralleliz. preperation  ")
+    tictoc::toc()
+  }
+  if (timing)
+    tictoc::tic()
   {
-  cat("setup Cluster\n")
-  cl<-parallel::makeCluster(Mem_mc.cores)
-  # need to communicate int2d_...cxx for H2_grads (c++) to work on cluster
-  parallel::clusterExport(cl,varlist=c("M.C0","M.K_ADE","M.K_b","M.mu","M.Ka","M.a3","M.a4","M.b1","M.b2",
-                                       "M.Rcpp","M.Rcpp_ncores",".M.grd",".M.bas",".M.Ref","int2d_matrix_cxx","vectomat_cxx","vectoarr_cxx"))
-
-    if(timing){cat("cluster startup ");  tictoc::toc();
-    tictoc::tic()}
-    LH<-parallel::parLapply(cl, Lpar, FullHessian_Client , FALSE)
-    parallel::stopCluster(cl)
+    if (startup) {
+      cat("setup Cluster\n")
+      M.cl <<- parallel::makeCluster(Mem_mc.cores, outfile = "tmp_cluster.txt")
+    }
+    parallel::clusterExport(M.cl, varlist = c("M.C0", "M.K_ADE",".M.C00",
+                                              "M.K_b", "M.mu", "M.Ka", "M.a3", "M.a4", "M.b1",
+                                              "M.b2", "M.Rcpp", "M.Rcpp_ncores", ".M.grd", ".M.bas",
+                                              ".M.Ref", "int2d_matrix_cxx", "vectomat_cxx", "vectoarr_cxx"))
+    if (timing) {
+      cat("cluster startup ")
+      tictoc::toc()
+      tictoc::tic()
+    }
+    LH <- parallel::parLapply(M.cl, Lpar, FullHessian_Client)
+    if (stopdown) {
+      cat("stop Cluster\n")
+      parallel::stopCluster(M.cl)
+    }
+    }
+  if (timing) {
+    cat("parallel lapply for ", length(Lpar), " calls:")
+    tictoc::toc()
   }
-  if(timing){cat("parallel lapply ");  tictoc::toc()}
-  for (i in 1:(3*Ai_max))
-  {
-    H[,i]= c( filter_grad( LH[[i]] - G0, bas) )/del
+  pt = rep(0, 5)
+  for (i in 1:(3 * Ai_max)) {
+    H[, LH[[i]]$index] = c(LH[[i]]$G - G0)/del
+    pt = pt + LH[[i]]$time
   }
-
-  return(list(H=(H+t(H))/2,H_fd=H,G=G0,g2=Gh20,
-              E= h20$Wb + ES,ES=ES,Wb=h20$Wb,h2=h20,
-              C=C,gradC=Gh20$gradC,gradA=Gh20$gradA,
-              gradV=Gh20$gradV,A=A))
+  for (m in bas$Cons[1:bas$Nc]) for (i in 1:(3 * Ai_max)) {
+    L[[m]][, LH[[i]]$index] = LH[[i]]$Lj[[m]]
+  }
+  for (m in bas$Cons[1:bas$Nc]) L[[m]] = (L[[m]] - L0[[m]])/del
+  for (m in bas$Cons[1:bas$Nc]) L[[m]] = 0.5 * (L[[m]] + t(L[[m]]))
+  pt0 = proc.time() - pt0
+  return(list(H = (H + t(H))/2, L = L, H_fd = H, G = G0, g2 = Gh20,
+              E = h20$Wb + ES, ES = ES, Wb = h20$Wb, h2 = h20, C = C,
+              gradC = Gh20$gradC, gradA = Gh20$gradA, gradV = Gh20$gradV,
+              A = A, proc_time_clients = pt, proc_time_total = pt0,
+              Nclients = Mem_mc.cores, Par = pt0/pt))
 }
 
-# no export - internal to FullHessian_Par
-FullHessian_Client<-function(L,DBG=FALSE) # Lmax=13 takes 4 seconds per call
-{
+
+# export - but internal to FullHessian_Par
+#' @export
+FullHessian_Client<-function(L,DBG=FALSE) # Lmax=13 takes 4 seconds per call/core
+{ pt=proc.time()
   M.Rcpp=L$M.Rcpp;M.Rcpp_ncores=L$M.Rcpp_ncores
+  Ai_max=.M.bas$Ai_max
+  M.C0<<-L$M.C0
   if(DBG)cat(tictoc::toc()[[4]],":",paste(err),"\n",file="setup.txt",append = TRUE);
-
-  Rcpp::sourceCpp("data/MembraneRBC.cpp")
-
+  cat("CLIENT C0",M.C0,".M.C00",.M.C00,"\n")
   C=updateX(L$A,.M.grd,.M.bas) # no longer in L
   h2=E_SCM(L$A,.M.grd,.M.bas,C)
   S=SEN(L$A,.M.grd,.M.bas,.M.Ref,h2)
@@ -3624,8 +4213,6 @@ FullHessian_Client<-function(L,DBG=FALSE) # Lmax=13 takes 4 seconds per call
   #       cant directly use Grad_SCM on cluster due to scattered objects names
   if(!M.Rcpp) {Gh2=Grad_SCM_R(h2,.M.grd,.M.bas,C)} else {
     G2=Grad_SCM_cxx(h2,.M.grd, .M.bas, C, M.C0, L$M.Rcpp_ncores, L$M.K_b, L$M.K_ADE)
-
-    # needed for SEN() below;
     Gh2=list(ddA=array(G2$ddA,c(.M.grd$ndof,.M.bas$Ai_max,3)),
              ddV=array(G2$ddV,c(.M.grd$ndof,.M.bas$Ai_max,3)),
              grad_SCM=G2$grad_SCM,gradV=G2$gradV,gradA=G2$gradA,gradC=G2$gradC,
@@ -3633,51 +4220,17 @@ FullHessian_Client<-function(L,DBG=FALSE) # Lmax=13 takes 4 seconds per call
              dF=array(G2$dF,c(.M.grd$ndof,.M.bas$Ai_max,3)),
              dG=array(G2$dG,c(.M.grd$ndof,.M.bas$Ai_max,3)))
     }
-
   GS=Grad_SEN(L$A,.M.grd,.M.bas,Gh2, S,.M.Ref)
   Gj=c(Gh2$grad_SCM + GS$grad_SEN)
+  Lj=list()
+  for (k in .M.bas$Cons[1:.M.bas$Nc])  Lj[[k]] = G2[[k]]
 
-  return(Gj)
+  cat("client done with",L$index," at C0=",M.C0," in ",proc.time()-pt,"\n")
+  return(list(G=Gj,Lj=Lj,time=proc.time()-pt,index=L$index))
 }
 
 
-# could become interesting to updateX only the terms required for Hesssian computation
-# rather than re-updating for every row of H.
-#' @export
-synth12<-function(A,C,i,j,k,del) # spatial k ~ X,Y,Z
-{
- cat(sum(C$X_u),"-> \t")
- n=dim(A)[1]
- if (i>0)
-   {
-    C$X[,k] = C$X[,k] - bas$Ylm[,i]*del # remove del term
-    C$X_u[,k] = C$X_u[,k] - bas$Ylm_u[,i]*del # remove del term
-    C$X_v[,k] = C$X_v[,k] - bas$Ylm_v[,i]*del # remove del term
-    C$X_uu[,k] = C$X_uu[,k] - bas$Ylm_uu[,i]*del # remove del term
-    C$X_uv[,k] = C$X_uv[,k] - bas$Ylm_uv[,i]*del # remove del term
-    C$X_vv[,k] = C$X_vv[,k] - bas$Ylm_vv[,i]*del # remove del term
-   }
-  if(j<=n)
-    {
-    C$X[,k] = C$X[,k] + bas$Ylm[,j]*del # add del term
-    C$X_u[,k] = C$X_u[,k] + bas$Ylm_u[,j]*del # add del term
-    C$X_v[,k] = C$X_v[,k] + bas$Ylm_v[,j]*del # add del term
-    C$X_uu[,k] = C$X_uu[,k] + bas$Ylm_uu[,j]*del # add del term
-    C$X_uv[,k] = C$X_uv[,k] + bas$Ylm_uv[,j]*del # add del term
-    C$X_vv[,k] = C$X_vv[,k] + bas$Ylm_vv[,j]*del # add del term
-  }
-#else {
-#    C$X[,k+1] = C$X[,k+1] + bas$Ylm[,j]*del # add del term
-#    C$X_u[,k+1] = C$X_u[,k+1] + bas$Ylm_u[,j]*del # add del term
-#    C$X_v[,k+1] = C$X_v[,k+1] + bas$Ylm_v[,j]*del # add del term
-#    C$X_uu[,k+1] = C$X_uu[,k+1] + bas$Ylm_uu[,j]*del # add del term
-#    C$X_uv[,k+1] = C$X_uv[,k+1] + bas$Ylm_uv[,j]*del # add del term
-#    C$X_vv[,k+1] = C$X_vv[,k+1] + bas$Ylm_vv[,j]*del # add del term
-#  }
 
- cat(sum(C$X_u),"\n")
- return(C)
-}
 #' @export
 mat2vec<-function(m) return(c(m))
 #' @export
@@ -3692,10 +4245,11 @@ matadd2vec<-function(m1,m2)
 {return(c(m1+m2))}
 
 #' SetConstraints
-#'
+#' @description
 #' set the constraint target values and store information in basis.
 #' Without parameters Cons, ..., the standard area and volume constraints are set with values (140, 100).
 #' If you set a third constraint, for CNM you have to give M$Lambda a third component.
+#' Default constraints are 140 area, 100 volume
 #' @param bas basis to modify constraints, e.g. M$bas (M MemRBC object)
 #' @param Cons vector of character of constraint gradients, from "gradA","gradV" and "gradC"
 #' @param QCons vector of constraint names, from "Area","Volume","Curv", same order as Cons
@@ -3712,7 +4266,7 @@ matadd2vec<-function(m1,m2)
 #'
 #' # minimize with steepest descend under Rosen Constraint Projection
 #'
-#' SDRC(D5,1000)->D5sdrc
+#' SDRC(D5,100)->D5sdrc
 #'
 #' # pair-plots of target quantities and energy E
 #' plot(D5sdrc$SDRC_Sample[c("E","A","V","C")])
@@ -3737,35 +4291,37 @@ SetConstraints<-function(bas,Cons=c("gradA","gradV"),
   if (!toMemRBC) return(bas) else {M$bas<-bas; return(M)}
 }
 
+#' ConstraintHessian
+#' @description constraint (=bordered) Hessian for CNM() Newton minimizer
 #' @export
 ConstraintHessian<-function(H,bas,Lambda,filter=ID)
-{ dH=dim(H$H)[1] # should be equal Ai_max*3
-
-Nc=bas$Nc
-if(Nc==0) {message("No constraints for ConstraintHessian - return Hessian as is\n");return(H)}
-if(length(Lambda)!=Nc) stop("wrong number of Lagrangian lambdas vs. registered constraints bas$Nc")
-M=matrix(0,dH+Nc,dH+Nc)
-M[1:dH,1:dH]=H$H # main block
-for (i in 1:bas$Nc) {
-  M[dH+i,1:dH]=M[1:dH,dH+i]=filter(H[[ bas$Cons[i] ]],bas)
-  #else
-  #  M[dH+i,1:dH]=M[1:dH,dH+i]=H[[ bas$Cons[i] ]]# off-diagonal blocks = Jacobian of constraint functions
-}
-return(M)
+{
+ dH=dim(H$H)[1] # should be equal Ai_max*3
+ Nc=bas$Nc
+ if(Nc==0) {message("No constraints for ConstraintHessian - return Hessian as is\n");return(H)}
+ if(length(Lambda)!=Nc) stop("wrong number of Lagrangian lambdas vs. registered constraints bas$Nc")
+ M=matrix(0,dH+Nc,dH+Nc)
+ M[1:dH,1:dH]=H$H # main block
+ for (i in 1:bas$Nc)  M[dH+i,1:dH]=M[1:dH,dH+i]=filter(H[[ bas$Cons[i] ]],bas)
+ return(M)
 }
 
+#' ConsJacobian
+#' @description constraint Jacobian for Rosen projection
 #' @export
 ConsJacobian<-function(g2,bas)
 {
-  if (glob_fltZ) RosenA<-c(Filter_1_delta(g2[[bas$Cons[1]]])) else RosenA<-c(g2[[bas$Cons[1]]]) # first gradient, bas$Cons has names of gradients
+  RosenA<-c(g2[[bas$Cons[1]]]) # first gradient, bas$Cons has names of gradients
   for (ii in 2:bas$Nc) # further gradients to add
-    if (glob_fltZ) RosenA<-rbind(RosenA,c(Filter_1_delta(g2[[ bas$Cons[ii] ]]) )) else RosenA<-rbind(RosenA,c(g2[[ bas$Cons[ii] ]] ))
-    return(RosenA)
+  RosenA<-rbind(RosenA,c(g2[[ bas$Cons[ii] ]] ))
+  return(RosenA)
 }
 
-#
-# Rosen (1961) projection of gradient
-#
+#' RosenProjection
+#' @description Rosen (1961) projection of gradient
+#' @param G input gradient
+#' @param g2 current energy
+#' @param bas basis
 #' @export
 RosenProjection<-function(G,g2,bas) # output the projected energy gradient G; g2 contains needed gradients of constraint functions
 {
@@ -3780,7 +4336,12 @@ RosenProjection<-function(G,g2,bas) # output the projected energy gradient G; g2
   return(list(Gprime=G,Eigs=eigen(RosenAAt)$values,lambdaG=lambdaG))
 }
 
-
+#' ConsRHS
+#' @description
+#' Returns constraint violation values, e.g. for rhs of Rosen solver
+#' @param h2 current energy from E_SCM
+#' @param bas basis
+#' @returns a named vector of constrained violations
 #' @export
 ConsRHS<-function(h2,bas)
 {  Cons_RHS <- rep(0,bas$Nc);names(Cons_RHS)=bas$QCons
@@ -3792,28 +4353,11 @@ return(Cons_RHS)
 # if you decide to erase dot2 from Rcpp-code:
 if(!exists("dot2")) dot2=function(x,y) sum(x*y)
 
-  #
-  # filters for a fixed orientation of L=1 ellipsoid shape
-  #   keeps Z-rotation zero (phase=0)
-  #
-#' @export
-Filter_1_A<-function(A)
-  {
-    A[1,c(2,3)]=0 # m=-1
-    A[2,c(1,2)]=0 # m=0
-    A[3,c(1,3)]=0    # m=+1
-    return(A)
-  }
 
-#' @export
-Filter_1_delta<-function(delta)
-  { d=matrix(delta,ncol=3)
-  d[1,c(2,3)]=0
-  d[2,c(1,2)]=0
-  d[3,c(1,3)]=0
-  return(c(d))
-  }
-
+#' Cons_filter_delta
+#' @description remove constraint-violating components from coefficient step delta
+#' @param H2 current E_SCM
+#' @returns projected delta as nx3 matrix
 #' @export
 Cons_filter_delta<-function(delta,grd,bas,H2,nm=TRUE)
   {
@@ -3828,11 +4372,19 @@ Cons_filter_delta<-function(delta,grd,bas,H2,nm=TRUE)
   return(matrix(delta,bas$Ai_max,3))
   }
 
+#' make_delta_normal_to_surface
+#' @description
+#' normal motion filter by integrals
+#' (contributed by C Woelper, 2024, University Bremen)
+#' @param delta step in coefficients to project
+#' @param grd,bas grid and basis
+#' @param n current spatial normals, e.g. returned as $n in E_SCM
+#' @export
   make_delta_normal_to_surface <- function(delta, grd, bas, n){
     result <- matrix(0,bas$Ai_max,3)
     d=matrix(delta,bas$Ai_max,3)
     delta_pointwise <- synthX(bas$Ylm,d)
-    incomplete_integrand <- n * dot(t(n), t(delta_pointwise)) * sin(grd$U)
+    incomplete_integrand <- n * pracma::dot(t(n), t(delta_pointwise)) * sin(grd$U)
     for( i in 1:bas$Ai_max){
       Yi <- bas$Ylm[,i]
       integrand <- incomplete_integrand * Yi
@@ -3843,86 +4395,96 @@ Cons_filter_delta<-function(delta,grd,bas,H2,nm=TRUE)
     return(result[])
   }
 
-
+#' E_FullModel_Penalty_AV
+#' @description
+#' Area-Volume-constraint energy computation
+#'  works also without SEN (Ref=NULL)
 #' @export
-Filter_Ortho<-function(A,bas)
-{k=0
-A1=bas$A;A1[]=0
-for (l in bas$Lset)
-  for (m in bas$LM[bas$LM[,1]==l,2])
-  {k=k+1;  w.dim=which.max(abs(A[k,]))
-  cat(l," ",m," ",w.dim,"\n")
-  A1[k,w.dim]=A[k,w.dim]
-  }
-attr(A1,"orthified")=TRUE
-attr(A1,"hash")=hash(A1)
-return(A1)
-}
-
-
-
-#' @export
-  E_FullModel_Penalty_AV<-function(A,grd,bas,Ref)
-{
-  updateX(A,grd,bas)->C
-  h2<-E_SCM(A,grd,bas,C) # Wb contains full SCM energy, but not + K_b/2* M.C0^2 * Area
-  S<-SEN(A,grd,bas,Ref,h2)
-  e<-E_SEN(A,grd,bas,S,Ref)
-  E<-h2$Wb + e + M.rho*((h2$Volume - bas$Target["Volume"])^2 + (h2$Area - bas$Target["Area"])^2) #+ K_b/2*C0^2*140
-  names(E)=NULL # otherwise Volume is taken as name
-  return(list(E=E, Wb=h2$Wb, Ws=e, E_uncons=h2$Wb + e, dA=h2$dA, S=S, Area=h2$Area, Volume=h2$Volume, Curv=h2$Curv))
-}
-
-#' @export
-  Grad_FullModel_Penalty_AV<-function(A,grd,bas,Ref,S)
-{
-  updateX(A,grd,bas)->C
-  h2<-E_SCM(A,grd,bas,C)
-  Grad_SCM(h2,grd,bas,C)->G_SCM
-  # gradH2=grad_SCM=  M.K_b/2 * (gradH2BC  - 2*M.C0*gradC ) +
-  #  + M.K_ADE * (2 * H2$Curv * gradC / H2$Area - gradA * H2$Curv^2 / H2$Area^2 )
-  Grad_SEN(A,grd,bas,G_SCM,S,Ref)->G_SEN
-  G <- G_SCM$grad_SCM + G_SEN$grad_SEN + 2*M.rho*( G_SCM$gradV*(h2$Volume-bas$Target["Volume"]) +
-                                                  + G_SCM$gradA*(h2$Area-bas$Target["Area"]))
-
-#  W=h2$Wb + e + M.rho*((h2$Volume - bas$Target["Volume"])^2 + (h2$Area - bas$Target["Area"])^2) #+ K_b/2*C0^2*140
-#  str(G)
-  return(G)
-}
-
-  #' @export
-  E_FullModel_Penalty_AVC<-function(A,grd,bas,Ref)
+  E_FullModel_Penalty_AV<-function (A, grd, bas, Ref)
   {
-    updateX(A,grd,bas)->C
-    h2<-E_SCM(A,grd,bas,C) # Wb contains full SCM energy, but not + K_b/2* M.C0^2 * Area
-    S<-SEN(A,grd,bas,Ref,h2)
-    e<-E_SEN(A,grd,bas,S,Ref)
-  #  print(names(bas$Target))
-    E<-h2$Wb + e + M.rho*((h2$Volume - bas$Target["Volume"])^2 + (h2$Area - bas$Target["Area"])^2 + (h2$Curv - bas$Target["Curv"])^2) #+ K_b/2*C0^2*140
-    names(E)=NULL # otherwise Volume is taken as name
-    return(list(E=E, Wb=h2$Wb, Ws=e, E_uncons=h2$Wb + e, dA=h2$dA, S=S, Area=h2$Area, Volume=h2$Volume, Curv=h2$Curv))
+    C <- updateX(A, grd, bas)
+    h2 <- E_SCM(A, grd, bas, C)
+    if (!is.null(Ref)) {
+      S <- SEN(A, grd, bas, Ref, h2)
+      e <- E_SEN(A, grd, bas, S, Ref)
+    }
+    else {
+      e = 0
+      S = NULL
+    }
+    E <- h2$Wb + e + M.rho * ((h2$Volume - bas$Target["Volume"])^2 +
+                                (h2$Area - bas$Target["Area"])^2)
+    names(E) = NULL
+    return(list(E = E, Wb = h2$Wb, Ws = e, E_uncons = h2$Wb +
+                  e, dA = h2$dA, S = S, Area = h2$Area, Volume = h2$Volume,
+                Curv = h2$Curv, n = h2$n))
   }
-
-  #' @export
-  Grad_FullModel_Penalty_AVC<-function(A,grd,bas,Ref,S)
+#' Grad_FullModel_Penalty_AV
+#' @export
+Grad_FullModel_Penalty_AV<-
+  function (A, grd, bas, Ref, S)
   {
-    updateX(A,grd,bas)->C
-    h2<-E_SCM(A,grd,bas,C)
-    Grad_SCM(h2,grd,bas,C)->G_SCM
-    # gradH2=grad_SCM=  M.K_b/2 * (gradH2BC  - 2*M.C0*gradC ) +
-    #  + M.K_ADE * (2 * H2$Curv * gradC / H2$Area - gradA * H2$Curv^2 / H2$Area^2 )
-    Grad_SEN(A,grd,bas,G_SCM,S,Ref)->G_SEN
-    G <- G_SCM$grad_SCM + G_SEN$grad_SEN + 2*M.rho*( G_SCM$gradV*(h2$Volume-bas$Target["Volume"]) +
-                                                       + G_SCM$gradA*(h2$Area-bas$Target["Area"])+
-                                                       + G_SCM$gradC*(h2$Curv-bas$Target["Curv"]))
-
-    #  W=h2$Wb + e + M.rho*((h2$Volume - bas$Target["Volume"])^2 + (h2$Area - bas$Target["Area"])^2) #+ K_b/2*C0^2*140
-    #  str(G)
+    C <- updateX(A, grd, bas)
+    h2 <- E_SCM(A, grd, bas, C)
+    G_SCM <- Grad_SCM(h2, grd, bas, C)
+    if (!is.null(Ref)) {
+      G_SEN <- Grad_SEN(A, grd, bas, G_SCM, S, Ref)
+      G <- G_SCM$grad_SCM + G_SEN$grad_SEN + 2 * M.rho * (G_SCM$gradV *
+                                                            (h2$Volume - bas$Target["Volume"]) + +G_SCM$gradA *
+                                                            (h2$Area - bas$Target["Area"]))
+    }
+    else G <- G_SCM$grad_SCM + 2 * M.rho * (G_SCM$gradV * (h2$Volume -
+                                                             bas$Target["Volume"]) + +G_SCM$gradA * (h2$Area - bas$Target["Area"]))
     return(G)
   }
 
-
+#' E_FullModel_Penalty_AVC
+#' @description
+#' Area-Volume-Curvature-constraint energy computation
 #' @export
+E_FullModel_Penalty_AVC<-function (A, grd, bas, Ref)
+  {
+    C <- updateX(A, grd, bas)
+    h2 <- E_SCM(A, grd, bas, C)
+    if (!is.null(Ref)) {
+      S <- SEN(A, grd, bas, Ref, h2)
+      e <- E_SEN(A, grd, bas, S, Ref)
+    }
+    else {
+      e = 0
+      S = NULL
+    }
+    E <- h2$Wb + e + M.rho * ((h2$Volume - bas$Target["Volume"])^2 +
+                                (h2$Area - bas$Target["Area"])^2 + (h2$Curv - bas$Target["Curv"])^2)
+    names(E) = NULL
+    return(list(E = E, Wb = h2$Wb, Ws = e, E_uncons = h2$Wb +
+                  e, dA = h2$dA, S = S, Area = h2$Area, Volume = h2$Volume,
+                Curv = h2$Curv,n=h2$n))
+  }
+
+
+#' Grad_FullModel_Penalty_AVC
+#' @export
+Grad_FullModel_Penalty_AVC<-function (A, grd, bas, Ref, S)
+{
+  C <- updateX(A, grd, bas)
+  h2 <- E_SCM(A, grd, bas, C)
+  G_SCM <- Grad_SCM(h2, grd, bas, C)
+  if (!is.null(Ref)) {
+    G_SEN <- Grad_SEN(A, grd, bas, G_SCM, S, Ref)
+    G <- G_SCM$grad_SCM + G_SEN$grad_SEN + 2 * M.rho * (G_SCM$gradV *
+                                                          (h2$Volume - bas$Target["Volume"]) + +G_SCM$gradA *
+                                                          (h2$Area - bas$Target["Area"]) + +G_SCM$gradC * (h2$Curv -
+                                                                                                             bas$Target["Curv"]))
+  }
+  else G <- G_SCM$grad_SCM + 2 * M.rho * (G_SCM$gradV * (h2$Volume -
+                                                           bas$Target["Volume"]) + +G_SCM$gradA * (h2$Area - bas$Target["Area"]) +
+                                            +G_SCM$gradC * (h2$Curv - bas$Target["Curv"]))
+  return(G)
+}
+
+
+# not exported, not used #' @export
 Hessian_FullModel <- function(A,grd,bas,Ref,del,ncores)
 {H=Hessian_SCM_SEN_cxx(A,grd,bas,Ref,del,ncores,M.C0,M.K_b,M.K_ADE)
  H$H=(H$H+t(H$H))/2
@@ -3993,21 +4555,280 @@ history_MemRBC<-function(M)
 }
 
 #' @export
-SetFlt_L1 <- function(M)
-{ # build max-abs filter for L=1
-  mx=c(which.max(abs(M$A[1,])), which.max(abs(M$A[2,])), which.max(abs(M$A[3,])))
-  flt=c( (1:3)[-mx[1]], (1:3)[-mx[2]], (1:3)[-mx[3]])
-  M$bas$flt=flt
-  return(M)
+MakeIM<-function (bas, lambda = 0, WX = rep(1, dim(bas$Ylm)[1]))
+{
+  mask = bas$mask
+  Y = cbind(1, bas$Ylm[-mask, ])
+  YtW = t(Y) %*% diag(WX[-mask])
+  B = YtW %*% Y
+  InvB1 = pracma::inv(B + lambda * diag(c(0, bas$G.tk)))
+  IM = InvB1 %*% YtW
+  bas$IM <- IM
+  return(bas)
 }
 
 #' @export
-ApplyFlt_L1<-function(A,bas)
-{ if (is.integer(bas$flt)) {
-  A[1,bas$flt[1:2]]<-0
-  A[2,bas$flt[3:4]]<-0
-  A[3,bas$flt[5:6]]<-0
+double_uv_ind<-function (u, v, digits = 7)
+{
+  l = length(u)
+  p = round(cbind(sin(u), cos(u), sin(v), cos(v)), digits)
+  pc = apply(p, 1, paste, sep = "", collapse = "")
+  pt = table(pc)
+  dbl = names(pt)[which(pt == 2)]
+  d = rep(NA, length(dbl))
+  for (i in 1:length(dbl)) d[i] = which(pc == dbl[i])[2]
+  return(d)
 }
-  else stop("Filter not set for ApplyFlt_L1: use SetFlt_L1(M) before")
-  return(A)
+
+#' FitFast
+#' @description
+#' fits coefficients to X from least squares solver matrix IM in bas
+#' This is used for fitting e.g. displacements
+#' like in pertA_complex.
+#' @param bas,X basis with IM, 3d-coordinates to fit
+#' @export
+FitFast<-function (bas, X)
+{
+  if (is.null(bas$IM))
+    stop("first create bas$IM with MakeIM(bas)->bas")
+  mask = bas$mask
+  return((bas$IM %*% X[-mask, ])[-1, ])
 }
+
+#' Movie
+#' @description
+#' show shapes along recorded coefficients in M$LA
+#' @export
+Movie<-function (M,x=400,y=400,from=1,to=length(M$LA),sleep=0.025,phi=pi/100,phi1=phi/2,...)
+{
+  ii1=i1=rgl::open3d(); rgl::par3d(dev=i1,windowRect=c(10,10,x+10,y+10))
+  rgl::points3d(0,col="white")
+  rgl::rgl.bringtotop()
+  ii2=i2=rgl::open3d()
+  rgl::points3d(0,col="white");rgl::par3d(dev=i2,windowRect=c(10,10,x+10,y+10))
+  k=from
+  Sys.sleep(sleep*3)
+  R1=matrix(c(1,0,0, 0, cos(phi1),sin(phi1),  0,-sin(phi1),cos(phi1) ),3,3)
+  R=matrix(c(cos(phi),0,sin(phi),  0,1,0, -sin(phi),0,cos(phi) ),3,3)
+  for (A in M$LA[from:to]) {
+    i3=i2;i2=i1;i1=i3;
+    p=rgl::par3d();
+    rgl::set3d(i1) # switch to background for updating
+    p$userMatrix[1:3,1:3]<-R1%*%R%*%p$userMatrix[1:3,1:3]
+    rgl::par3d( modelMatrix=p$modelMatrix,scale=p$scale,
+                observer=p$observer,
+                userMatrix=p$userMatrix,
+                projMatrix=p$projMatrix,
+                windowRect=p$windowRect,
+                viewport=p$viewport,
+                scale=p$scale,zoom=p$zoom ) # copy parms
+
+    M$A <- A
+    i = rgl::ids3d()
+    rgl::pop3d(id = i$id[i$type %in% c("triangles", "quads","text")])
+    plot(M, wire_col = "red",...)
+
+    rgl::title3d(k);k=k+1
+    rgl::rgl.bringtotop() # display background
+
+    Sys.sleep(sleep)
+  }
+}
+
+#' @export
+MemCols<-function(data,pal=rainbow,n=100)
+{return(pal(n)[1+(n-1)*(data-min(data))/diff(range(data))])}
+
+#' DistBasedWX
+#' @description
+#' computes spatial weights WX from 8 neares neighbors.
+#' The weights may be used for subsampling or weighted fits.
+#' Background: too dense gridpoints lead to underfitting in less denser regions.
+#'
+#' @export
+DistBasedWX<-function(M)
+{ X=updateX_only(M$A,M$grd,M$bas)$X
+  NN=RANN::nn2(X,9)
+  d=apply(NN$nn.dists[,-1],1,mean)
+  WX=d/sum(d)
+  return(WX)
+}
+
+#' @export
+color2d<-function(col1=c(0,0,0),col2=c(1,0,0),col3=c(0,0,1), col4=c(0,1,0),n=25){
+  RGB=matrix("",n,n)
+  plot(0,xlim=c(1,n),ylim=c(1,n))
+  f<-function(x,y) col1*(1-x)*(1-y)+col2*(1-x)*y+col3*x*(1-y)+col4*x*y
+  x=pracma::linspace(0,1,n=n)
+  for (i in 1:n) for (j in 1:n) {C=f(x[i],x[j]);
+  RGB[i,j]=rgb(red=C[1],green=C[2],blue=C[3])
+  points(i,j,col=RGB[i,j],pch=15,cex=4)}
+  return(RGB)
+}
+
+# remove any App-cpmputational results from a memRBC object.
+# The object is reduced to a minimum of data for further work.
+# Only grd,bas,Ref,A, Params and flag SEN are returned.
+#' @export
+Empty<-function(M)
+{
+  for (i in names(M)[-which(names(M) %in% c("grd","bas","Ref","A","Params","SEN"))])
+    M[[i]]=NULL
+  return(M)
+}
+
+# rewind data and A in M by some frames from LA, and erase LA later than that
+#' @export
+Rewind<-function(M,last=2)
+{ M$A=M$LA[[length(M$LA)-2]]
+  M$LA[(length(M$LA)-last):length(M$LA)] <- NULL
+  return(M)
+}
+
+imagePlot<-function (..., add = FALSE, breaks = NULL, nlevel = 64, col = NULL, 
+                     horizontal = FALSE, legend.shrink = 0.9, legend.width = 1.2, 
+                     legend.mar = ifelse(horizontal, 3.1, 5.1), legend.lab = NULL, 
+                     legend.line = 2, graphics.reset = FALSE, bigplot = NULL, 
+                     smallplot = NULL, legend.only = FALSE, lab.breaks = NULL, 
+                     axis.args = NULL, legend.args = NULL, legend.cex = 1, midpoint = FALSE, 
+                     border = NA, lwd = 1, verbose = FALSE) 
+{ pn=(rgl::cur3d()>1)
+  old.par <- par(no.readonly = TRUE)
+  if (is.null(col)) {
+    col <- tim.colors(nlevel)
+  }
+  else {
+    nlevel <- length(col)
+  }
+  info <- fields::imagePlotInfo(..., breaks = breaks, nlevel = nlevel)
+  breaks <- info$breaks
+  if (verbose) {
+    print(info)
+  }
+  if (add) {
+    big.plot <- old.par$plt
+  }
+  if (legend.only) {
+    graphics.reset <- TRUE
+  }
+  if (is.null(legend.mar)) {
+    legend.mar <- ifelse(horizontal, 3.1, 5.1)
+  }
+  temp <- fields::imageplot.setup(add = add, legend.shrink = legend.shrink, 
+                          legend.width = legend.width, legend.mar = legend.mar, 
+                          horizontal = horizontal, bigplot = bigplot, smallplot = smallplot)
+  smallplot <- temp$smallplot
+  bigplot <- temp$bigplot
+  if (!legend.only) {
+    if (!add) {
+      par(plt = bigplot)
+    }
+    if (!info$poly.grid) {
+      image(..., breaks = breaks, add = add, col = col)
+    }
+    else {
+      poly.image(..., add = add, breaks = breaks, col = col, 
+                 midpoint = midpoint, border = border, lwd.poly = lwd)
+    }
+    big.par <- par(no.readonly = TRUE)
+  }
+  if ((smallplot[2] < smallplot[1]) | (smallplot[4] < smallplot[3])) {
+    par(old.par)
+    stop("plot region too small to add legend\n")
+  }
+  ix <- 1:2
+  iy <- breaks
+  nBreaks <- length(breaks)
+  midpoints <- (breaks[1:(nBreaks - 1)] + breaks[2:nBreaks])/2
+  iz <- matrix(midpoints, nrow = 1, ncol = length(midpoints))
+  if (verbose) {
+    print(breaks)
+    print(midpoints)
+    print(ix)
+    print(iy)
+    print(iz)
+    print(col)
+  }
+  par(new = pn, pty = "m", plt = smallplot, err = -1)
+  if (!horizontal) {
+    image(ix, iy, iz, xaxt = "n", yaxt = "n", xlab = "", 
+          ylab = "", col = col, breaks = breaks)
+  }
+  else {
+    image(iy, ix, t(iz), xaxt = "n", yaxt = "n", xlab = "", 
+          ylab = "", col = col, breaks = breaks)
+  }
+  if (!is.null(lab.breaks)) {
+    axis.args <- c(list(side = ifelse(horizontal, 1, 4), 
+                        mgp = c(3, 1, 0), las = ifelse(horizontal, 0, 2), 
+                        at = breaks, labels = lab.breaks), axis.args)
+  }
+  else {
+    axis.args <- c(list(side = ifelse(horizontal, 1, 4), 
+                        mgp = c(3, 1, 0), las = ifelse(horizontal, 0, 2)), 
+                   axis.args)
+  }
+  do.call("axis", axis.args)
+  if (!is.null(legend.lab)) {
+    legend.args <- list(text = legend.lab, side = ifelse(horizontal, 
+                                                         1, 4), line = legend.line, cex = legend.cex)
+  }
+  if (!is.null(legend.args)) {
+    do.call(mtext, legend.args)
+  }
+  mfg.save <- par()$mfg
+  if (graphics.reset | add) {
+    par(old.par)
+    par(mfg = mfg.save, new = FALSE)
+    invisible()
+  }
+  else {
+    par(big.par)
+    par(plt = big.par$plt, xpd = FALSE)
+    par(mfg = mfg.save, new = FALSE)
+    invisible()
+  }
+}
+
+#' unified gradient computation with penalties
+#' @export
+Grad_FullModel_Penalty <- function (A, grd, bas, Ref, S)
+{
+  C <- updateX(A, grd, bas)
+  h2 <- E_SCM(A, grd, bas, C)
+  G_SCM <- Grad_SCM(h2, grd, bas, C)
+  if (!is.null(Ref)) {
+    G_SEN <- Grad_SEN(A, grd, bas, G_SCM, S, Ref)
+    G <- G_SCM$grad_SCM + G_SEN$grad_SEN
+  }
+  else G <- G_SCM$grad_SCM
+  for (i in 1:bas$Nc) {
+    G <- G + 2 * M.rho * G_SCM[[bas$Cons[i]]] * (h2[[bas$QCons[i]]] -
+                                                   bas$Target[[bas$QCons[i]]])
+  }
+  return(G)
+}
+
+#' standardized model gradient with penalties
+#' @export
+E_FullModel_Penalty <- function (A, grd, bas, Ref)
+{
+  C <- updateX(A, grd, bas)
+  h2 <- E_SCM(A, grd, bas, C)
+  if (!is.null(Ref)) {
+    S <- SEN(A, grd, bas, Ref, h2)
+    e <- E_SEN(A, grd, bas, S, Ref)
+  }
+  else {
+    e = 0
+    S = NULL
+  }
+  E <- h2$Wb + e
+  for (i in bas$QCons[1:bas$Nc]) E <- E + M.rho * (h2[[i]] -
+                                                     bas$Target[i])^2
+  names(E) = NULL
+  return(list(E = E, Wb = h2$Wb, Ws = e, Wuncons = h2$Wb +
+                e, dA = h2$dA, S = S, Area = h2$Area, Volume = h2$Volume,
+              Curv = h2$Curv, n = h2$n))
+}
+

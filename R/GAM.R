@@ -34,7 +34,7 @@ GAM<-function(M,nsteps=1,maxiter=50)
   cl=match.call()
   pertA<-function(A,bas,sd){ N=dim(A)[1];
   sd1=sd/sqrt(bas$G.tk);
-  A[]=A[]+Filter_1_A(matrix(rnorm(3*N,sd=rep(sd1,3)),ncol=3))
+  A[]=A[]+matrix(rnorm(3*N,sd=rep(sd1,3)),ncol=3)
   return(A)
   }
   pop.restart<-function(O)

@@ -18,15 +18,17 @@
 #  example:
 # rotUV(M_stomatocyte_L12,pi/2,3*pi/4)->M
 #
+
 #' rotUV
 #'
 #' rotate membrane coordinates and re-compute coefficients
 #' without modifying the SEN reference.
-#' rotUV may help to move poles to Z-axis or for more homogeneous  distribution of spatial points.
+#' rotUV may help to move poles to Z-axis or for more homogeneous distribution of spatial points.
 #'
 #' @param M membrane object to rotate
 #' @param du angles of rotation relative to Z-axis
 #' @param dv angle of rotation around Z-axis
+#' @param transpose (=FALSE) for backward rotation, not verified
 #' @return membrane object with coefficients after rotation, but original SEN reference
 #' @examples
 #' data_MemRBC("M_stomatocyte_L12")
@@ -34,8 +36,10 @@
 #' rotUV(M_stomatocyte_L12,pi/2,3*pi/4)->M
 #' plot(M)
 #' @export
-rotUV<-function(Min,du,dv,plt=FALSE)
+rotUV<-function(Min,du,dv,plt=FALSE,transpose=FALSE)
 {
+ mask=Min$bas$mask
+ if (is.null(mask))mask=double_uv_ind(Min$bas$uv[,1],Min$bas$uv[,2])
  A=Min$A
  a=du
  M=matrix(c(cos(a), 0,  sin(a),
@@ -49,7 +53,8 @@ rotUV<-function(Min,du,dv,plt=FALSE)
  MakeSphere(Min$grd,Min$bas)->AS
  Cs=updateX(AS,Min$grd,Min$bas)
  Xuv=Cs$X
- Xuvp=Xuv;for (i in 1:Min$grd$ndof) Xuvp[i,]=M1%*%M%*%Xuv[i,]
+ Xuvp=Xuv;
+ if (!transpose) for (i in 1:Min$grd$ndof) Xuvp[i,]=M1%*%M%*%Xuv[i,] else for (i in 1:Min$grd$ndof) Xuvp[i,]=t(M1%*%M)%*%Xuv[i,]
  uvp=t(apply(Xuvp,1,inv_sph)) # back from X on sphere to angles uvp
 #plot(uvp,pch=".")
 # make rotated basis
@@ -61,20 +66,25 @@ rotUV<-function(Min,du,dv,plt=FALSE)
  X=C$X
 #rgl::plot3d(X,aspect=FALSE);
 #rgl::plot3d(Xn,col=2,aspect=FALSE)
- lm(Xn~Y-1)$coefficients->Ar
+ lm(Xn[-mask,] ~ Y[-mask,] , weights = sin(Min$grd$U)[-mask])$coefficients[-1,]->Ar
  Cn=updateX(Ar,Min$grd,bas1)
- if (plt) rgl::plot3d(Cn$X,col=3)
+ if (plt) rgl::plot3d(Cn$X,col=1,aspect=FALSE)
  Xn=Cn$X
  # backrotation :
- Xnp=Xn;for (i in 1:Min$grd$ndof) Xnp[i,]=t(M)%*%t(M1)%*%Xn[i,]
+ Xnp=Xn;if (!transpose) for (i in 1:Min$grd$ndof) Xnp[i,]=t(M)%*%t(M1)%*%Xn[i,] else for (i in 1:Min$grd$ndof) Xnp[i,]=t(t(M)%*%t(M1))%*%Xn[i,]
 # rotated basis not useful for integration!
 # ->   needs fitting rotated X back with original basis:
- lm(Xnp~Min$bas$Ylm-1)$coefficients->Arr
- Arr[,2]=-Arr[,2]
+ lm( Xnp[-mask,] ~  Min$bas$Ylm[-mask,] , weights = sin(Min$grd$U)[-mask])$coefficients[-1,]->Arr
+
+  Arr[,2]=-Arr[,2]
  M=Min;
  M$A=LM2A(Arr,Min$bas);
  print(unlist(Quantities(M)))
  M$comment="rotated"
  M$history=append(M$history,match.call())
+ if (plt) {rgl::open3d();plot(Min,alpha=0.5,col="red");plot(M,alpha=0.6)}
+ cat("relative error of rotation on Quantities:\n")
+ print((unlist(Quantities(M))-unlist(Quantities(Min))) / (unlist(Quantities(M))+unlist(Quantities(Min))))
+
  return(M)
 } # rotUV(M_stomatocyte_L12,pi/2,3*pi/4)->M
