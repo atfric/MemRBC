@@ -68,3 +68,7 @@ ss42-C020-mmc.rdat.qs2
 U17R_psd.qs2
 Unduloid.rdat
 data/D6_cnm_C00.rda
+STOP_PNEM.txt
+*.qs2
+*.rda
+*.rdat

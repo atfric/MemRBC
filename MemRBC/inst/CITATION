@@ -1,0 +1,9 @@
+bibentry(
+  bibtype = "Misc",
+  title = "MemRBC - a numerical modeling laboratory for the stomatocyte-discocyte-echinocyte-transformation of Red Blood Cell shape",
+  author = "Stephan Frickenhaus",
+  publisher = "ZENODO",
+  year = "2025",
+  doi = "10.5281/zenodo.13908340"
+)
+

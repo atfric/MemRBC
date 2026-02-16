@@ -5,7 +5,7 @@ cff-version: 1.2.0
 title: >-
   MemRBC - a numerical modeling laboratory for the stomatocyte-discocyte-echinocyte-transformation of Red Blood Cell shape
 message: >-
-  if you use components of this software, please cite accordingly.
+  if you use components of the software, please cite accordingly: Frickenhaus, S. (2026). MemRBC - a numerical modeling laboratory for the stomatocyte-discocyte-echinocyte-transformation of Red Blood Cell shape. Zenodo. https://doi.org/10.5281/zenodo.18643738
 type: software
 authors:
   - given-names: Stephan

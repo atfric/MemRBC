@@ -1,11 +1,5 @@
 ^.*\.Rproj$
 ^\.Rproj\.user$
-^\.Rhistory
-^data_inp
-^create\.R
-^develop\.R
-^L23
-^create_data\.R
-^repair-data\.R
-^Rcppdir
-^Rcpp_src
+^\.Rc
+^\vignettes\.Rc
+^\tests\testthat\.Rc
