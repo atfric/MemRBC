@@ -209,7 +209,7 @@ mass=matrix(0,M$bas$Ai_max,M$bas$Ai_max)
 
 for (i in 1:M$bas$Ai_max) {if(i%%15==0) cat(round(i/M$bas$Ai_max*100,1),"\r")
   for (j in i:M$bas$Ai_max) {YY=M$bas$Ylm[,j]*M$bas$Ylm[,i];
-    mass[j,i] <- mass[i,j] <- rho*IntegS( q * sin(M$grd$U) * YY, M$grd)
+    mass[j,i] <- mass[i,j] <- rho*.IntegS( q * sin(M$grd$U) * YY, M$grd)
   }
   }
 cat("\r      ");tictoc::toc()
