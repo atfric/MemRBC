@@ -50,7 +50,7 @@
 #' attributes(M$A)
 #' @export
 PNEM <-function (M, nsteps = 100, dt = 5e-04, LAfreq = 100, plt = TRUE,
-                 filter_delta = ID, rho = 1, sd0 = 0.001, pltfreq = 25, ncores = 4,
+                 rho = 1, sd0 = 0.001, pltfreq = 25, ncores = 4,
                  E_crit = 10, new_Av = FALSE, viscosity = 20, zero_Av = FALSE,
                  mass_update_freq = 99)
 {
@@ -126,7 +126,7 @@ PNEM <-function (M, nsteps = 100, dt = 5e-04, LAfreq = 100, plt = TRUE,
     Aa1 <- inv_mass %*% (-G - viscosity * Av)
     Av <- Av + Aa1 * 0.5 * dt
     Xdot <- synthX(bas$Ylm, Av)
-    Ekin_X <- 0.5 * rho * IntegS(apply(Xdot[, ]^2, 1, sum) *
+    Ekin_X <- 0.5 * rho * .IntegS(apply(Xdot[, ]^2, 1, sum) *
                                    E$dA, grd)
     Ekin <- 0
     for (j in 1:3) Ekin <- Ekin + (0.5 * Av[, j] %*% mass %*%

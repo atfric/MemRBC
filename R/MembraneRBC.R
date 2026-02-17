@@ -34,9 +34,11 @@ citation.MemRBC<-function() {cat("when using this software for publications you 
 
   packageStartupMessage(msg)
 
-{
-if (!dir.exists(".Rc")) dir.create(".Rc")
-Rcpp::sourceCpp(cacheDir = ".Rc", code='\\
+  {
+    # no caching if (!dir.exists(".Rc")) dir.create(".Rc")
+    Rcpp::sourceCpp(
+      #cacheDir = ".Rc", 
+      code='\\
 #include <Rcpp.h>
 #include<RcppEigen.h>
 using namespace std;
@@ -53,9 +55,7 @@ using Eigen::Map;                       // maps rather than copies
 using Eigen::MatrixXd;                  // variable size matrix, double precision
 using Eigen::VectorXd;                  // variable size vector, double precision
 
-
-
-// for a faster version of cotan Laplacian GEMINI-Pro was ask
+// for a faster version of cotan Laplacian GEMINI-Pro was asked
 // to derive a R to C++ translation for Rcpp
 
 //GEMINI
@@ -65,14 +65,13 @@ using Eigen::VectorXd;                  // variable size vector, double precisio
 #include <vector>
 #include <cmath>
 
-using namespace Rcpp;
 using namespace Eigen;
 
 // Typedef for the sparse matrix (double precision)
 typedef SparseMatrix<double> SpMat;
 typedef Triplet<double> T;
 
-// [[Rcpp::export]]
+// [[Rcpp::export(.GEMINI_get_cotan_Laplacian_cxx)]]
 SpMat GEMINI_get_cotan_Laplacian_cxx(List mesh) {
 
   // 1. Extract data from R rgl mesh object
@@ -173,94 +172,6 @@ SpMat GEMINI_get_cotan_Laplacian_cxx(List mesh) {
   return L;
 }
 //GEMINI END
-
-//GEMINI BEGIN
-//#include <Rcpp.h>
-#include <cmath>
-
-//using namespace Rcpp;
-
-// [[Rcpp::export]]
-NumericMatrix GEMINI_compute_mesh_stretches(NumericMatrix V, NumericMatrix x, IntegerMatrix F) {
-    // V: N x 3 matrix of reference vertices
-    // x: N x 3 matrix of current vertices
-    // F: M x 3 matrix of face indices (0-indexed)
-
-    int n_faces = F.nrow();
-    NumericMatrix stretches(n_faces, 2);
-
-    for (int i = 0; i < n_faces; i++) {
-        // 1. Get vertex indices for this face
-        int i1 = F(i, 0), i2 = F(i, 1), i3 = F(i, 2);
-
-        // 2. Map coordinates to local Vec3-like structures
-        auto get_vec = [](NumericMatrix mat, int row) {
-            return (double[]){mat(row, 0), mat(row, 1), mat(row, 2)};
-        };
-
-        double v1[3] = {V(i1,0), V(i1,1), V(i1,2)}, v2[3] = {V(i2,0), V(i2,1), V(i2,2)}, v3[3] = {V(i3,0), V(i3,1), V(i3,2)};
-        double c1[3] = {x(i1,0), x(i1,1), x(i1,2)}, c2[3] = {x(i2,0), x(i2,1), x(i2,2)}, c3[3] = {x(i3,0), x(i3,1), x(i3,2)};
-
-        // 3. Reference edges and local 2D basis
-        double E1[3] = {v2[0]-v1[0], v2[1]-v1[1], v2[2]-v1[2]};
-        double E2[3] = {v3[0]-v1[0], v3[1]-v1[1], v3[2]-v1[2]};
-
-        // n_ref = E1 x E2
-        double nr[3] = {E1[1]*E2[2]-E1[2]*E2[1], E1[2]*E2[0]-E1[0]*E2[2], E1[0]*E2[1]-E1[1]*E2[0]};
-        double L_E1 = sqrt(E1[0]*E1[0] + E1[1]*E1[1] + E1[2]*E1[2]);
-
-        // Local basis u, v for reference
-        double u[3] = {E1[0]/L_E1, E1[1]/L_E1, E1[2]/L_E1};
-        double vr_raw[3] = {u[1]*nr[2]-u[2]*nr[1], u[2]*nr[0]-u[0]*nr[2], u[0]*nr[1]-u[1]*nr[0]};
-        double L_vr = sqrt(vr_raw[0]*vr_raw[0] + vr_raw[1]*vr_raw[1] + vr_raw[2]*vr_raw[2]);
-        double v[3] = {vr_raw[0]/L_vr, vr_raw[1]/L_vr, vr_raw[2]/L_vr};
-
-        // Project reference into 2D: U = [E1.u, E2.u; 0, E2.v]
-        double U11 = L_E1;
-        double U12 = E2[0]*u[0] + E2[1]*u[1] + E2[2]*u[2];
-        double U22 = E2[0]*v[0] + E2[1]*v[1] + E2[2]*v[2];
-
-        // 4. Current edges and local 2D basis
-        double e1[3] = {c2[0]-c1[0], c2[1]-c1[1], c2[2]-c1[2]};
-        double e2[3] = {c3[0]-c1[0], c3[1]-c1[1], c3[2]-c1[2]};
-
-        double nc[3] = {e1[1]*e2[2]-e1[2]*e2[1], e1[2]*e2[0]-e1[0]*e2[2], e1[0]*e2[1]-e1[1]*e2[0]};
-        double L_e1 = sqrt(e1[0]*e1[0] + e1[1]*e1[1] + e1[2]*e1[2]);
-
-        double uu[3] = {e1[0]/L_e1, e1[1]/L_e1, e1[2]/L_e1};
-        double vc_raw[3] = {uu[1]*nc[2]-uu[2]*nc[1], uu[2]*nc[0]-uu[0]*nc[2], uu[0]*nc[1]-uu[1]*nc[0]};
-        double L_vc = sqrt(vc_raw[0]*vc_raw[0] + vc_raw[1]*vc_raw[1] + vc_raw[2]*vc_raw[2]);
-        double vv[3] = {vc_raw[0]/L_vc, vc_raw[1]/L_vc, vc_raw[2]/L_vc};
-
-        // Project current into 2D: u_mat = [e1.uu, e2.uu; 0, e2.vv]
-        double u11 = L_e1;
-        double u12 = e2[0]*uu[0] + e2[1]*uu[1] + e2[2]*uu[2];
-        double u22 = e2[0]*vv[0] + e2[1]*vv[1] + e2[2]*vv[2];
-
-        // 5. Deformation Gradient F = u_mat * inv(U)
-        double F11 = u11 / U11;
-        double F12 = (-u11 * U12 / (U11 * U22)) + (u12 / U22);
-        double F21 = 0.0;
-        double F22 = u22 / U22;
-
-        // 6. SVD of F via eigenvalues of C = F^T * F
-        double C11 = F11*F11 + F21*F21;
-        double C12 = F11*F12 + F21*F22;
-        double C22 = F12*F12 + F22*F22;
-
-        double tr = C11 + C22;
-        double det = C11*C22 - C12*C12;
-        double gap = sqrt(std::max(0.0, tr*tr/4.0 - det));
-
-        stretches(i, 0) = sqrt(std::max(0.0, tr/2.0 + gap)); // lambda1
-        stretches(i, 1) = sqrt(std::max(0.0, tr/2.0 - gap)); // lambda2
-    }
-
-    return stretches;
-}
-
-//GEMINI END
-
 
 
 void reshape(MatrixXd &x,unsigned int const r, unsigned int const c )	// slow:copies to a temp matrix, but does it Matlab style
@@ -520,7 +431,7 @@ double N_LK_bosh(int L, int K)
   else{ return std::sqrt((2-int(K==0))*(2*L+1)*factorial(L-K)/factorial(L+K));}
 }
 
-//[[Rcpp::export]]
+//[[Rcpp::export(.L_Ylm)]]
 List L_Ylm(int L_max, Eigen::Map<Eigen::MatrixXd> t, Eigen::Map<Eigen::MatrixXd> p)
 {
   MatrixXd ct, plk_mat, tmp, tmp2, tmp3,theta,phi;
@@ -570,7 +481,7 @@ List L_Ylm(int L_max, Eigen::Map<Eigen::MatrixXd> t, Eigen::Map<Eigen::MatrixXd>
 // Output:	YLK matrix dimensions [p.cols()xp.rows()] x (L_max + 1)^2 and holds the basis vectors
 //			in the sequence 0,0   1,-1   1,0   1,1   2,-2   2,-1 ... etc.
 //			PLK matrix of same dimensions as YLK, only holds the associated Legendre function values for use in derivative calculations
-//[[Rcpp::export(invisible = true)]]
+//[[Rcpp::export(.Ylm_v)]]
 MatrixXd Ylm_v(int L_max,Eigen::Map<Eigen::MatrixXd> t,Eigen::Map<Eigen::MatrixXd> p,Eigen::Map<Eigen::MatrixXd> PP)
 {
   MatrixXd tmp, tmp2, tmp3, phi, theta;
@@ -614,7 +525,7 @@ MatrixXd Ylm_v(int L_max,Eigen::Map<Eigen::MatrixXd> t,Eigen::Map<Eigen::MatrixX
 }
 
 
-//[[Rcpp::export(invisible = true)]]
+//[[Rcpp::export(.Ylm_vv)]]
 MatrixXd Ylm_vv(int L_max, Eigen::Map<Eigen::MatrixXd> t,Eigen::Map<Eigen::MatrixXd> p,Eigen::Map<Eigen::MatrixXd> PP)
 {
   MatrixXd tmp, tmp2, tmp3, phi, theta, Y_PP;
@@ -655,7 +566,7 @@ MatrixXd Ylm_vv(int L_max, Eigen::Map<Eigen::MatrixXd> t,Eigen::Map<Eigen::Matri
 }
 
 
-//[[Rcpp::export(invisible = true)]]
+//[[Rcpp::export(.L_Ylm_u)]]
 List L_Ylm_u(int L_max, Eigen::Map<Eigen::MatrixXd> t,Eigen::Map<Eigen::MatrixXd> p,Eigen::Map<Eigen::MatrixXd> PP )
 {
   MatrixXd tmp, tmp2, tmp3, phi, theta,Y_T, P_T, P;
@@ -694,7 +605,7 @@ List L_Ylm_u(int L_max, Eigen::Map<Eigen::MatrixXd> t,Eigen::Map<Eigen::MatrixXd
 }
 
 
-//[[Rcpp::export(invisible = true)]]
+//[[Rcpp::export(.Ylm_uv)]]
 MatrixXd Ylm_uv(int L_max, Eigen::Map<Eigen::MatrixXd> t,Eigen::Map<Eigen::MatrixXd> p,Eigen::Map<Eigen::MatrixXd> PP,Eigen::Map<MatrixXd> PP_T  )
 {
   MatrixXd tmp, tmp2, tmp3, phi, theta, Y_TP, P, P_T;
@@ -733,7 +644,7 @@ MatrixXd Ylm_uv(int L_max, Eigen::Map<Eigen::MatrixXd> t,Eigen::Map<Eigen::Matri
 }
 
 
-//[[Rcpp::export(invisible = true)]]
+//[[Rcpp::export(.Ylm_uu)]]
 MatrixXd Ylm_uu(int L_max,Eigen::Map<Eigen::MatrixXd> t,Eigen::Map<Eigen::MatrixXd> p, Eigen::Map<Eigen::MatrixXd> PP_T  )
 {
   MatrixXd tmp, tmp2, tmp3, phi, theta, P_T, P_TT, Y_TT;
@@ -770,12 +681,12 @@ MatrixXd Ylm_uu(int L_max,Eigen::Map<Eigen::MatrixXd> t,Eigen::Map<Eigen::Matrix
   }
   return Y_TT;
 }
-//[[Rcpp::export]]
+//[[Rcpp::export(.dot2)]]
 double dot2(NumericVector x, NumericVector y) {
   return std::inner_product(x.begin(), x.end(), y.begin(), 0.0);
 }
 
-//[[Rcpp::export]]
+//[[Rcpp::export(.IntegM)]]
 NumericVector IntegM(NumericVector q, List grd,List bas)
 {
   int Aimax=bas["Ai_max"];
@@ -804,7 +715,7 @@ NumericVector IntegM(NumericVector q, List grd,List bas)
   return I;
 }
 
-// [[Rcpp::export]]
+// [[Rcpp::export(.IntegS)]]
 double IntegS(NumericVector q, List grd)
 {
   NumericVector wx = grd["wx"];
@@ -821,7 +732,7 @@ double IntegS(NumericVector q, List grd)
   return I;
 }
 
-// [[Rcpp::export]]
+// [[Rcpp::export(.E_SCM_cxx)]]
 List E_SCM_cxx( NumericMatrix A, List grd, List bas, List C,
                 double C0, double K_b, double K_ADE ) //# dbg=TRUE means no stop on NA
 { int i,k;
@@ -893,7 +804,7 @@ List E_SCM_cxx( NumericMatrix A, List grd, List bas, List C,
 } // E_SCM_cxx
 
 
-//[[Rcpp::export]]
+//[[Rcpp::export(.Grad_SCM_cxx)]]
 List Grad_SCM_cxx(
     List h2, List grd, List B, List CC, double C0,
     int ncores, double K, double KADE)
@@ -1092,215 +1003,17 @@ List Ret= List::create(
 return( Ret );
 }; // Grad_SCM_cxx
 
-NumericVector MatVec_cxx(NumericMatrix M, NumericVector V)
-{
-  Environment base("package:base");
-  Function matvec = base["%*%"];
-  return(matvec(M,V));
-}
-
-NumericMatrix MatMat_cxx(NumericMatrix M, NumericMatrix N)
-{
-  Environment base("package:base");
-  Function matmat = base["%*%"];
-  return(matmat(M,N));
-}
-
-// same low speed like with etest inlining
-//[[Rcpp::export]]
-MatrixXd matmatE(Eigen::Map<Eigen::MatrixXd> tm, Eigen::Map<Eigen::MatrixXd> tm2)
-{
-  Eigen::MatrixXd prod = tm*tm2;
-  return(prod);
-}
-
-// not needed like this - use Function updateX_only("updateX_only") in cpp-codes
-//   if needed
-// however, faster code by faster mat-mat could be interesting
-
-//[[Rcpp::export]]
-List updateX_only_cxx(NumericMatrix A, List grd, List bas)
-{
- Function etest("etest"); //for etest see: https://stackoverflow.com/questions/37191673/matrix-multiplication-in-rcpp
- List C;
- NumericMatrix Y=bas["Ylm"];
- NumericMatrix X=etest(Y,A);
- // this:
-// NumericMatrix X=MatMat_cxx(bas["Ylm"],A);
-// C["X"]=X;
-// or this:
-//  NumericMatrix X(grd["ndof"],3);
-//  int i,j;
-//  int imax=grd["ndof"];
-//  int Aimax=bas["Ai_max"];
-//  NumericMatrix Y=bas["Ylm"];
-//  Y=transpose(Y);
-//  for (i=0;i<imax;i++){
-//      X(i,0) = sum(Y(_,i)*A(_,0));
-//      X(i,1) = sum(Y(_,i)*A(_,1));
-//      X(i,2) = sum(Y(_,i)*A(_,2));    }
-// loop code needs 6 sec;
-//  etest takes 3 sec. vs 2.7 with R "%*%"
-//
-  C["X"]=X;
-  return(C);
-}
-
-//     not exported, not to be used //[[Rcpp::export]]
-List Hessian_SCM_SEN_cxx(NumericMatrix A,List grd, List bas, List Ref, double del, int ncores, double C0, double K_b, double K_ADE)
-{ int Aimax=bas["Ai_max"];
-  NumericMatrix H(Aimax*3,Aimax*3);
-  // NumericMatrix H1(Aimax*3,Aimax*3);
-  int i,j,k,l;
-  NumericMatrix A0(Aimax,3);
-  NumericMatrix A1(Aimax,3);
-  Function updateX("updateX");
-  Function SEN("SEN");
-  Function E_SCM("E_SCM");
-  Function E_SEN("E_SEN");
-  Function Grad_SEN("Grad_SEN");
-  Function Grad_SCM("Grad_SCM");
- // Function synth12("synth12"); //    function(A,C,i,j,k) # spatial k
-  Function mat2vec("mat2vec");
-  Function matdiff2vec("matdiff2vec");
-  Function matadd2vec("matadd2vec");
-  Function symmetrize("symmetrize");
-  List C=updateX(A,grd,bas);
-  List h20=E_SCM(A,grd,bas,C);
-  List S0=SEN(A,grd,bas,Ref,h20);
-  // double  ES=E_SEN(A,grd,bas,S,Ref);
-  List Gh20=Grad_SCM(h20,grd,bas,C);
-  List GS0=Grad_SEN(A,grd,bas,Gh20,S0,Ref);
-
-  NumericVector G0 = NumericVector(Gh20["grad_SCM"])+NumericVector(GS0["grad_SEN"]);
-  A0=A;
-  l=0;
-  List G;
-  List h2;
-  List Gh2;
-  List GS;
-  List S;
-  NumericVector D;
-  NumericVector G1;
-//
-// #define PARHESS 1 //
-// calling R-functions seems to be not thread safe, crashes in the following
-// if PARHESS is defined
-#ifdef PARHESS
-#pragma omp parallel num_threads(ncores) private(k,l,i,A,C,h2,S,Gh2,GS,G,D,G1)
-#endif
-{
-#ifdef PARHESS
-#pragma omp for
-#endif
-  for (k=0;k<3;k++){l=k*Aimax;
-    for (i=0;i<Aimax;i++,l++)
-    {
-      A(i,k)=A(i,k)+del;
-      C=updateX(A,grd,bas);
-
-      // sweeping through C$X instead of full update; R-code:
-      //  C=synth12(A,C,l,l+1, i, i+1,del); // better inline this; use R-numbering
-      //  if (i>0) C$X[,k] = C$X[,k] - bas$Ylm[,i]*del # remove del term
-      //  if(j<dim(A)[1]) C$X[,k] = C$X[,k] + bas$Ylm[,j]*del %*% A...
-      h2=E_SCM_cxx(A,grd,bas,C,C0,K_b,K_ADE);
-      S=SEN(A,grd,bas,Ref,h2);
-      // double  ES=E_SEN(A,grd,bas,S,Ref);
-      Gh2=Grad_SCM_cxx(h2,grd,bas,C,C0,ncores,K_b,K_ADE);
-      GS=Grad_SEN(A,grd,bas,Gh2,S,Ref);
-      G1 = NumericVector(Gh2["grad_SCM"]) + NumericVector(GS["grad_SEN"]);
-      D = NumericVector(G1-G0)/del;
-      A(i,k)=A(i,k)-del;
-#ifdef PARHESS
-      #pragma omp critical
-#endif
-      {
-      H(_,l)=D; // symmetrize outside this call
-      }
-    }
-  }
-} // parallel
-
-return(List::create(Named("H")=H,_("G")=G0,
-                    _("gradA")=Gh20["gradA"],_("gradV")=Gh20["gradV"],_("gradC")=Gh20["gradC"],
-                    _["g2"]=Gh20,_["h2"]=h20));
-}
-
-//[[Rcpp::export]]
-List Hessian_SCM_cxx(NumericMatrix A,List grd, List bas, List Ref, double del, int ncores, double C0, double K_b, double K_ADE)
-{ int Aimax=bas["Ai_max"];
-  NumericMatrix H(Aimax*3,Aimax*3);
-  // NumericMatrix H1(Aimax*3,Aimax*3);
-  int i,j,k,l;
-  NumericMatrix A0(Aimax,3);
-  NumericMatrix A1(Aimax,3);
-  Function updateX("updateX");
-  Function SEN("SEN");
-  Function E_SCM("E_SCM");
-  Function E_SEN("E_SEN");
-  Function Grad_SEN("Grad_SEN");
-  Function Grad_SCM("Grad_SCM");
- // Function synth12("synth12"); //    function(A,C,i,j,k) # spatial k
-  Function mat2vec("mat2vec");
-  Function matdiff2vec("matdiff2vec");
-  Function matadd2vec("matadd2vec");
-  Function symmetrize("symmetrize");
-  List C=updateX(A,grd,bas);
-  List h20=E_SCM(A,grd,bas,C);
-  List Gh20=Grad_SCM(h20,grd,bas,C);
-  NumericVector G0 = NumericVector(Gh20["grad_SCM"]); // +NumericVector(GS0["grad_SEN"]);
-  A0=A;
-  l=0;
-  List G;
-  List h2;
-  List Gh2;
-  List GS;
-  List S;
-  NumericVector D;
-  NumericVector G1;
-//
-// #define PARHESS 1
-// calling R-functions is not thread safe in the following
-//
-#ifdef PARHESS
-#pragma omp parallel num_threads(ncores) private(k,l,i,A,C,h2,S,Gh2,GS,G,D,G1)
-#endif
-{
-#ifdef PARHESS
-#pragma omp for
-#endif
-  for (k=0;k<3;k++){l=k*Aimax;
-    for (i=0;i<Aimax;i++,l++)
-    {
-      A(i,k)=A(i,k)+del;
-      C=updateX(A,grd,bas);
-
-      // sweeping through C$X_uv instead of full update
-      //  C=synth12(A,C,l,l+1, i, i+1,del); // better inline this; use R-numbering
-      //  if (i>0) C$X[,k] = C$X[,k] - bas$Ylm[,i]*del # remove del term
-      //  if(j<dim(A)[1]) C$X[,k] = C$X[,k] + bas$Ylm[,j]*del
-      h2=E_SCM_cxx(A,grd,bas,C,C0,K_b,K_ADE);
-      Gh2=Grad_SCM_cxx(h2,grd,bas,C,C0,ncores,K_b,K_ADE);
-      G1 = NumericVector(Gh2["grad_SCM"]) ;
-      D = NumericVector(G1-G0);
-      H(_,l)=D;
-      A(i,k)=A(i,k)-del;
-    }
-  }
-} // parallel
-return(List::create(Named("H")=H,_("G")=G0,
-                  _("gradA")=Gh20["gradA"],
-                  _("gradV")=Gh20["gradV"],
-                  _("gradC")=Gh20["gradC"],
-                  _["g2"]=Gh20,_["h2"]=h20));
-  }
  ')
-} # sourceCPP
+  } # sourceCPP
+  
+  
 
 citation.MemRBC();
 utils::data(M.mu,M.C0,M.mu,M.Ka,M.K_b,M.K_ADE,M.Es,M.rho,M.a2,M.a3,M.a4,M.b0,M.b1,M.b2,M.rho,M.Rcpp,M.Rcpp_ncores,package = "MemRBC",envir = .GlobalEnv)
 M.scr1=M.scr2=-1
 }
+
+
 
 HAVE_DEPRECATED=FALSE
 
@@ -1308,6 +1021,10 @@ M.TEST=FALSE
 # main code must define M.TEST before sourcing
 
 # for tests: show severe deviation from zero as error
+#' severe
+#' @description
+#' test two quantities for equality using test_that
+#' 
 #' @export
 severe<-function(q1,q2, what="some test", tol=1e-12)
 { testthat::test_that(what,{testthat::expect_equal(q1,q2,tolerance=tol)})}
@@ -1347,18 +1064,28 @@ severe<-function(q1,q2, what="some test", tol=1e-12)
 #  and H = c1 + c2 = 2 * H_mean ; H_mean in the usual sense like in Rvcg
 #
 
-# Bending energy , returns list with "Wb" as bending energy
+#' Bending energy , returns list with "Wb" as bending energy
+#' @description
+#' compute bending energy
+#' @param A,grd,bas,C : coefficients, grid, basis and coordinates
+#' @param plt (=FALSE) for plotting 3d
+#' @param clp (=FALSE) for plotting with a central clipping-plane
 #' @export
 E_SCM <- function (A, grd, bas, C, plt = FALSE, dbg = FALSE, clp = FALSE)
 {
   if (!M.Rcpp)
     return(E_SCM_R(A, grd, bas, C, plt = FALSE, dbg = FALSE,
                    clp = FALSE))
-  return(E_SCM_cxx(A, grd, bas, C, M.C0, M.K_b, M.K_ADE))
+  return(.E_SCM_cxx(A, grd, bas, C, M.C0, M.K_b, M.K_ADE))
 }
 
 
-# Bending energy , returns list with "Wb" as bending energy
+#' Bending energy in R code, returns list with "Wb" as bending energy
+#' @description
+#' compute bending energy, no C-Code
+#' @param A,grd,bas,C : coefficients, grid, basis and coordinates
+#' @param plt (=FALSE) for plotting 3d
+#' @param clp (=FALSE) for plotting with a central clipping-plane
 #' @export
 E_SCM_R <- function(A,grd,bas,C,plt=FALSE,dbg=FALSE,clp=FALSE) # dbg=TRUE means no stop on NA
 { # returns some quantities and fundamentals in a list
@@ -1436,10 +1163,16 @@ E_SCM_R <- function(A,grd,bas,C,plt=FALSE,dbg=FALSE,clp=FALSE) # dbg=TRUE means 
 #       and k for spatial dimension 1...3     (lm=(l+^)^2-l+m
 #
 
+#' Grad_SCM
+#' @description
+#' compute bending energy gradient
+#' @param h2 : result from E_SCM()
+#' @param grd,bas,C : coefficients, grid, basis and coordinates
+#' @param int2d_m : integration function, e.g. .IntegM (hidden c++ R-function)
 #' @export
-Grad_SCM <- function(h2,grd,bas,C,int2d_m=IntegM)
+Grad_SCM <- function(h2,grd,bas,C,int2d_m=.IntegM)
 { if (!M.Rcpp) return(Grad_SCM_R(h2,grd,bas,C))
-  G2<-Grad_SCM_cxx(h2,grd, bas, C, M.C0, M.Rcpp_ncores, M.K_b, M.K_ADE)
+  G2<-.Grad_SCM_cxx(h2,grd, bas, C, M.C0, M.Rcpp_ncores, M.K_b, M.K_ADE)
   return(list(ddA=array(G2$ddA,c(grd$ndof,bas$Ai_max,3)),
               ddV=array(G2$ddV,c(grd$ndof,bas$Ai_max,3)),
               grad_SCM=G2$grad_SCM,gradV=G2$gradV,gradA=G2$gradA,gradC=G2$gradC,
@@ -1448,7 +1181,14 @@ Grad_SCM <- function(h2,grd,bas,C,int2d_m=IntegM)
               dG=array(G2$dG,c(grd$ndof,bas$Ai_max,3))))
 }
 
-# vectorizes first dimension (i = spatial)
+#' Grad_SCM_R 
+#' R version of SCM energy gradient, vectorizes first dimension (i = spatial)
+#' @description
+#' compute bending energy gradient in R (slow)
+#' @param Wb : result from E_SCM
+#' @param grd,bas,C :  grid, basis and coordinates
+#' @param plt (=FALSE) for plotting 3d
+#' @param clp (=FALSE) for plotting with a central clipping-plabe
 #' @export
 Grad_SCM_R <- function(Wb, grd, bas,C,int2d_m=int2d_matrix)
 { # flag=1 # was for ddA factors from chain rule with metric dA, relevant for H2 and Curv
@@ -1557,53 +1297,63 @@ Grad_SCM_R <- function(Wb, grd, bas,C,int2d_m=int2d_matrix)
 #
 # only area and volume gradients
 #
+#' gradient of area and volume terms for constraint Jacobian
+#' @description
+#' compute area and volume gradient in R (slow)
+#' @param Wb : result from E_SCM
+#' @param grd,bas,C :  grid, basis and coordinates
 #' @export
-Grad_SCM_av <- function(Wb,grd,bas,C,int2d_m=IntegM)
+Grad_SCM_av <- function(Wb,grd,bas,C,int2d_m=.IntegM)
 { Nuv<-grd$ndof
-  Ai_max<-bas$Ai_max
-  H2<-Wb
-  #  copies for easier programming
-  Xu<-C$X_u[,1]; Yu<-C$X_u[,2]; Zu<-C$X_u[,3];
-  Xv<-C$X_v[,1]; Yv<-C$X_v[,2]; Zv<-C$X_v[,3];
-  Xuu<-C$X_uu[,1]; Yuu<-C$X_uu[,2]; Zuu<-C$X_uu[,3];
-  Xuv<-C$X_uv[,1]; Yuv<-C$X_uv[,2]; Zuv<-C$X_uv[,3];
-  Xvv<-C$X_vv[,1]; Yvv<-C$X_vv[,2]; Zvv<-C$X_vv[,3];
-  dNaz<-dNay<-dNax<-array(0.0,c(Nuv,Ai_max,3))
-  for (i in 1:Nuv) {
-    dNay[i,,1] <- bas$Ylm_u[i,]*Zv[i] - bas$Ylm_v[i,]*Zu[i] #(e1)
-    dNaz[i,,1] <- bas$Ylm_v[i,]*Yu[i] - bas$Ylm_u[i,]*Yv[i] #(e1)
-
-    dNax[i,,2] <- bas$Ylm_v[i,]*Zu[i] - bas$Ylm_u[i,]*Zv[i] #(e2)
-    dNaz[i,,2] <- bas$Ylm_u[i,]*Xv[i] - bas$Ylm_v[i,]*Xu[i] #(e2)
-
-    dNax[i,,3] <- bas$Ylm_u[i,]*Yv[i] - bas$Ylm_v[i,]*Yu[i] # (e3)
-    dNay[i,,3] <- bas$Ylm_v[i,]*Xu[i] - bas$Ylm_u[i,]*Xv[i] # (e3)
+Ai_max<-bas$Ai_max
+H2<-Wb
+#  copies for easier programming
+Xu<-C$X_u[,1]; Yu<-C$X_u[,2]; Zu<-C$X_u[,3];
+Xv<-C$X_v[,1]; Yv<-C$X_v[,2]; Zv<-C$X_v[,3];
+Xuu<-C$X_uu[,1]; Yuu<-C$X_uu[,2]; Zuu<-C$X_uu[,3];
+Xuv<-C$X_uv[,1]; Yuv<-C$X_uv[,2]; Zuv<-C$X_uv[,3];
+Xvv<-C$X_vv[,1]; Yvv<-C$X_vv[,2]; Zvv<-C$X_vv[,3];
+dNaz<-dNay<-dNax<-array(0.0,c(Nuv,Ai_max,3))
+for (i in 1:Nuv) {
+  dNay[i,,1] <- bas$Ylm_u[i,]*Zv[i] - bas$Ylm_v[i,]*Zu[i] #(e1)
+  dNaz[i,,1] <- bas$Ylm_v[i,]*Yu[i] - bas$Ylm_u[i,]*Yv[i] #(e1)
+  
+  dNax[i,,2] <- bas$Ylm_v[i,]*Zu[i] - bas$Ylm_u[i,]*Zv[i] #(e2)
+  dNaz[i,,2] <- bas$Ylm_u[i,]*Xv[i] - bas$Ylm_v[i,]*Xu[i] #(e2)
+  
+  dNax[i,,3] <- bas$Ylm_u[i,]*Yv[i] - bas$Ylm_v[i,]*Yu[i] # (e3)
+  dNay[i,,3] <- bas$Ylm_v[i,]*Xu[i] - bas$Ylm_u[i,]*Xv[i] # (e3)
+}
+ddV<-array(0.0,c(Nuv,Ai_max,3)) # dV=1/3.0*(X[,1]*n[,1]+X[,2]*n[,2]+X[,3]*n[,3])*dA
+for(k in 1:3) for (i in 1:Nuv) ddV[i,,k] <- (H2$normal[i,k]*bas$Ylm[i,]) # normal = n*dA
+dE<-dF<-dG<-array(0.0,c(Nuv,Ai_max,3))
+for (k in 1:3)
+  for (i in 1:Nuv){
+    dE[i,,k] <- 2 * C$X_u[i,k] * bas$Ylm_u[i,]
+    dF[i,,k] <-     C$X_u[i,k] * bas$Ylm_v[i,] + C$X_v[i,k] * bas$Ylm_u[i,]
+    dG[i,,k] <- 2 * C$X_v[i,k] * bas$Ylm_v[i,]
   }
-  ddV<-array(0.0,c(Nuv,Ai_max,3)) # dV=1/3.0*(X[,1]*n[,1]+X[,2]*n[,2]+X[,3]*n[,3])*dA
-  for(k in 1:3) for (i in 1:Nuv) ddV[i,,k] <- (H2$normal[i,k]*bas$Ylm[i,]) # normal = n*dA
-  dE<-dF<-dG<-array(0.0,c(Nuv,Ai_max,3))
-  for (k in 1:3)
-    for (i in 1:Nuv){
-      dE[i,,k] <- 2 * C$X_u[i,k] * bas$Ylm_u[i,]
-      dF[i,,k] <-     C$X_u[i,k] * bas$Ylm_v[i,] + C$X_v[i,k] * bas$Ylm_u[i,]
-      dG[i,,k] <- 2 * C$X_v[i,k] * bas$Ylm_v[i,]
-    }
-  ddA<-array(0.0,c(Nuv,Ai_max,3))
-  for(k in 1:3)  # dA = sqrt( E G - F^2 ) == 1/inn => dA= 1/sqrt()*0.5*(dE...dF) = 0.5*inn*(dE...dF)
-    for (i in 1:Nuv)  ddA[i,,k] <- 0.5*( dE[i,,k]*H2$G[i] + H2$E[i]*dG[i,,k] - 2*H2$FF[i]*dF[i,,k] ) * H2$inn[i]
-  return(list(gradV =int2d_m(ddV,grd.bas),
-              gradA =int2d_m(ddA,grd,bas),
-              ddV=ddV,ddA=ddA)) # these e.g. for debugging
+ddA<-array(0.0,c(Nuv,Ai_max,3))
+for(k in 1:3)  # dA = sqrt( E G - F^2 ) == 1/inn => dA= 1/sqrt()*0.5*(dE...dF) = 0.5*inn*(dE...dF)
+  for (i in 1:Nuv)  ddA[i,,k] <- 0.5*( dE[i,,k]*H2$G[i] + H2$E[i]*dG[i,,k] - 2*H2$FF[i]*dF[i,,k] ) * H2$inn[i]
+return(list(gradV =int2d_m(ddV,grd.bas),
+            gradA =int2d_m(ddA,grd,bas),
+            ddV=ddV,ddA=ddA)) # these e.g. for debugging
 } # support adding gradients of shear terms outside, by giving dE,dF,dG back
 
 
 #
-# this gives back vertex-wise curvatures, Wb precomputed by E_SCM()
-#
+#' from SCM energy compute principal curvatures
+#' @description
+#' compute principle curvatures k1,k2 from precomputed E_SCM
+#' @param Wb : result from E_SCM
+#' @param grd :  grid for integration
+#' @param plt.K (=FALSE) for plotting 2d
+#' @return list of curvature k1, k2, computed from K=L*N-M^2 (second fundamental)
 #' @export
 Membrane_Curvatures<-function(Wb, grd, plt.K=FALSE)
 {
-  int2d_s=IntegS
+  int2d_s=.IntegS
   H2=Wb
   K=( H2$L*H2$NN - H2$M^2) * H2$inn2
   chk=int2d_s(K*H2$dA,grd)/4/pi # 1 for genus 0; need a dA in integrand
@@ -1640,7 +1390,8 @@ Membrane_Curvatures<-function(Wb, grd, plt.K=FALSE)
 
 #
 # vectorization helpers, not all used
-#
+# and none exported
+
 mat4<-function(f,g,h,j)
 { matrix(c(f,g,h,j),2,2) }
 vmat4<- Vectorize(mat4,SIMPLIFY=TRUE)
@@ -1661,7 +1412,7 @@ Vec2Spat<-function(V,grd)
 #' If missing and demanded, M$Ref and M$SEN are computed here.
 #' This helps plotting SEN colors like in PNEM and other Apps.
 #' usually Aref comes from an slightly oblate shape of 90-95% of the target volume 100.
-#' @param M MemRBC object
+#' @param M MemRBC input object
 #' @param Aref Reference shape coefficients for SEN
 #' @return MemRBC object with Ref and SEN set.
 #' @export
@@ -1671,7 +1422,11 @@ MakeRef<-function(M,Aref){
   M$SEN=SEN(Aref,M$grd,M$bas,M$Ref,h2)
 }
 
-
+#' Ref4CauchyGreen
+#' @description
+#' compute lists of reference tensors for fast SEN computation
+#' @param A, grd, bas: coefficients, grid and basis
+#' @return Reference object containing pieaces of Cauchy-Green-tensors
 #' @export
 Ref4CauchyGreen <- function(A,grd,bas,loop=FALSE)
 { ndof=grd$ndof;Ai_max=bas$Ai_max
@@ -1702,11 +1457,18 @@ gi<-array(unlist(giPrep),c(2,2,ndof)) # must have matrix in front!
 tgi<-array(0,c(ndof,2,2))
 cat("III reformat gi 2 x 2 \n")
 for (k in 1:2) for (j in 1:2) {cat(i,j,"\r");tgi[,j,k]<-gi[j,k,]}
-return(list( tgi=tgi, giPrep=giPrep, h2ref=h2ref, v=h2ref$Volume ,a=h2ref$Area ,c=h2ref$Curv,ARef=A ))
+return(structure(class="MemRef",list( tgi=tgi, giPrep=giPrep, h2ref=h2ref, v=h2ref$Volume ,a=h2ref$Area ,c=h2ref$Curv,ARef=A )))
 }
 
-# compute stretch parameters (alpha, beta) from SEN
-#' @export
+#' SEN
+#' compute stretch parameters (alpha, beta) from SEN
+#' @description
+#' Compute the stretches alpha and shear beta from SEN parameters.
+#' Needed before E_SEN is called.
+#' @param A,grd,bas,Ref Coefficients, grid, basis and reference objects
+#' @param Wb_cur : current E_SCM() result
+#' @return SEN object with alpha, beta and mean trace of right Cauchy-Green
+#' @export 
 SEN<-function (A, grd, bas, Ref, Wb_cur)
 {
   h2cur <- Wb_cur
@@ -1716,23 +1478,35 @@ SEN<-function (A, grd, bas, Ref, Wb_cur)
                                                       x[2, 2]))
   alpha <- h2cur$dA/Ref$h2ref$dA - 1
   beta <- m/(alpha + 1) - 1
-  return(list(alpha = alpha, beta = beta, m = m, h2cur = h2cur,
-              A = A, G = G))
+  return(structure(class="MemSEN",list(alpha = alpha, beta = beta, m = m, h2cur = h2cur,
+              A = A, G = G)))
 }
 
-# energy of Shear-Elastic Network (SEN)
+#' E_SEN
+#' energy of Shear-Elastic Network (SEN)
+#' @description
+#' Compute the SEN energy
+#' @param A,grd,bas,S, Ref Coefficients, grid, basis, SEN and reference objects
+#' @param Wb_cur : current E_SCM() result
+#' @return list with alpha and beta as well as trace m of right Cauchy-Green
 #' @export
 E_SEN<-function(A,grd,bas,S,Ref)
 { if (!is.null(Ref)){
-  WS<- M.Ka/2 * IntegS((M.a2*S$alpha^2+M.a3*S$alpha^3+M.a4*S$alpha^4)*Ref$h2ref$dA,grd) +
-    + M.mu*IntegS( ( (M.b0+M.b1*S$alpha)*S$beta + M.b2*S$beta^2)*Ref$h2ref$dA, grd)
+  WS<- M.Ka/2 * .IntegS((M.a2*S$alpha^2+M.a3*S$alpha^3+M.a4*S$alpha^4)*Ref$h2ref$dA,grd) +
+    + M.mu*.IntegS( ( (M.b0+M.b1*S$alpha)*S$beta + M.b2*S$beta^2)*Ref$h2ref$dA, grd)
   return(WS)} else return(0)
 }
 
-
-# needs Ref$tgi and Ref$hsref, S$m , S$alpha, S$beta
+#' Gradient of SEN energy
+#' @description
+#' Compute gradients of SEN energy
+#' @param A,grd,bas Coefficients, grid, basis 
+#' @param h2cur_grad current SCM gradient (Grad_SCM())
+#' @param S : current SEN() result
+#' @param Ref : static reference of SEN
+#' @return gradS for SEN energy gradient, gradAlpha, gradBeta, dm for gradients of stretches and shear.
 #' @export
-Grad_SEN<-function(A, grd, bas, h2cur_grad, S, Ref, int2d_m = IntegM){
+Grad_SEN<-function(A, grd, bas, h2cur_grad, S, Ref, int2d_m = .IntegM){
   #          d_beta = dm/(alpha+1) - d_alpha*m/(alpha+1)^2
   #            beta = 2m / (2(alpha+1)) - 1 -> S$beta
   #
@@ -1766,7 +1540,7 @@ Grad_SEN<-function(A, grd, bas, h2cur_grad, S, Ref, int2d_m = IntegM){
 #
 
 
-# annotates A with L-M-strings as rownames, + some attributes
+#' annotates A with L-M-strings as rownames, + some attributes
 #' @export
 LM2A<-function(A,bas)
 {
@@ -1783,7 +1557,7 @@ attr(A,"Target")<-bas$Target
 return(A)
 }
 
-# save A as object named Alm with additional attributes
+#' save A as object named Alm with additional attributes
 #' @export
 saveAlm<-function(A,bas,file)
 {
@@ -1795,16 +1569,20 @@ saveAlm<-function(A,bas,file)
 #' @export
 loadAlm<-function(file,bas)
 {
-  load(file)
-  return(Alm)
+  load(file)->n
+  return(get(n))
 }
-
 
 #
 # Total energy from SCM and SEN
 #  SCM stored in h2cur in stretches S
 #
-
+#' TotalEnergyDensity
+#' @description
+#' compute total energy density, to visualize 
+#' 
+#' @param S SEN, containing also h2cur$E_SCM_dens
+#' @return energy value
 #' @export
 TotalEnergyDensity<-function(S)
 {
@@ -1814,6 +1592,7 @@ TotalEnergyDensity<-function(S)
   )
 }
 
+# not used
 int2d_matrix_3<-function (field_m,grd,bas=NULL)
 { dms=dim(field_m); res=array(0.0,dms[2:4]);
   for (i in 1:dms[2]) for (j in 1:dms[3]) for (k in 1:dms[4]) res[i,j,k]=int2d_scalar_GLS(field_m[,i,j,k],grd)
@@ -1825,11 +1604,10 @@ int2d_matrix_3<-function (field_m,grd,bas=NULL)
 #' @export
 plotA<-function(A,...){matplot(A,type="l",lty=1,xlab=expression((l+1)^2-l+m),...)}
 
-#
-# plot coeffs
-#   and l-values as color bar on x-axis
-#     only for full basis from MakeBasis...(...exclude=c(), include_m=c())
-#
+#' plotA_l
+#' plot coeffs
+#'   and l-values as color bar on x-axis
+#' @param A,bas : standard coefficient amd basis functions objects
 #' @export
 plotA_l<-function(A,bas,bar=FALSE,xlab=ifelse(all(diff(bas$Lset)==1),
                                           expression((l+1)^2-l+m),"k"),
@@ -1857,12 +1635,13 @@ plotA_l<-function(A,bas,bar=FALSE,xlab=ifelse(all(diff(bas$Lset)==1),
 #   todo: could be changed to give back a list of objects.
 #
 
-# helper routines for 3d graphics objects
+#' helper routines for 3d graphics objects
 #' @export
 Obj2X<-function(O) # extract vertex coordinates
 { return(t(O$vb[1:3,]))
 }
 
+#' make coordinates from centered object
 #' @export
 Obj2X_centre<-function(O)
 { X=t(O$vb[1:3,]) # extract vertex coordinates and centre
@@ -1870,6 +1649,7 @@ for (k in 1:3 ) X[,k]=X[,k]-mean(X[,k])
 return(X)
 }
 
+#' make coordinates from object
 #' @export
 X2Obj<-function(O,X)
 { O$vb=rbind(t(X),1) # ingest coordinates in 3d-graphics object
@@ -1877,7 +1657,7 @@ return(Rvcg::vcgClean(Rvcg::vcgUpdateNormals(O),silent=TRUE))
 # clean helps smooth color at zero meridian
 }
 
-#  build vertex areas from triangle areas using Rvcg
+#'  build vertex areas from triangle areas using Rvcg
 #' @export
 VertexAreasOBJ<-function(O)
 {
@@ -1889,7 +1669,7 @@ VertexAreasOBJ<-function(O)
   return(a_v)
 }
 
-# synthesize X coordinates
+#' synthesize X coordinates by matrix-matrix-product
 #' @export
 synthX<-function(Y,A) # Y are precomputed spherical harmonics
 { return(Y%*%A)
@@ -1898,6 +1678,7 @@ synthX<-function(Y,A) # Y are precomputed spherical harmonics
 # the following imag.obj... are showing data as color code on the 3d object
 #
 
+#' plot on 3D object surface a field f as color code
 #' @export
 imag.obj.colorbar.simple<-function(obj,f,clr=TRUE,...) {
   if(clr) rgl::clear3d()
@@ -1907,7 +1688,8 @@ imag.obj.colorbar.simple<-function(obj,f,clr=TRUE,...) {
 }
 
 
-# allow for limits to suppress outliers (color black)
+#' imag.obj.colorbar
+#' allow for limits to suppress outliers (color black)
 #' @export
 imag.obj.colorbar<-function(obj,f,limits=range(f),clr=FALSE,pal=heat.colors,width=550,height=480,par=FALSE,...) {
   # if(is.matrix(f)) f<-t(f)
@@ -1925,9 +1707,11 @@ imag.obj.colorbar<-function(obj,f,limits=range(f),clr=FALSE,pal=heat.colors,widt
   rgl::bgplot3d(imagePlot(legend.only = TRUE,add=TRUE,zlim = limits, col = cols) )
 }
 
-# this has more dense points next to 0 meridian
-#  alternative with regular v-spacing is GaussLegendreSimpson
-
+#' MakeGrid_GaussLegendre
+#' this has more dense points next to 0 meridian
+#'  alternative with regular v-spacing is GaussLegendreSimpson
+#' @param n : number of points along each dimension
+#' @param uv_fac (=1) : for experiemnts with half periods in v set uv_fac=0.5
 #' @export
 MakeGrid_GaussLegendre<-function(n=25,uv_fac=1,comment="spherical coordinates Gauss-Legendre grid, type GL",check_plt=FALSE) # assume spherical coordinates
 {
@@ -2005,22 +1789,22 @@ MakeGrid_GaussLegendre<-function(n=25,uv_fac=1,comment="spherical coordinates Ga
 }
 
 
-# display f data on object obj
+#' display f data on object obj
 #' @export
 imag.obj<-function(obj,f,pal=rainbow) {
   cols=pal(100); rgl::shade3d(obj,meshcolor="vertices",col=cols[as.integer(1+99*(f-min(f))/diff(range(f)))]) }
 
 #' imag
-#'
+#' @description
 #' plot a scalar in 2D
-#' @param field scalar field, size of grd$nv x grd$nu
+#' @param field scalar spatial field
 #' @param grd the grid of (u,v) on which the scalar is defined
+#' @param nx,ny dimension of output matrix plot
 #' @export
 imag<-function (field, grd, nx = grd$nv, ny = grd$nu/2, ...)
 {
   fields::quilt.plot(grd$V, grd$U, field[], nx, ny, xlab = "v",
                      ylab = "u", ...)
-  invisible()
 }
 
 #' MakeBasis_UV
@@ -2061,15 +1845,15 @@ MakeBasis_UV<-function (L_max = 4, u, v, Pointsymmetry = FALSE,
   n.v = length(u)
   if (length(v) != n.v)
     stop("u not same length like v")
-  L_Ylm = L_Ylm(L_max, u, v)
+  L_Ylm = .L_Ylm(L_max, u, v)
   Ylm = L_Ylm$Ylm[, -1]/sqrt(4 * pi)
   if (!only_Ylm){
-   Ylm_v = Ylm_v(L_max, u, v, L_Ylm$PLK)[, -1]/sqrt(4 * pi)
-   Ylm_vv = Ylm_vv(L_max, u, v, L_Ylm$PLK)[, -1]/sqrt(4 * pi)
-   L_Y_u = L_Ylm_u(L_max, u, v, L_Ylm$PLK)
+   Ylm_v = .Ylm_v(L_max, u, v, L_Ylm$PLK)[, -1]/sqrt(4 * pi)
+   Ylm_vv = .Ylm_vv(L_max, u, v, L_Ylm$PLK)[, -1]/sqrt(4 * pi)
+   L_Y_u = .L_Ylm_u(L_max, u, v, L_Ylm$PLK)
    Ylm_u = L_Y_u$Ylm_u[, -1]/sqrt(4 * pi)
-   Ylm_uu = Ylm_uu(L_max, u, v, L_Y_u$P_T)[, -1]/sqrt(4 * pi)
-   Ylm_uv = Ylm_uv(L_max, u, v, L_Ylm$PLK, L_Y_u$P_T)[, -1]/sqrt(4 * pi)
+   Ylm_uu = .Ylm_uu(L_max, u, v, L_Y_u$P_T)[, -1]/sqrt(4 * pi)
+   Ylm_uv = .Ylm_uv(L_max, u, v, L_Ylm$PLK, L_Y_u$P_T)[, -1]/sqrt(4 * pi)
    }
   l = LM[, 1]
   m = LM[, 2]
@@ -2149,8 +1933,6 @@ MakeBasis_UV<-function (L_max = 4, u, v, Pointsymmetry = FALSE,
     m=LM[,2]
   w=1:Ai_max # no symmetries
   mask = double_uv_ind(u, v)
-
-
   bas = list(n.v = n.v, uv = cbind(u, v), Ylm = Ylm[, w], LM = LM, Ai_max = Ai_max, l = l,
              m = m,  L_max = L_max, G.tk = l^2*m^2, Wt = l*m, comment = "Fourier basis, no cos(0)",
              Nupd = 0, Lset = unique(l), Mset = unique(m), Nc = 2,
@@ -2182,7 +1964,7 @@ MakeBasis_UV<-function (L_max = 4, u, v, Pointsymmetry = FALSE,
 #' @param A coefficients of shape
 #' @param grd grid from on which the basis is computed
 #' @param bas basis function values $Ylm and their derivatives, like $Ylm_u.
-#' @return basis object, type is list.
+#' @return Coord object of class MemC, with X and derivatives X_u, ... and input Coeff A
 #' @export
 updateX<-function (A, grd, bas)
 {
@@ -2193,31 +1975,31 @@ updateX<-function (A, grd, bas)
   X_uv <- bas$Ylm_uv %*% A
   X_vv <- bas$Ylm_vv %*% A
   return(structure(class="MemC",list(X = X, X_u = X_u, X_v = X_v, X_uu = X_uu, X_vv = X_vv,
-              X_uv = X_uv, Amp = A)))
+              X_uv = X_uv, Coeff = A)))
 }
 
 
-# compute coordinates and derivatives
+# compute coordinates only
 # could be used instead of updateX in several places
 
 #' updateX_only
-#'
 #' updates coordinates C$X, NOT the derivatives.
 #' @param A coefficients of shape
 #' @param grd grid from on which the basis is computed
 #' @param bas basis function values $Ylm
-#' @return basis object, type is list.
+#' @return class MemC_X object, containing X and input Coeff A
 #' @export
-updateX_only<-function(A,grd,bas)
+updateX_only<-function(A, grd, bas)
 {
   bas$Ylm %*% A -> X
-  return(structure(class="MemC_X",list(X=X,Amp=A)))
+  return(structure(class="MemC_X",list(X=X, Coeff=A)))
 }
 
 
 #' MakeSphere
-#'
+#' @description
 #' Compute unit sphere for given grid and basis
+#' 
 #' @param grd given grid
 #' @param bas given basis
 #' @param r (=1) for radius of output sphere
@@ -2233,7 +2015,7 @@ MakeSphere<-function(grd,bas,r=1)
 }
 
 # the central driver to 2D integration
-# use IntegS from cpp instead
+# use faster .IntegS from cpp instead
 int2d_scalar_GLS<-function(F2,grd)
 { Z <- matrix(F2,grd$nu,grd$nv)
   Q <- grd$wx %*% Z %*% as.matrix(grd$wy)
@@ -2243,13 +2025,12 @@ return(Q[,])
 # plot X/object from segments in 3d
 # with Cartesian Wireframe as (X,Y,Z)-contour levels for cont=TRUE
 #' plot3a
-#'
+#' @description
 #' plot coordinates C$X (after updateX)
 #' @param X Coordiates, e.g. in C$X from updateX()
 #' @param grd grid with a basic rgl-object grd$Obj
 #' @examples
-#' data("M1")
-#'  # take required data from M1
+#' data("M1")  # take required data from M1
 #' plot3a(updateX(M1$A,M1$grd,M1$bas,M1$)$X,M1$grd)
 #'
 #' @export
@@ -2290,8 +2071,7 @@ plot3a<-function (X, grd, pnts = FALSE, clip = FALSE, col = "black",
 #' @param X Coordiates, e.g. in C$X from updateX()
 #' @param grd grid with a basic rgl-object grd$Obj
 #' @examples
-#' data("M1")
-#'  # take required data from M1
+#' data("M1")  # take required data from M1
 #' plot3q(updateX(M1$A,M1$grd,M1$bas,M1$)$X,M1$grd)
 #' @export
 plot3q<-function (X, grd, col = "black", alpha = 1, ...)
@@ -2305,24 +2085,25 @@ plot3q<-function (X, grd, col = "black", alpha = 1, ...)
 }
 
 #' plot3qs
-#'
+#' @description
 #' plot with coordinates C$X (after updateX) and scalar as color code
+#' 
 #' @param X Coordiates, e.g. in C$X from updateX()
 #' @param grd grid with a basic rgl-object grd$Obj
 #' @param s scalar to plot as color code on shape
+#' @param pal (=heat.colors) color palette to use 
 #' @examples
-#' data("M1"); SetParams(M1)
-#'  # take required data from M1
+#' data("M1"); SetParams(M1) # take required data from M1
 #'  update(M1,"dA")->M1
 #'  #plot area sizes as color code
 #' plot3qs(updateX(M1$A,M1$grd,M1$bas,M1$)$X,M1$grd,M1$dA)
 #'
 #' @export
-plot3qs<-function (X, grd, s, alpha = 1, specular = "black", ...)
+plot3qs<-function (X, grd, s, alpha = 1, specular = "black", pal=heat.colors, ...)
 {
   O <- X2Obj(grd$Obj, X)
   O <- Rvcg::vcgUpdateNormals(O)
-  col = heat.colors(100)[1 + 99 * (s - min(s))/diff(range(s))]
+  col = pal(100)[1 + 99 * (s - min(s))/diff(range(s))]
   rgl::shade3d(O, col = col, specular = specular, ...)
   if (is.null(grd$ObjQ))
     Q <- Obj2ObjQ(grd$Obj, grd)
@@ -2332,9 +2113,13 @@ plot3qs<-function (X, grd, s, alpha = 1, specular = "black", ...)
 }
 
 
+#' plot3b
+#' @description
+#' plot a 3d shape from coordinates C$X
+#' @param X,grd : 3d coordinates and 2d grid object
+#' @param ... : further plotting options, e.g. alpha=0.5 for semi-transparency
 #' @export
-plot3b<-function (X, grd, col = "white", specular = "black", wire = TRUE,
-                  ...)
+plot3b<-function (X, grd, col = "white", specular = "black", wire = TRUE,                  ...)
 {
   O <- X2Obj(grd$Obj, X)
   O <- Rvcg::vcgUpdateNormals(O)
@@ -2345,9 +2130,15 @@ plot3b<-function (X, grd, col = "white", specular = "black", wire = TRUE,
 
 
 
-#
+#' MakeGrid_GaussLegendreSimpson
+#' @description
+#' compute an integration grid
+#' @param n (=20) : number of points along one dimension
+#' @param  ua,ub : usually 0,pi for u-interval
+#' @param  va,vb : usually 0,2*pi for v-interval
+#' @param comment : give your own comment (as.character)
 #' @export
-MakeGrid_GaussLegendreSimpson<-function(n=20,ua=0,ub=pi,va=0,vb=2*pi,del_Ylm=1e-6,comment="spherical coordinates Gauss-Legendre-Simpson grid, type GLS",check_plt=FALSE) # assume spherical coordinates
+MakeGrid_GaussLegendreSimpson<-function(n=20,ua=0,ub=pi,va=0,vb=2*pi, comment="spherical coordinates Gauss-Legendre-Simpson grid, type GLS",check_plt=FALSE) # assume spherical coordinates
 {
   if (n%%2==1) n=n+1
   grd=list(ua=ua,ub=ub,va=va,vb=vb) # to be filled further and returned
@@ -2384,21 +2175,16 @@ MakeGrid_GaussLegendreSimpson<-function(n=20,ua=0,ub=pi,va=0,vb=2*pi,del_Ylm=1e-
   nx=nu;ny=nv;
   q=matrix(NA,3,nx*ny*2);k=0 # 2 trinagles per quad (i,j)
   for (i in 1:(nx-1))  for (j in 1:(ny-1)){
-    k=k+1;l=(j-1)*nx+i
-    q[,k]=c(l,l+1,l+1+nx)
-    k=k+1
-    q[ ,k]=c(l,l+nx+1,l+nx)
+    k=k+1;l=(j-1)*nx+i; q[,k]=c(l,l+1,l+1+nx);
+    k=k+1;  q[ ,k]=c(l,l+nx+1,l+nx)
   }
   q=q[,1:(k)]
-  print(k)
   x=sin(grd$u)*cos(grd$v);y=sin(grd$u)*sin(grd$v);z=cos(grd$u)
   rgl::mesh3d(x,y,z,triangles=q, normals = list(x=x,y=y,z=z) ) -> M
-  #  clear3d();
   grd$Obj<-M
   grd$comment<-comment
   grd$type="GLS"
   grd$n=n;grd$nu=nu;grd$nv=nv
-  #  M=grd$Obj
   if(check_plt){
     rgl::clear3d()
     imag.obj.colorbar.simple(M,grd$v)
@@ -2413,7 +2199,7 @@ MakeGrid_GaussLegendreSimpson<-function(n=20,ua=0,ub=pi,va=0,vb=2*pi,del_Ylm=1e-
   return(grd)
 }
 
-# return last n elements from v; v may be list
+#'last -  return last n elements from v; v may be list
 #' @export
 last<-function(v,n=1)
 { n=min(n,length(v))
@@ -2434,7 +2220,7 @@ for (i in 1:dms[2]) for (j in 1:dms[3]) res[i,j]=int2d_scalar_GLS(field_m[,i,j],
 return(res)
 }
 
-# not used
+#  used within c++
 #' @export
 int2d_matrix_cxx <- function (field_m,grd,bas) # needed for C++-code of gradients
 { F2<-array(field_m, c( grd$ndof,bas$Ai_max,3))
@@ -2443,6 +2229,7 @@ int2d_matrix_cxx <- function (field_m,grd,bas) # needed for C++-code of gradient
  return(res)
 }
 
+# needed in c++
 #' @export
 vectomat_cxx<-function(x,Aimax)  return(matrix(x,Aimax,3))
 
@@ -2452,8 +2239,8 @@ vectoarr_cxx<-function(x,ndof,Aimax)  return(array(x,c(ndof,Aimax,3)))
 #' FitAlm
 #' @description
 #' fit coefficients from 3d-coordinates
-#' @param X,bas input data and basis; bas$mask must be set to ecluded X points indices
-#' @param WX (=1) spatial weights, could be sin(grd$U)
+#' @param X,bas : input data and basis; bas$mask must be set to ecluded X points indices
+#' @param WX (=1) : spatial weights, could be sin(grd$U)
 #' @export
 FitAlm <- function (X, bas, WX = rep(1, nrow(X)))
 { A=FitAlm_Tikhonov(X,bas,lambda=0, WX = WX)
@@ -2461,7 +2248,7 @@ FitAlm <- function (X, bas, WX = rep(1, nrow(X)))
 }
 
 
-# Weighted SPHARM fit
+#' Weighted SPHARM fit
 #' @export
 Weighted_FitAlm <- function (X, bas, sigma = 0.001, CL = 0.95)
 {
@@ -2530,10 +2317,10 @@ Weighted_FitAlm <- function (X, bas, sigma = 0.001, CL = 0.95)
               sigma = sigma))
 }
 
-
-# fit with regularization and weights:
-# filtering high frequencies in least squares
-#   lambda should be tested systematically by L curve discussion
+#' FitAlm_Tikhonov
+#' fit with regularization and weights:
+#' filtering high frequencies in least squares
+#'   lambda should be tested systematically by L curve discussion
 #' @export
 FitAlm_Tikhonov<-function (X, bas, lambda = 0,
                            WX = rep(1, nrow(X)), keepIM = FALSE,
@@ -2574,14 +2361,15 @@ FitAlm_Tikhonov<-function (X, bas, lambda = 0,
 
 #' inv_sph
 #' @description
-#' give angles  (u,v) from spherical 3D point X
+#' give angles  (u,v) from spherical or star-like shape 3D point X
 #' @export
 inv_sph<-function(X)
 { r=sqrt(sum(X^2)) # see https://mathworld.wolfram.com/SphericalCoordinates.html
 return(c(acos(X[3]/r),atan2(X[2],X[1]))) # atan2 takes care of octants
 }
 
-# give angles u,v from a starlike 3d-object, to be centred
+#' radial_uv
+#' give angles u,v from a starlike 3d-object, to be centred
 #' @export
 radial_uv<-function(starlike_obj)
 {
@@ -2595,15 +2383,17 @@ radial_uv<-function(starlike_obj)
   return(t(uv))
 }
 
-#
-# synthesize, but only for one spatial component in coefficients  A==A[,k] !!!
-#   for dim in 1..3: see synthX
+#' synth
+#' synthesize, but only for one spatial component in coefficients  A==A[,k] !!!
+#'   for dim in 1..3: see synthX
 #' @export
 synth<-function(Y,A) { return(Y%*%A)}
 
+# partial synthesis
 synth_s<-function(Y,A,mx) { return(Y[,1:mx]%*%A[1:mx])}
 
-# a helper for faster finite differences
+#' synth12
+#' a helper for faster finite differences, not yet used
 #' @export
 synth12<-function (A, C, i, j, k, del)
 {
@@ -2629,31 +2419,34 @@ synth12<-function (A, C, i, j, k, del)
   return(C)
 }
 
-
-# k: spatial dim.
-# i: spectral order (l,m)
-# use: fwd: C=synth_update...(A,C,bas,i,k, +1e-6)
-#      reset: C=synth_update...(A,C,bas,i,k, -1e-6)
+#' synth_update
+#' @description
+#' for forward differences, only add relevant del*Ylm
+#' use this in Hessian computation by finite difference: 
+#'     fwd: C=synth_update...(C,bas,i,k, +1e-6)
+#'   reset: C=synth_update...(C,bas,i,k, -1e-6)
+#' @param   k: spatial dim.
+#' @param   i: spectral order as from (l,m)
+#' @param del (=1e-6) : steplength of update
 #' @export
 synth_update<-function (C, bas, i, k,  del=1e-6)
 {
-#  cat(sum(C$X_u), "-> \t")  # X=Y*A ; X'=Y*(A+delA)=Y*A+Y*del
     C$X[, k]    = C$X[, k] + bas$Ylm[, i] * del
     C$X_u[, k]  = C$X_u[, k] + bas$Ylm_u[, i] * del
     C$X_v[, k]  = C$X_v[, k] + bas$Ylm_v[, i] * del
     C$X_uu[, k] = C$X_uu[, k] + bas$Ylm_uu[, i] * del
     C$X_uv[, k] = C$X_uv[, k] + bas$Ylm_uv[, i] * del
     C$X_vv[, k] = C$X_vv[, k] + bas$Ylm_vv[, i] * del
-#  cat(sum(C$X_u), "\n")
   return(C)
 }
 
-
-# k: spatial dim.
-# i: spectral order (l,m)
-# use: fwd: C=synth_update...(A,C,bas,i,k, +1e-6)
-#      reset: C=synth_update...(A,C,bas,i,k, -1e-6)
-# should be faster than returning full changed C
+#' synth_update_inplace
+#' experimental, not faster
+#' k: spatial dim.
+#' i: spectral order (l,m)
+#' use: fwd: C=synth_update...(A,C,bas,i,k, +1e-6)
+#'      reset: C=synth_update...(A,C,bas,i,k, -1e-6)
+#' not faster than returning full changed C
 #' @export
 synth_update_inplace<-function (C, bas, i, k, del=1e-6)
 {  assign(deparse(substitute(C)), {
@@ -2669,7 +2462,8 @@ synth_update_inplace<-function (C, bas, i, k, del=1e-6)
 
 }
 
-
+# experimental, not faster
+#' scale_inplace
 #' @export
 scale_inplace<-function (m, s)
 {
@@ -2681,30 +2475,34 @@ scale_inplace<-function (m, s)
   }, env = rlang::env_parent())
 }
 
-
-
+#' deltaX_norm
+#' @description
+#' Norm of coordinate change between two coordinate objects 
+#' @param C1,C2 : coordinate objects 
 #' @export
 deltaX_norm<-function(C1,C2)
 { return(apply(C2$X-C1$X,2,pracma::Norm))
 }
-
-# save a set of coefficients A to file
+#' saveA
+#' save a set of coefficients A to file
 #' @export
 saveA<-function(A,file)
 {  save(A,file=file) }
 
 # load a set of coeffs, make it compatible for the current basis bas.
 #' @export
-loadA<-function(file,bas) # loads amplitudes and stores according to basis bas
+loadA<-function(file, bas) # loads amplitudes and stores according to basis bas
 {   # if bas is larger, empty amplitudes are kept zero
-  load(file) # was saved from A
-  A2<-A
+  load(file)->n # was saved from A
+  A2<-get(n)
   A<-array(0,c(bas$Ai_max,3));
   L=min(dim(A)[1],dim(A2)[1])
   for (k in 1:3) A[1:L,k]<-A2[1:L,k] # copy only first coefficients
+  class(A)<-"MemA"
   return(A)
 }
 
+#' loadAlm
 #' @export
 loadAlm<-function(file,bas) # loads amplitudes and stores according to basis bas
 {   # if bas is larger, empty amplitudes are kept zero
@@ -2716,7 +2514,8 @@ loadAlm<-function(file,bas) # loads amplitudes and stores according to basis bas
   return(A)
 }
 
-# rotation first around x by px, then y then z-axis
+#' rotateX
+#' rotation first around x by px, then y then z-axis
 #' @export
 rotateX<-function (X, px = pi, py = 0, pz = 0, transpose = FALSE)
 {
@@ -2736,15 +2535,15 @@ rotateX<-function (X, px = pi, py = 0, pz = 0, transpose = FALSE)
   else stop("X is not a 3d vector, nor a matrix of 3d vectors")
 }
 
-
+# internal use
 rotateXbyM<-function(X,M)
 { return(M%*%X)}
 
-#
-# rotate coefficients by rotating coordinates
-#  gives back a rotation error (new from fit vs. rotated coord)
-#  rotation order is by X,Y,Z-axis
-#
+#' rotateA
+#' rotate coefficients by rotating coordinates
+#'  gives back a rotation error (new from fit vs. rotated coord)
+#'  rotation order is by X,Y,Z-axis
+#'
 #' @export
 rotateA <-function (A, bas, grd, px = pi/2, py = -pi/2, pz = pi/2, plt = FALSE)
 { C <- updateX(A, grd, bas)
@@ -2771,13 +2570,9 @@ rotateA <-function (A, bas, grd, px = pi/2, py = -pi/2, pz = pi/2, plt = FALSE)
               rot_err = pracma::Norm(C1$X-X1)))
 }
 
-#
-# perturb coeffs a bit, but damped by Tikhonov diagonal
-#
-
-#
-# shows a series of up to nr x nc images and "rep" values for the l>0 present in bas
-#
+#' plotLseries
+#' shows a series of up to nr x nc images and "rep" values for the l>0 present in bas
+#' (truncation plot)
 #' @export
 plotLseries<-function (nr = 4, nc = 5, A, C, grd, bas,
                        Vals = TRUE,
@@ -2842,7 +2637,8 @@ plotLseries<-function (nr = 4, nc = 5, A, C, grd, bas,
 #
 # fill e.g. grd$Obj  with new coords
 #  and return 3D object, plot if wanted
-#
+#' MakeOBJ
+#' make a rgl-object from standard objects A,grd,bas,C
 #' @export
 MakeOBJ <- function(A,grd,bas,C,col_wire="white",col="black",plot=FALSE)
 {
@@ -2854,9 +2650,8 @@ MakeOBJ <- function(A,grd,bas,C,col_wire="white",col="black",plot=FALSE)
   return(O)
 }
 
-#
-#  Laplacian matrix from graph
-#
+#' Membrane_LaplacianOBJ
+#'  Laplacian matrix from graph
 #' @export
 Membrane_LaplacianOBJ <- function(X)
 {
@@ -2869,7 +2664,8 @@ Membrane_LaplacianOBJ <- function(X)
   return(igraph::laplacian_matrix(ig,normalization="unnormalized",sparse = TRUE)/2)
 }
 
-# from 3D-object X compute mesh Laplacian L, normalized Ln, Diagonal D
+#' Membrane_LaplaciansOBJ
+#' from 3D-object X compute mesh Laplacian L, normalized Ln, Diagonal D
 #' @export
 Membrane_LaplaciansOBJ <- function(X)
 {
@@ -2878,11 +2674,13 @@ Membrane_LaplaciansOBJ <- function(X)
                                          use.last.ij=FALSE)
   ig <- igraph::graph.adjacency(TN,mode="undirected",diag = FALSE)
   # recompute  u directly from Laplacian
-  L=igraph::laplacian_matrix(ig,normalization = FALSE,sparse = TRUE)/2
+  L=igraph::laplacian_matrix(ig,normalization = "unnormalized",sparse = TRUE)/2
   D=L;diag(D)<-0
   return(list(L=L,Ln=igraph::laplacian_matrix(ig,normalized = TRUE,sparse = TRUE),D=D))
 }
 
+#' Membrane_Laplacian_cotan
+#' slow implementation in R
 #' @export
 Membrane_Laplacian_cotan <- function(x,M) # input object x, M input matrix to fill
 { # todo: better directly go through matrix M in sparse format,  then point back to mesh for cotan
@@ -2911,6 +2709,8 @@ Membrane_Laplacian_cotan <- function(x,M) # input object x, M input matrix to fi
   return(-M/2) # comparable to L from GEMINI-implementation-draft
 }
 
+#' GEMINI_cotan_Laplacian_II
+#' GEMINI created cotan Laplacian from rgl-mesh object
 #' @export
 GEMINI_cotan_Laplacian_II <- function(mesh) {
   verts <- t(mesh$vb[1:3, ])
@@ -2953,7 +2753,8 @@ GEMINI_cotan_Laplacian_II <- function(mesh) {
   return(L)
 }
 
-
+#' Gemini_cotan_Laplacian_I
+#' alternative version
 #' @export
 Gemini_cotan_Laplacian_I <- function(mesh) {
   V <- t(mesh$vb[1:3, ])
@@ -2989,12 +2790,13 @@ Gemini_cotan_Laplacian_I <- function(mesh) {
   return(L)
 }
 
-
-
-
-#
-# get Eigensystem for mesh Laplacian (created from an rgl object -> Membrane_LaplacianOBJ())
-#
+#' Membrane_Eig
+#' @description
+#' get Eigensystem for mesh Laplacian (created from an rgl object -> Membrane_LaplacianOBJ())
+#' @param L: mesh Laplacian
+#' @param which (=1:4) : which values to return
+#' @param kind (=SM) : e.g. for smallest magnitude order 
+#' @return matrix of demanded eigenvectors (columns); eigenvalues given as attribute "values"
 #' @export
 Membrane_Eig<-function(L,which=1:4,kind="SM")
 {
@@ -3007,7 +2809,7 @@ Membrane_Eig<-function(L,which=1:4,kind="SM")
   return(R)
 }
 
-#
+#' imag.delta.arrowws.pca
 #' plot arrows of change between two shape states
 #' @param A1,A2 coefficients for the shapes
 #' @param grd2,bas2 grid and basis of second shape A2
@@ -3272,6 +3074,8 @@ SErenumbered_2_OBJ <- function(f.in,f.out,comment="o")
   return(obj)
 }
 
+#' GEMINI_disk_conformal_map 
+#' @description
 #' Map a 3D Mesh to a 2D Unit Circle (Disk Conformal Map)
 #'
 #' @param mesh An Rvcg mesh3d object (must be an open mesh, not a closed sphere)
@@ -3283,7 +3087,7 @@ GEMINI_disk_conformal_map <- function(mesh, L = NULL,plt=FALSE,spherical=TRUE) {
   num_verts <- ncol(mesh$vb)
 
   if (is.null(L)) {
-    L <- GEMINI_get_cotan_Laplacian_cxx(mesh)
+    L <- .GEMINI_get_cotan_Laplacian_cxx(mesh)
   }
   all_edges <- Rvcg::vcgGetEdge(mesh)
   border_edges <- all_edges[all_edges$border == 1, 1:2]
@@ -3347,7 +3151,8 @@ GEMINI_disk_conformal_map <- function(mesh, L = NULL,plt=FALSE,spherical=TRUE) {
   return(list(uv = data.frame(u=u_full, v=v_full), mesh_flat = flat_mesh, bnd=b_indices))
 }
 
-
+#' GEMINI_cut_mesh_along_path
+#' @description
 #' Cut a Mesh Along a Path of Vertices
 #'
 #' Opens a closed mesh by "unzipping" it along a sequence of vertices.
@@ -3372,7 +3177,6 @@ GEMINI_cut_mesh_along_path <- function(mesh, path) {
     w2 <- which(face_mat == v, arr.ind = TRUE)[,1]
     intersect(w1, w2)
   }
-
   get_right_sector_faces <- function(v, start_face_idx, start_edge_v1, stop_edge_v2, all_faces) {
     sector_faces <- c()
     current_face_idx <- start_face_idx
@@ -3439,8 +3243,10 @@ GEMINI_cut_mesh_along_path <- function(mesh, path) {
   return(mesh)
 }
 
+#' NorthSouth
 #' find two extremal vertices along PC1 and some 5 paths to select from
 #' @param O 3d object
+#' @param w (=1) : <15, integer, pre-selecting which proposed path to take 
 #' @return NS=c(N,S), North and South vertex indices
 #' @return Path: list of index vectors connecting N and S by k-shortest path
 #' @examples
@@ -3468,6 +3274,9 @@ NorthSouth<-function(O,w=1){
  return(list(NS=c(N,S),Paths=P,vars=v, LVPath=(P$vpaths[[ order(v)[w] ]])))
 }
 
+#' PlotPaths
+#' @description
+#'   draw some paths P on object O
 #' @export
 PlotPaths<-function(O,P,LVPath=TRUE)
 {
@@ -3790,6 +3599,11 @@ return(O)  # quads dont allow for vcgUpdatenormals for unknown reason
 MakeMemRBC <- function(A,G,B)
 { return(structure(class="MemRBC",list(A=LM2A(A,B),grd=G,bas=B)))}
 
+#' CenterX
+#' @description
+#' gives back centered coordinates X
+#'  but not center of mass, if X contains doubles
+#'  
 #' @export
 CenterX<-function(X)
 {  return(apply(X,2,function(x) x-mean(x))) }
@@ -3894,7 +3708,7 @@ TriMesh_Unduloid<-function(a=1,c=2,periods=1.0,nx=40,ny=40,shade=TRUE,wire=FALSE
 }
 
 #
-#    use polynomials of degree 12 to fit to lowess fits with other data
+# use polynomials of degree 12 to fit to lowess fits with other data
 #
 #' @export
 Lowess_vcg_meanvbOBJ<-function(x,O) # return mean curvature
@@ -4016,7 +3830,7 @@ ConsIter<-function(A,grd,bas,C,g2, Ctol=1e-3, nsteps=20,
     NCons1=NCons
     dFm<-c(g2[[ bas$Cons[1] ]])
     for (ii in 2:Nc) dFm=cbind(dFm,c(g2[[bas$Cons[ii]]])) # additional constraints
-    M_c<-matrix(0.0,Nc,Nc); for (i in 1:Nc) for (j in 1:Nc) M_c[i,j]<-dot2(dFm[,i],dFm[,j])
+    M_c<-matrix(0.0,Nc,Nc); for (i in 1:Nc) for (j in 1:Nc) M_c[i,j]<-.dot2(dFm[,i],dFm[,j])
     Pm<-pracma::pinv(M_c)
     sol<- (- Pm %*%Cons_RHS)[,1]
     names(sol)=names(bas$Cons)
@@ -4050,8 +3864,9 @@ ConsIter<-function(A,grd,bas,C,g2, Ctol=1e-3, nsteps=20,
 #' of the coefficients, as used in CNM.
 #' It is based on finite differences of gradients
 #' with a symmetrization.
-#' @param del finite difference delta for coefficients
-#' @returns Full Hessian matrix, ie also constraint Jacobian
+#' @param A, grd, bas, Ref : standard objects of a MemRBC
+#' @param del (=1e-6) finite difference delta for coefficients
+#' @returns Full Hessian matrix, ie also constraint Jacobian, but not bordered
 #' @export
 FullModelHessian<-function (A, grd, bas, Ref, del = 1e-06, Ctol = 0.001)
 {
@@ -4097,7 +3912,7 @@ FullModelHessian<-function (A, grd, bas, Ref, del = 1e-06, Ctol = 0.001)
 }
 
 
-#' ID
+#' ID (not used anymore)
 #' @description a template filter for modification of
 #' coefficients.
 #' Such a filter can be used in only a few apps, like MMC.
@@ -4197,6 +4012,8 @@ FullModelHessian_Par <- function (A, grd, bas, Ref, del = 5e-06,
 
 
 # export - but internal to FullHessian_Par
+#' FullHessian_Client
+#' for your inspection/replacement
 #' @export
 FullHessian_Client<-function(L,DBG=FALSE) # Lmax=13 takes 4 seconds per call/core
 { pt=proc.time()
@@ -4212,7 +4029,7 @@ FullHessian_Client<-function(L,DBG=FALSE) # Lmax=13 takes 4 seconds per call/cor
   # decide by M.Rcpp for openmp-parallel code
   #       cant directly use Grad_SCM on cluster due to scattered objects names
   if(!M.Rcpp) {Gh2=Grad_SCM_R(h2,.M.grd,.M.bas,C)} else {
-    G2=Grad_SCM_cxx(h2,.M.grd, .M.bas, C, M.C0, L$M.Rcpp_ncores, L$M.K_b, L$M.K_ADE)
+    G2=.Grad_SCM_cxx(h2,.M.grd, .M.bas, C, M.C0, L$M.Rcpp_ncores, L$M.K_b, L$M.K_ADE)
     Gh2=list(ddA=array(G2$ddA,c(.M.grd$ndof,.M.bas$Ai_max,3)),
              ddV=array(G2$ddV,c(.M.grd$ndof,.M.bas$Ai_max,3)),
              grad_SCM=G2$grad_SCM,gradV=G2$gradV,gradA=G2$gradA,gradC=G2$gradC,
@@ -4230,16 +4047,19 @@ FullHessian_Client<-function(L,DBG=FALSE) # Lmax=13 takes 4 seconds per call/cor
 }
 
 
-
+#'mat2vec
 #' @export
 mat2vec<-function(m) return(c(m))
 #' @export
 matdiff2vec<-function(m1,m2)
 {return(c(m1-m2))}
 
+#'symmetrize
 #' @export
 symmetrize<-function(m)
 {return((m+t(m))/2.0)}
+
+#'matadd2vec
 #' @export
 matadd2vec<-function(m1,m2)
 {return(c(m1+m2))}
@@ -4292,7 +4112,8 @@ SetConstraints<-function(bas,Cons=c("gradA","gradV"),
 }
 
 #' ConstraintHessian
-#' @description constraint (=bordered) Hessian for CNM() Newton minimizer
+#' @description 
+#' constraint (=bordered) Hessian for CNM() Newton minimizer
 #' @export
 ConstraintHessian<-function(H,bas,Lambda,filter=ID)
 {
@@ -4331,7 +4152,7 @@ RosenProjection<-function(G,g2,bas) # output the projected energy gradient G; g2
   lambda<- t(RosenA)%*%IRosenAAt%*%RosenA
   Gprime <- c(G) - (lambda %*% c(G)) [,1]
   lambdaG=c()
-  for (i in 1:bas$Nc) lambdaG[i]=dot2(c(G),RosenA[i,]) # how much from each constraint gradient  is projected out of Gradient?
+  for (i in 1:bas$Nc) lambdaG[i]=.dot2(c(G),RosenA[i,]) # how much from each constraint gradient  is projected out of Gradient?
   names(lambdaG)=bas$Qcons
   return(list(Gprime=G,Eigs=eigen(RosenAAt)$values,lambdaG=lambdaG))
 }
@@ -4351,7 +4172,7 @@ return(Cons_RHS)
 
 
 # if you decide to erase dot2 from Rcpp-code:
-if(!exists("dot2")) dot2=function(x,y) sum(x*y)
+if(!exists(".dot2")) .dot2=function(x,y) sum(x*y)
 
 
 #' Cons_filter_delta
@@ -4484,13 +4305,6 @@ Grad_FullModel_Penalty_AVC<-function (A, grd, bas, Ref, S)
 }
 
 
-# not exported, not used #' @export
-Hessian_FullModel <- function(A,grd,bas,Ref,del,ncores)
-{H=Hessian_SCM_SEN_cxx(A,grd,bas,Ref,del,ncores,M.C0,M.K_b,M.K_ADE)
- H$H=(H$H+t(H$H))/2
-  return(list(H=H$H,gradA=H$gradA,gradV=H$gradV,gradC=H$gradC,g2=H$g2,h2=H$h2,G=H$G,comment="Hessian_SCM_SEN_cxx"))
-}
-
 #' @export
 Spicules_as_Minima<-function(Q,grd,sgn=1)
 { iy=function(x){if (x<1) return(x+grd$nu) else return(x)}
@@ -4548,12 +4362,14 @@ cat(crayon::red("Nspic ",nspic,"\n"))
 return(list(M=M,E=E,p=p,L=L,o=o,Eo=EE[o],nspic=nspic))
 }
 
+#' history_MemRBC
 #' @export
 history_MemRBC<-function(M)
 {
   print(paste(M$history))
 }
 
+#' MakeIM
 #' @export
 MakeIM<-function (bas, lambda = 0, WX = rep(1, dim(bas$Ylm)[1]))
 {
@@ -4567,6 +4383,7 @@ MakeIM<-function (bas, lambda = 0, WX = rep(1, dim(bas$Ylm)[1]))
   return(bas)
 }
 
+#' double_uv_ind
 #' @export
 double_uv_ind<-function (u, v, digits = 7)
 {
@@ -4635,6 +4452,7 @@ Movie<-function (M,x=400,y=400,from=1,to=length(M$LA),sleep=0.025,phi=pi/100,phi
   }
 }
 
+#' MemCols
 #' @export
 MemCols<-function(data,pal=rainbow,n=100)
 {return(pal(n)[1+(n-1)*(data-min(data))/diff(range(data))])}
@@ -4832,3 +4650,30 @@ E_FullModel_Penalty <- function (A, grd, bas, Ref)
               Curv = h2$Curv, n = h2$n))
 }
 
+#' create data
+#' @description
+#' use this to create some data for experimenting further...
+#' 
+#' @export
+create_data <- function()
+{ print("this is a long-runner to create data for MemRBC")
+  p=paste(.libPaths(),"MemRBC")
+  w=which(file.exists(p))
+  n=p[w]
+  print("creating data in ",n,"\n")
+  MakeStandardRBC(L=16)->SS
+  SDRC(SS,20,del_cons = 1e-1, del_min=1e-4,max_iter = 20,prn_ci = TRUE)->SSsdrc
+  SDRC(SSsdrc,20,del_cons = 1e-1, del_min=1e-5,max_iter = 20,prn_ci = TRUE)->SSsdrc   
+  SDRC(SSsdrc,20,del_cons = 1e-1, del_min=3e-5,max_iter = 20,prn_ci = TRUE)->SSsdrc   
+  SDRC(SSsdrc,20,del_cons = 1e-1, del_min=5e-5,max_iter = 20,prn_ci = TRUE)->SSsdrc   
+  SDRC(SSsdrc,20,del_cons = 1e-1, del_min=1e-4,max_iter = 20,prn_ci = TRUE)->SSsdrc   
+  plot(SSsdrc$SDRC_Sample$E,type="l")
+  plot(SSsdrc$SDRC_Sample$C,type="l")
+  # the following CNM can have massive speedup with cluster=TRUE, M.Rcpp_ncores=2, 
+  #       ncores=60, e.g. on a fat node with 120 cores and enough memory 
+  # 
+  CNM(SSsdrc,2,cluster = FALSE)-> SSsdrc_cnm # takes >100minutes on Ryzen 7 Pro laptop
+  save_MemRBC(SSsdrc_cnm,"SSsdrc_cnm",qs2=TRUE) # fast compressed save
+  
+  
+}

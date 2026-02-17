@@ -1,5 +1,12 @@
+Research
+Research/*
+aux$
+log$
+out$
+tmp_cluster.txt
+png$
+Makefile
+.gitignore
+doc/.*[.](bib|bst|sty)$
 ^.*\.Rproj$
 ^\.Rproj\.user$
-^\.Rc
-^\vignettes\.Rc
-^\tests\testthat\.Rc

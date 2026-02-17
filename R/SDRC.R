@@ -60,11 +60,10 @@ SDRC <- function (M, nsteps = 100, del_min = 1e-07, del_cons = 0.001,
   grd = M$grd
   bas = M$bas
   Ref = M$Ref
-  if (is.null(M$LA))
-    LA = M$LA
-  else LA = list(M$A)
+  if (!is.null(M$LA))  LA = M$LA else LA = list(M$A)
   if (M.mu == 0 & M.Ka == 0)
     GS = list(grad_SEN = matrix(0, bas$Ai_max, 3))
+  
   for (i in 1:nsteps) {
     C <- updateX(A, grd, bas)
     E <- E_SCM(A, grd, bas, C)
@@ -74,10 +73,10 @@ SDRC <- function (M, nsteps = 100, del_min = 1e-07, del_cons = 0.001,
     }
     else ES = 0
     GE <- Grad_SCM(E, grd, bas, C)
-    if (M.mu != 0 | M.Ka != 0)
-      GS <- Grad_SEN(A, grd, bas, GE, S, Ref)
-    G <- RosenProjection((GE$grad_SCM + GS$grad_SEN) * filter,
-                         GE, bas)
+    if (M.mu != 0 | M.Ka != 0)  GS <- Grad_SEN(A, grd, bas, GE, S, Ref)
+      G <- RosenProjection((GE$grad_SCM + GS$grad_SEN) * filter,
+                         GE, bas) # else: GS=0, set above
+      
     A <- A - del_min * G$Gprime
     C <- updateX(A, grd, bas)
     E <- E_SCM(A, grd, bas, C)
@@ -113,8 +112,7 @@ SDRC <- function (M, nsteps = 100, del_min = 1e-07, del_cons = 0.001,
     attr(A, "C0") <- M.C0
     attr(A, "Target") <- bas$Target
     attr(A, "run_id") <- run_id
-    if (i%%LAfreq == 0)
-      LA[[length(LA) + 1]] <- A
+    if (i%%LAfreq == 0)   {cat (crayon::red("REC LN",length(LA),"\n"));LA[[length(LA) + 1]] <- A }
     if (file.exists("STOP_SDRC.txt")) {
       file.remove("STOP_SDRC.txt")
       cat(crayon::red("STOP SDRC from extern\n"))

@@ -45,7 +45,7 @@ MakeStandardRBC <- function(A0=140, V0=100, V0_Ref=148, L=9,C0=-1,
 { # symm=Axi for reduced basis
   # if(L<4) warning("MakeStandardRBC: probably no solution for L>5")
   t0=proc.time()
-  M.C0<<-C0
+  if (M.C0!=C0) warning("M.C0 not equal demanded C0")
   cl <- match.call()
 
   grd <- MakeGrid_GaussLegendreSimpson(n)

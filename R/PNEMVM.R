@@ -127,7 +127,7 @@ PNEMVM <- function (M, nsteps = 100, dt = 5e-04, LAfreq = 50, plt = TRUE,
     Av <- Av + Aa1 * 0.5 * dt
     Xdot <- synthX(bas$Ylm, Av)
     Ekin_X <- 0
-    for (j in 1:3) Ekin_X <- Ekin_X + 0.5 * rho * IntegS(Xdot[,
+    for (j in 1:3) Ekin_X <- Ekin_X + 0.5 * rho * .IntegS(Xdot[,
                                                               j]^2 * E$dA, grd)
     Ekin <- 0
     for (j in 1:3) Ekin <- Ekin + (0.5 * Av[, j] %*% mass %*%

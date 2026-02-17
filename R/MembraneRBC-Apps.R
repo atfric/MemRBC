@@ -403,26 +403,27 @@ update.MemRBC <- function(M, what=c("dA","Quantities","X"),n=0,L=5)
   if("curv" %in% what)
   {q=E_SCM(M$A,M$grd,M$bas,updateX(M$A,M$grd,M$bas))$curv
    M$curv=q;}
+  if("curv_sq" %in% what)
+  {q=E_SCM(M$A,M$grd,M$bas,updateX(M$A,M$grd,M$bas))$curv_sq
+   M$curv_sq=q;}
+  
   if("SCM" %in% what)
   {q=E_SCM(M$A,M$grd,M$bas,updateX(M$A,M$grd,M$bas))
-  M$SCM=q;
+   M$SCM=q;
   }
   if("Basis" %in% what){
     if(is.null(M$bas$Target)) stop("to update Basis you need $Target values in original $bas.")
     Target=M$bas$Target
-
     bas=MakeBasis_UV(L,M$grd$U,M$grd$V);
     bas$Target=Target
     Ain=LM2A(M$A,M$bas);
-
     M$bas=bas;
-
     A=LM2A(M$bas$A,M$bas)
     i=intersect(rownames(A),rownames(Ain))
     A[i,]=Ain[i,]
     M$A=A
     if(sum(A)==0) stop("A=0 in update Basis after taking over old coefficients M$A")
-    M$Av=NULL
+    M$Av=NULL # no velocities
     what=c(what,"Ref")
   }
   if("Ref" %in% what){
@@ -464,6 +465,12 @@ update.MemRBC <- function(M, what=c("dA","Quantities","X"),n=0,L=5)
     Wb=E_SCM(M$A,M$grd,M$bas,updateX(M$A,M$grd,M$bas))
     M$SEN=SEN(M$A,M$grd,M$bas,M$Ref,Wb)
   }
+  if("Class" %in% what)
+  {class(M$bas) = "MemBas"
+   class(M$A)   = "MemA"
+   class(M$grd) = "MemGrd"}
+  if("Time" %in% what){M$Timestamp=timestamp()}
+  if("Mask" %in% what) M$bas$mask=double_uv_ind(M$grd$U,M$grd$V)
   return(M)
 }
 
@@ -515,10 +522,10 @@ load_MemRBC<-function (file = "MemRBC.rdat", qs2 = FALSE)
 {
   if (file.exists(file))
     if (qs2)
-      obj_name = qs2::qs_read(file)
-  else obj_name = load(file = file)
+      M = qs2::qs_read(file)
+    else {obj_name = load(file = file);M = get(obj_name)}
   else stop("Membrane file does not exists")
-  M = get(obj_name)
+  
   if (is.null(M$bas$Ylm_u))
     M <- FillBasis_MemRBC(M)
   if (!is.null(M$Sample))
@@ -1438,8 +1445,8 @@ GEMINI_Intersect_Mem_Mem<-function(M1,M2=M1)
 
 #' @export
 "*.MemRBC"<-function(a,b)
-{if (class(a)=="MemRBC" & is.numeric(b)) {a$A=a$A*b;return(a)}
- if (class(b)=="MemRBC" & is.numeric(a)) {b$A=b$A*a;return(b)}
+{if (is(a,"MemRBC") & is.numeric(b)) {a$A=a$A*b;return(a)}
+ if (is(b,"MemRBC") & is.numeric(a)) {b$A=b$A*a;return(b)}
  warning("not correct types - return NULL")
 return(NULL)
 }
@@ -1487,5 +1494,50 @@ GEMINI_rvcg_kdtree_candidates <- function(meshA, meshB) {
 
   return(unique(candidates))
 }
+#' @export
+print.MemA<-function(A)
+{
+   cat("MemA Coefficient object of size ",dim(A)[1],"x",dim(A)[2],"\n")
+   cat("C0",attr(A,"C0"),"\t") 
+   cat("A0",attr(A,"A0"),"\t") 
+   cat("V0",attr(A,"V0"),"\n")
+   cat("E",attr(A,"E"),"\n")
+   cat("attributes:\n",names(attributes(A)),"\n")
+}
+#' @export
+print.MemGrd<-function(G)
+{
+  cat("MemGrid object of ndof ",G$ndof,"\n")
+  cat(G$comment,"\n")
+  cat("Angles arrays dimension:",dim(G$u),"\n")
+  cat("range u",range(G$u)," \nrange v",range(G$v),"\n")
+}
+
+#' @export
+print.MemC<-function(C){
+  cat("MemC coordinate object \n")
+  cat("X    : ",dim(C$X),"\n")
+  cat("Xu ...: ",dim(C$X_u),"\n")
+}
+
+#' @export
+print.MemC_X<-function(C){
+  cat("MemC coordinate only object \n")
+  cat("X    : ",dim(C$X),"\n")
+}
+
+#' @export
+print.MemBas<-function(B){
+  cat("MemBas basis functions object \n")
+  cat("Yml      : ",dim(B$Ylm),"\n")
+  cat("Yml_u ...: ",dim(B$Ylm_u),"\n")
+}
 
 
+#' @export
+UpdateM<-function(M)
+{class(M$bas) = "MemBas"
+ class(M$A)   = "MemA"
+ class(M$grd) = "MemGrd"
+ return(M)
+}
