@@ -549,14 +549,14 @@ FillBasis_MemRBC<-function(M)
     u=M$grd$u;v=M$grd$v
     Ai_max=bas$Ai_max
     LM = bas$LM
-    L_Ylm=L_Ylm(L_max, u,  v)
+    L_Ylm=.L_Ylm(L_max, u,  v)
     Ylm=L_Ylm$Ylm[,-1] / sqrt(4*pi)
-    Ylm_v=Ylm_v(L_max, u,  v, L_Ylm$PLK)[,-1] / sqrt(4*pi)
-    Ylm_vv=Ylm_vv(L_max, u,  v, L_Ylm$PLK)[,-1] / sqrt(4*pi)
-    L_Y_u=L_Ylm_u(L_max,u,v,L_Ylm$PLK)
+    Ylm_v=.Ylm_v(L_max, u,  v, L_Ylm$PLK)[,-1] / sqrt(4*pi)
+    Ylm_vv=.Ylm_vv(L_max, u,  v, L_Ylm$PLK)[,-1] / sqrt(4*pi)
+    L_Y_u=.L_Ylm_u(L_max,u,v,L_Ylm$PLK)
     Ylm_u=L_Y_u$Ylm_u[,-1] / sqrt(4*pi)
-    Ylm_uu=Ylm_uu(L_max,u,v,L_Y_u$P_T)[,-1] / sqrt(4*pi)
-    Ylm_uv=Ylm_uv(L_max,u,v,L_Ylm$PLK,L_Y_u$P_T)[,-1] / sqrt(4*pi)
+    Ylm_uu=.Ylm_uu(L_max,u,v,L_Y_u$P_T)[,-1] / sqrt(4*pi)
+    Ylm_uv=.Ylm_uv(L_max,u,v,L_Ylm$PLK,L_Y_u$P_T)[,-1] / sqrt(4*pi)
     l=LM[,1];m=LM[,2]
     M$bas$Ylm=Ylm
     M$bas$Ylm_u=Ylm_u
@@ -708,8 +708,9 @@ invisible()
 }
 
 #' PlotLSeries
-#'
-#' plot series of shapes from a single object for truncated to lower spectral orders
+#' @description
+#' plot series of shapes from a single object.
+#' This visualizes truncation effects on shape and energy.
 #' @param M membrane object to plot truncation series from
 #' @param nr,nc (=4,=3) number of rows and columns on screen
 #' @examples

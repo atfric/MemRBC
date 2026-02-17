@@ -2570,10 +2570,10 @@ rotateA <-function (A, bas, grd, px = pi/2, py = -pi/2, pz = pi/2, plt = FALSE)
               rot_err = pracma::Norm(C1$X-X1)))
 }
 
-#' plotLseries
-#' shows a series of up to nr x nc images and "rep" values for the l>0 present in bas
-#' (truncation plot)
-#' @export
+# plotLseries
+# shows a series of up to nr x nc images and "rep" values for the l>0 present in bas
+# (truncation plot)
+# not exported, but PlotLSeries 
 plotLseries<-function (nr = 4, nc = 5, A, C, grd, bas,
                        Vals = TRUE,
                        fill = TRUE, rep = "H2", S = NULL,
