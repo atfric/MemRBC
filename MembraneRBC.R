@@ -1684,7 +1684,7 @@ imag.obj.colorbar.simple<-function(obj,f,clr=TRUE,...) {
   if(clr) rgl::clear3d()
   cols=rainbow(100);
   rgl::shade3d(obj,meshcolor="vertices",color=cols[(f-min(f))/diff(range(f))*99+1],...)
-  rgl::bgplot3d(imagePlot(legend.only = TRUE, zlim = range(f), col = cols) )
+  rgl::bgplot3d(own.imagePlot(legend.only = TRUE, zlim = range(f), col = cols) )
 }
 
 
@@ -1704,7 +1704,7 @@ imag.obj.colorbar<-function(obj,f,limits=range(f),clr=FALSE,pal=heat.colors,widt
   col[limits[1]>f]="#000000"
   col[limits[2]<f]="#000000"
   rgl::shade3d(obj,meshcolor="vertices",col=col,...)
-  rgl::bgplot3d(imagePlot(legend.only = TRUE,add=TRUE,zlim = limits, col = cols) )
+  rgl::bgplot3d(own.imagePlot(legend.only = TRUE,add=TRUE,zlim = limits, col = cols) )
 }
 
 #' MakeGrid_GaussLegendre
@@ -4503,14 +4503,14 @@ Rewind<-function(M,last=2)
   return(M)
 }
 
-imagePlot<-function (..., add = FALSE, breaks = NULL, nlevel = 64, col = NULL, 
+own.imagePlot<-function (..., add = FALSE, breaks = NULL, nlevel = 64, col = NULL, 
                      horizontal = FALSE, legend.shrink = 0.9, legend.width = 1.2, 
                      legend.mar = ifelse(horizontal, 3.1, 5.1), legend.lab = NULL, 
                      legend.line = 2, graphics.reset = FALSE, bigplot = NULL, 
                      smallplot = NULL, legend.only = FALSE, lab.breaks = NULL, 
                      axis.args = NULL, legend.args = NULL, legend.cex = 1, midpoint = FALSE, 
                      border = NA, lwd = 1, verbose = FALSE) 
-{ pn=(rgl::cur3d()>1)
+{ pn=(rgl::cur3d()>0)
   old.par <- par(no.readonly = TRUE)
   if (is.null(col)) {
     col <- tim.colors(nlevel)
@@ -4567,7 +4567,7 @@ imagePlot<-function (..., add = FALSE, breaks = NULL, nlevel = 64, col = NULL,
     print(iz)
     print(col)
   }
-  par(new = pn, pty = "m", plt = smallplot, err = -1)
+  par(new = FALSE, pty = "m", plt = smallplot, err = -1)
   if (!horizontal) {
     image(ix, iy, iz, xaxt = "n", yaxt = "n", xlab = "", 
           ylab = "", col = col, breaks = breaks)
