@@ -33,26 +33,28 @@
 #' @return MMCiter: total MMC steps, incl. MMC from previous calls
 #' @return history: history of App-calls that created the result
 #' @examples
-#' M <- MakeStandardRBC(L=5)
+#' if(exists("E_SCM_cxx")) { # catch problems in cran tests
+#' data(M4,package = "MemRBC"); M<-M4
 #' plot(M)
 #' #  annealing simulation (decrease kT by kTfac every Ktfreq accepted steps)
 #' M1 <- MMC(M,nsteps=100000, kT=0.00411, kTfac=0.99, kTfreq=100, C0=-2)
 #' plot(M1)
-#' M1
+#' M1}
 #' @export
 MMC<-function (M, nsteps = 1000, plt = TRUE, pltfreq = 10, prn = TRUE,
                LAfreq = 200, sd = 0.004, kT = 0.00411, kTfac = 1, kTfreq = 100,
                pertA = pertA_Unif, record_dA = FALSE, timing = FALSE, C0 = M$C0,
                ...)
 {
-  if (C0 != M.C0)
-    stop("you should set global M.C0 correctly by hand!")
+  if (C0 != MemRBC_env$M.C0)
+    stop("you should set global MemRBC_env$M.C0 correctly by hand!")
+  M$Params[["M.C0"]] <- C0
   t0 = proc.time()
   if (is.null(M$proc_time))
     M$proc_time <- 0
-  if (!exists("M.Rcpp"))
+  if (is.null(MemRBC_env$M.Rcpp))
     stop("Cannot process - probably load_param_MemRBC has not been called.")
-  M.Rcpp <<- TRUE
+  MemRBC_env$M.Rcpp <- TRUE
   cl = match.call()
   if (identical(pertA, pertA_complex) & !exists("M.nn"))
     M.nn <<- NNuv(M$grd$UV, 13)
@@ -103,16 +105,16 @@ MMC<-function (M, nsteps = 1000, plt = TRUE, pltfreq = 10, prn = TRUE,
     attr(A1, "V") = FM$Volume
     attr(A1, "A") = FM$Area
     attr(A1, "Target") = bas$Target
-    attr(A1, "C0") = M.C0
+    attr(A1, "C0") = MemRBC_env$M.C0
     attr(A1, "sd") = sd
-    attr(A1, "M.rho") <- M.rho
+    attr(A1, "M.rho") <- MemRBC_env$M.rho
     attr(A1, "method") = "MMC"
     if (record_dA)
-      Record[i, ] = c(c(A1), W, M.C0)
+      Record[i, ] = c(c(A1), W, MemRBC_env$M.C0)
     if (min(1, exp(-(W - W0)/kT)) > runif(1)) {
       if (prn)
-        cat("a :EAVC:", W/M.Es, FM$Area, FM$Volume, FM$Curv,
-            ":C0:", M.C0, ":kT:", kT, "iter", i, "\n")
+        cat("a :EAVC:", W/MemRBC_env$M.Es, FM$Area, FM$Volume, FM$Curv,
+            ":C0:", MemRBC_env$M.C0, ":kT:", kT, "iter", i, "\n")
       W0 = W
       A = A1
       Ar[rec] = oldA
@@ -131,13 +133,13 @@ MMC<-function (M, nsteps = 1000, plt = TRUE, pltfreq = 10, prn = TRUE,
           M$A = A
           rgl::clear3d()
           plot(M, col = "white", ...)
-          rgl::title3d(paste("MMC", round(W/M.Es, 5),
-                             M$MMCiter + i, round(kT, 7), M.C0, round(FM$Curv,
+          rgl::title3d(paste("MMC", round(W/MemRBC_env$M.Es, 5),
+                             M$MMCiter + i, round(kT, 7), MemRBC_env$M.C0, round(FM$Curv,
                                                                       4)))
         }
       if (aa%%250 == 0)
         save(A, file = paste("A_L", bas$L_max, "_C0_",
-                             M.C0, ".rdat", sep = ""))
+                             MemRBC_env$M.C0, ".rdat", sep = ""))
       if (aa%%LAfreq == 0) {
         attr(A, "method") = "MMC"
         LA[[length(LA) + 1]] <- A
@@ -171,7 +173,7 @@ MMC<-function (M, nsteps = 1000, plt = TRUE, pltfreq = 10, prn = TRUE,
     }
   }
   M$kT = kT
-  M$C0_MMC = M.C0
+  M$C0_MMC = MemRBC_env$M.C0
   M$E = FM$E
   M$A = A
   M$LA = LA

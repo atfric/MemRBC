@@ -1,27 +1,33 @@
-ss42denovo->M
-if (FALSE) { # synth_update_inplace not testable when in package; you could define it in your R code
-  C=updateX(D5$A,D5$grd,D5$bas)
-  synth_update_inplace(C,D5$bas, 4,3)
-  C1=updateX(D5$A,D5$grd,D5$bas)
-  C1=synth_update(C1,D5$bas, 4,3)
+# create data from scratch
+# tests run without data, but SF4lr.rda
+#load_param_RBC()
+#print_param_RBC()
+load("M1.rda")
+StoreParams(M1)->M
+print(M$Params)
+update(M,"Class")->M
+print(M$bas)
+print(M$grd)
+print(M$ARef)
+print(M$Ref)
+update(M,"SEN")->M
+update(M,"Coor")->M
+M$Params[["M.C0"]]=0
+print(E_SEN(M$A,M$grd,M$bas,M$SEN,M$Ref))
+print(E_SCM(M$A,M$grd,M$bas,M$C))
+rgl::wire3d(M$C$Obj)
 
-  severe(max(C1$X-C$X),0,"update vs update_inplace",1e-10)
-  C=updateX(M$A,M$grd,M$bas)
-#  microbenchmark::microbenchmark(synth_update_inplace(C,M$bas,sample(1:M$bas$Ai_max,1),sample(1:3,1)),times=1000)
-#  microbenchmark::microbenchmark(C=synth_update(C,M$bas,sample(1:M$bas$Ai_max,1),sample(1:3,1)),times = 1000)
-} # 1.5ms median
+D5=M
+structure(class="MemESCM",E_SCM_cxx(D5$A, D5$grd, D5$bas, updateX(D5$A, D5$grd, D5$bas), MemRBC_env$M.C0, MemRBC_env$M.K_b, MemRBC_env$M.K_ADE) )
+cat("E_SCM_cxx tested\n")
 
-#microbenchmark::microbenchmark(C=updateX(M$A,M$grd,M$bas),times = 100) # 26 ms
-
-
-
- #a couple of checks, needs periodic integrands!!!
+#a couple of checks, needs periodic integrands!!!
   grdGL=MakeGrid_GaussLegendreSimpson(120)
   # therefore, try with H2 evaluation of geometric integral quantities since integrands are periodic in v
   basGL=MakeBasis_UV(2,grdGL$U,grdGL$V)
   AGL=MakeSphere(grdGL,basGL)
   CGL=updateX(AGL,grdGL,basGL)
-  M.C0=0
+  MemRBC_env$M.C0<-0
   H2=E_SCM(AGL,grdGL,basGL,CGL) 
   severe(H2$Volume,4/3*pi,"Volume",1e-13) # 8.6-14
   severe(H2$Area,4*pi,"Area",2e-13)    # 1.74e-13
@@ -29,7 +35,7 @@ if (FALSE) { # synth_update_inplace not testable when in package; you could defi
   severe(H2$Curv,8*pi,"Curvature integral",1e-12)   # 1.522e-13
   severe(H2$H2_BC,16*pi,"Curvature_Square integral",1e-12)
 
-    M.C0=0
+    MemRBC_env$M.C0<<-0
     grd=MakeGrid_GaussLegendreSimpson(97)
     bas=MakeBasis_UV(18,grd$U,grd$V)
     A=MakeSphere(grd,bas)
@@ -44,10 +50,10 @@ if (FALSE) { # synth_update_inplace not testable when in package; you could defi
     tictoc::toc()
 
     tictoc::tic() # Ryzen7pro :: 2.47 on 6 cores; 2.42 on 3 cores
-    M.Rcpp=TRUE;M.Rcpp_ncores=3
+    MemRBC_env$M.Rcpp<<-TRUE;MemRBC_env$M.Rcpp_ncores<<-3
     G2<-Grad_SCM(h2,grd,bas,C)
 
-    cat("parallel Grad_SCM(",M.Rcpp_ncores,")")
+    cat("parallel Grad_SCM(",MemRBC_env$M.Rcpp_ncores,")")
     tictoc::toc()
 
 
@@ -68,7 +74,7 @@ if (FALSE) { # synth_update_inplace not testable when in package; you could defi
   bas=MakeBasis_UV(5,grd$U,grd$V)
   M=MakeSphere(grd,bas)
   updateX(M,grd,bas)->C
-  M.C0=1
+  MemRBC_env$M.C0<<-1
   E_SCM(M,grd,bas,C)->h2
   h2$Volume/4/pi*3 # unit sphere reference
   h2$Curv/4/pi/2 # unit sphere reference curvature
@@ -82,7 +88,7 @@ if (FALSE) { # synth_update_inplace not testable when in package; you could defi
 
   plot3b(C$X,grd)
 
-  M.C0=0
+  MemRBC_env$M.C0<<-0
   H2=E_SCM(A,grd,bas,C)
 
   cat(H2$Area/4/pi,H2$Curv/8/pi,H2$H2_BC/16/pi) # should be nearly 1 all three for sphere of radius 1
@@ -94,9 +100,9 @@ if (FALSE) { # synth_update_inplace not testable when in package; you could defi
   rgl::clear3d()
   #imag.obj.colorbar.simple(grd$Obj,(grd$v))  # look OK, poles identified
   rgl::clear3d()
-  x11()
+#  x11()
   imag(H2$dA,grd)
-  x11()
+#  x11()
   imag(H2$curv,grd)
 
   rgl::open3d()
@@ -124,12 +130,11 @@ if (FALSE) { # synth_update_inplace not testable when in package; you could defi
   severe(int2d_scalar_GLS(basGL$Ylm_u[,basGL$Ai_max],grdGL),0,"Ylm_u",1e-16)
   severe(int2d_scalar_GLS(basGL$Ylm_v[,basGL$Ai_max],grdGL),0,"Ylm_v",2e-14)
 
-
   grdGL=MakeGrid_GaussLegendreSimpson(120)
   basGL=MakeBasis_UV(2,grdGL$U,grdGL$V)
   AGL=MakeSphere(grdGL,basGL)
   CGL=updateX(AGL,grdGL,basGL)
-  M.C0=0
+  MemRBC_env$M.C0<<-0
   H2=E_SCM(AGL,grdGL,basGL,CGL)
   severe(H2$Volume-4/3*pi,0,"Vol",9e-14) # 8.08e-14
   severe(H2$Area-4*pi,0,"Area",1.6e-13)    # 1.51e-13
@@ -137,38 +142,41 @@ if (FALSE) { # synth_update_inplace not testable when in package; you could defi
   severe(H2$H2_BC-16*pi,0,"BC",8.7e-14) # -8.527e-14
 
 # TEST HESSIANS
-  data(D5)
-  M.C0=D5$Params[["M.C0"]] # or for all parans: SetParams(D5)
-M.Rcpp_ncores=3
+  MemRBC_env$M.C0<<-0 # or for all params: SetParams(D5)
+  MemRBC_env$M.Rcpp_ncores<<-3
 # serial gradients assembly version
   system.time({
     HR=FullModelHessian(D5$A,D5$grd,D5$bas,D5$Ref, del=1e-6) }) #  R, now used in CNM
 # parallel grads assembly in cluster
-  system.time({
-    HP=FullModelHessian_Par(D5$A,D5$grd,D5$bas,D5$Ref,del=1e-6,Mem_mc.cores = 4) })#  R-cluster
+  E_SCM_cxx(D5$A, D5$grd, D5$bas, updateX(D5$A, D5$grd, D5$bas), MemRBC_env$M.C0, MemRBC_env$M.K_b, MemRBC_env$M.K_ADE)  
+  cat("E_SCM_cxx tested II\n")
+  HP=FullModelHessian_Par(D5$A,D5$grd,D5$bas,D5$Ref,del=1e-6,Mem_mc.cores = 2) 
   file.remove("tmp_cluster.txt")
   norm(HR$H-HP$H) # 2.8e-7 -> cluster-parallel problem? order of summations in C$X?
 
 norm(HR$H-HP$H) # 2e-7 speaks for non-cluster dev due to fast synch_update of C
 
 severe(norm(HP$H-HR$H),0,"HESSIAN",3e-7)
-
+if(identical(Sys.getenv("NOT_CRAN"), "TRUE")){
 system.time(CNM(D5,2,cluster=FALSE,plt=FALSE)->cnmHR)
-system.time(CNM(D5,2,cluster=TRUE,plt=FALSE)->cnmHP)
+system.time(CNM(D5,2,cluster=TRUE,plt=FALSE,ncores = 1)->cnmHP)
 file.remove("tmp_cluster.txt")
 severe(norm(cnmHR$Hessian-cnmHP$Hessian),0,"CNM-Hessian",1e-6)
-
+}
 
 # speedup by synth_update: 26/1.5=17.3 ms
 # i.e.
 #(26-1.5) * M$bas$Ai_max*3/1000  # time waste in Hessian by full vs partial updates of C: 2.5 seconds for L=16
 
-data("M1")
-M1->M
-system.time(FullModelHessian_Par(M$A,M$grd,M$bas,M$Ref,Mem_mc.cores = 5))
+M<-D5
+system.time(FullModelHessian_Par(M$A,M$grd,M$bas,M$Ref,Mem_mc.cores = 2))
 file.remove("tmp_cluster.txt")
 # with smaller load again:
+
+if(identical(Sys.getenv("NOT_CRAN"), "TRUE")){
 system.time(CNM(D5,2,cluster=FALSE,plt=FALSE)->cnmHC)
-system.time(CNM(D5,2,cluster=TRUE,plt=FALSE)->cnmHP)
+system.time(CNM(D5,2,cluster=TRUE,plt=FALSE,ncores=2)->cnmHP)
 file.remove("tmp_cluster.txt")
 severe(norm(cnmHC$H),norm(cnmHP$H),"CNM seq-par",1e-3) # 0.00187 -> cluster-parallel problem?
+file.remove("tmp_cluster.txt")
+}

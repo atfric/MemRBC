@@ -30,12 +30,15 @@
 #' @return PSDiter; total PSD steps, incl. previous calls
 #' @return history: history of App-calls that created the result
 #' @examples
-#' M <- MakeStandardRBC(L=5)
+#' if(exists("E_SCM_cxx")) { # catch problems in cran tests
+#' data("M4",package = "MemRBC")
+#' M<-M4
 #' plot(M,alpha=0.65)
-#' M <- PSD(M,nsteps=10000,del=1e-6)
+#' M <- PSD(M,nsteps=100,del=1e-6,LAfreq=10)
 #' plot(M,add=TRUE,col="red")
 #' M
 #' attributes(last(M$LA))
+#' }
 #' @export
 PSD <- function (M, nsteps = 100, del = 1e-06, plt = FALSE, pltfreq = 10,
                  LAfreq = 100, ncores = 5, filter_strength = 0)
@@ -65,21 +68,21 @@ PSD <- function (M, nsteps = 100, del = 1e-06, plt = FALSE, pltfreq = 10,
     G <- Grad_FullModel_Penalty(A, grd, bas, Ref, S)
     G <- G * Filter
     A = A - del * matrix(G, ncol = 3)
-    cat("PSD:", i, ":E:", E$E/M.Es, ":C:", E$Curv, ":del:",
-        del, ":C0", M.C0, ":F:", filter_strength, "|Cons|",
+    cat("PSD:", i, ":E:", E$E/MemRBC_env$M.Es, ":C:", E$Curv, ":del:",
+        del, ":C0", MemRBC_env$M.C0, ":F:", filter_strength, "|Cons|",
         NCons, "\n")
     if (plt & (i%%pltfreq == 0)) {
       rgl::clear3d()
       plot3b(C$X, grd)
-      rgl::title3d(paste("PSD", i, "E", round(E$E/M.Es,
+      rgl::title3d(paste("PSD", i, "E", round(E$E/MemRBC_env$M.Es,
                                               4), "C", round(E$Curv, 4)))
     }
     attr(A, "method") = "PSD"
     attr(A, "E") <- E$E
     attr(A, "C") <- E$Curv
-    attr(A, "C0") <- M.C0
+    attr(A, "C0") <- MemRBC_env$M.C0
     attr(A, "Target") <- bas$Target
-    attr(A, "M.rho") <- M.rho
+    attr(A, "M.rho") <- MemRBC_env$M.rho
     attr(A, "run_id") <- run_id
     if (i%%LAfreq == 0)
       LA[[length(LA) + 1]] <- A

@@ -36,13 +36,15 @@
 #' @return SDRCiter; total SDRC steps, incl. previous calls
 #' @return history: history of App-calls that created the result
 #' @examples
-#' M <- MakeStandardRBC(L=5)
+#' if(exists("E_SCM_cxx")) { # catch problems in cran tests
+#' data(M4,package = "MemRBC"); M<-M4
 #' plot(M)
-#' M.C0 <- 0
+#' MemRBC_env$M.C0 <- 0
 #' M <- SDRC(M, nsteps=10000, del=1e-6, LAfreq=100)
 #' plot(M)
 #' M
-#' attributes(last(M$LA))
+#' attributes(last(M$LA)) 
+#' }
 #' @export
 SDRC <- function (M, nsteps = 100, del_min = 1e-07, del_cons = 0.001,
                   max_iter = 10, cons_tol = 0.001, plt = FALSE, pltfreq = 10,
@@ -61,26 +63,26 @@ SDRC <- function (M, nsteps = 100, del_min = 1e-07, del_cons = 0.001,
   bas = M$bas
   Ref = M$Ref
   if (!is.null(M$LA))  LA = M$LA else LA = list(M$A)
-  if (M.mu == 0 & M.Ka == 0)
+  if (MemRBC_env$M.mu == 0 & MemRBC_env$M.Ka == 0)
     GS = list(grad_SEN = matrix(0, bas$Ai_max, 3))
   
   for (i in 1:nsteps) {
     C <- updateX(A, grd, bas)
     E <- E_SCM(A, grd, bas, C)
-    if (M.mu != 0 | M.Ka != 0) {
+    if (MemRBC_env$M.mu != 0 | MemRBC_env$M.Ka != 0) {
       S <- SEN(A, grd, bas, Ref, E)
       ES <- E_SEN(A, grd, bas, S, Ref)
     }
     else ES = 0
     GE <- Grad_SCM(E, grd, bas, C)
-    if (M.mu != 0 | M.Ka != 0)  GS <- Grad_SEN(A, grd, bas, GE, S, Ref)
+    if (MemRBC_env$M.mu != 0 | MemRBC_env$M.Ka != 0)  GS <- Grad_SEN(A, grd, bas, GE, S, Ref)
       G <- RosenProjection((GE$grad_SCM + GS$grad_SEN) * filter,
                          GE, bas) # else: GS=0, set above
       
     A <- A - del_min * G$Gprime
     C <- updateX(A, grd, bas)
     E <- E_SCM(A, grd, bas, C)
-    if (M.mu != 0 | M.Ka != 0) {
+    if (MemRBC_env$M.mu != 0 | MemRBC_env$M.Ka != 0) {
       S <- SEN(A, grd, bas, Ref, E)
       ES <- E_SEN(A, grd, bas, S, Ref)
     }
@@ -97,19 +99,19 @@ SDRC <- function (M, nsteps = 100, del_min = 1e-07, del_cons = 0.001,
     A_SD[i] = E$Area
     I_SD[i] = CI$cons_iter
     CN[i] = pracma::Norm(CI$Cons_RHS)
-    cat("SDRC:", i, "E", Et/M.Es, "C", E$Curv, "CN", CN[i],
-        "del_min", del_min, "C0", M.C0, "F", filter_strength,
+    cat("SDRC:", i, "E", Et/MemRBC_env$M.Es, "C", E$Curv, "CN", CN[i],
+        "del_min", del_min, "C0", MemRBC_env$M.C0, "F", filter_strength,
         "CI", CI$cons_iter, "\n")
     if (plt & (i%%pltfreq == 0)) {
       rgl::clear3d()
       plot3b(C$X, grd)
-      rgl::title3d(paste("SDRC", i, "E", round(Et/M.Es,
+      rgl::title3d(paste("SDRC", i, "E", round(Et/MemRBC_env$M.Es,
                                                4), "C", round(E$Curv, 4)))
     }
     attr(A, "method") = "SDRC"
     attr(A, "E") <- Et
     attr(A, "C") <- E$Curv
-    attr(A, "C0") <- M.C0
+    attr(A, "C0") <- MemRBC_env$M.C0
     attr(A, "Target") <- bas$Target
     attr(A, "run_id") <- run_id
     if (i%%LAfreq == 0)   {cat (crayon::red("REC LN",length(LA),"\n"));LA[[length(LA) + 1]] <- A }

@@ -31,13 +31,14 @@
 #' @return PSDiter; total PSD steps, incl. previous calls
 #' @return history: history of App-calls that created the result
 #' @examples
-#' M <- MakeStandardRBC(L=5)
-#' plot(M)
-#' M <- PSDC(M,nsteps=10000,del=1e-6,)
+#' data("M4",package = "MemRBC")
+#' if(exists("E_SCM_cxx")) { # catch problems in cran tests
+#' M <- PSDC(M4,nsteps=10000,del=1e-6,)
 #' plot(M)
 #' M
 #' attributes(last(M$LA))
 #' attr(M$A,"method")
+#' }
 #' @export
 PSDC <- function (M, curv = Curv(M), nsteps = 100, del = 1e-06, plt = FALSE,
                   pltfreq = 10, LAfreq = 100, ncores = 5)
@@ -47,8 +48,8 @@ PSDC <- function (M, curv = Curv(M), nsteps = 100, del = 1e-06, plt = FALSE,
     M$proc_time <- 0
   cl = match.call()
   run_id = rlang::hash(M)
-  M.Rcpp <<- TRUE
-  M.Rcpp_ncores <<- ncores
+  MemRBC_env$M.Rcpp <- TRUE
+  MemRBC_env$M.Rcpp_ncores <- ncores
   E_PSD = C_PSD = rep(0, nsteps)
   A = M$A
   grd = M$grd
@@ -57,7 +58,6 @@ PSDC <- function (M, curv = Curv(M), nsteps = 100, del = 1e-06, plt = FALSE,
   bas$Nc = 3
   bas$Target = c(bas$Target, curv)
   bas$Cons = c("gradA", "gradV", "gradC")
-  bas$TNorm = c(bas$TNorm, curv)
   bas$QCons = c("Area", "Volume", "Curv")
   names(bas$Target) = bas$QCons
   if (is.null(M$LA))
@@ -70,12 +70,12 @@ PSDC <- function (M, curv = Curv(M), nsteps = 100, del = 1e-06, plt = FALSE,
     S <- SEN(A, grd, bas, Ref, E_SCM(A, grd, bas, C))
     G <- Grad_FullModel_Penalty(A, grd, bas, Ref, S)
     A = A - del * matrix(G, ncol = 3)
-    cat("PSDC:", i, ":E:", E$E/M.Es, ":C:", E$Curv, ":del:",
+    cat("PSDC:", i, ":E:", E$E/MemRBC_env$M.Es, ":C:", E$Curv, ":del:",
         del, "\n")
     if (plt & (i%%pltfreq == 0)) {
       rgl::clear3d()
       plot3q(C$X, grd)
-      rgl::title3d(paste("PSDC", i, "E", round(E$E/M.Es,
+      rgl::title3d(paste("PSDC", i, "E", round(E$E/MemRBC_env$M.Es,
                                                4), "C", round(E$Curv, 4)))
     }
     if (i == 100) {
@@ -84,10 +84,10 @@ PSDC <- function (M, curv = Curv(M), nsteps = 100, del = 1e-06, plt = FALSE,
     }
     attr(A, "E") <- E$E
     attr(A, "C") <- E$Curv
-    attr(A, "C0") <- M.C0
+    attr(A, "C0") <- MemRBC_env$M.C0
     attr(A, "Target") <- bas$Target
     attr(A, "run_id") <- run_id
-    attr(A, "M.rho") <- M.rho
+    attr(A, "M.rho") <- MemRBC_env$M.rho
     attr(A, "method") = "PSDC"
     if (i%%LAfreq == 0)
       LA[[length(LA) + 1]] <- A

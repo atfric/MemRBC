@@ -35,12 +35,14 @@
 #' @return MMCCiter: total MMCC steps, incl. MMCC from previous calls
 #' @return history: history of App-calls that created the result
 #' @examples
-#' M <- MakeStandardRBC(L=5)
+#' if(exists("E_SCM_cxx")) { # catch problems in cran tests
+#' data(M4)
+#' M<-M4
 #' plot(M)
 #' #  annealing simulation (decrease kT by kTfac every Ktfreq accepted steps)
-#' M <- MMCC(M, curv=Curv(M)+0.25, nsteps=100000, kT=0.00411, kTfac=0.99, kTfreq=100)
+#' M <- MMCC(M, curv=Curv(M)+0.25, nsteps=10000, kT=0.00411, kTfac=0.99, kTfreq=100)
 #' plot(M)
-#' M
+#' M }
 #' @export
 MMCC<-function (M, curv = Curv(M), nsteps = 1000, plt = FALSE, pltfreq = 5,
                 LAfreq = 200, sd = 0.004, kT = 0.00411,  pertA = pertA_Unif,
@@ -49,16 +51,15 @@ MMCC<-function (M, curv = Curv(M), nsteps = 1000, plt = FALSE, pltfreq = 5,
   t0 = proc.time()
   if (is.null(M$proc_time))
     M$proc_time <- 0
-  if (!exists("M.Rcpp"))
+  if (is.null(MemRBC_env$M.Rcpp))
     stop("Cannot process - probably load_param_MemRBC has not been called.")
-  M.Rcpp <<- TRUE
+  MemRBC_env$M.Rcpp <- TRUE
   cl = match.call()
   run_id = rlang::hash(M)
   bas = M$bas
   bas$Nc = 3
   bas$Target = c(bas$Target, curv)
   bas$Cons = c("gradA", "gradV", "gradC")
-  bas$TNorm = c(bas$TNorm, curv)
   bas$QCons = c("Area", "Volume", "Curv")
   names(bas$Target) = bas$QCons
   Cnt = rep(0L, nsteps)
@@ -101,15 +102,15 @@ MMCC<-function (M, curv = Curv(M), nsteps = 1000, plt = FALSE, pltfreq = 5,
     attr(A1, "C") = FM$Curv
     attr(A1, "V") = FM$Volume
     attr(A1, "A") = FM$Area
-    attr(A1, "C0") = M.C0
+    attr(A1, "C0") = MemRBC_env$M.C0
     attr(A1, "sd") = sd
     attr(A1, "Target") = bas$Target
     attr(A1, "method") = "MMCC"
-    attr(A, "M.rho") <- M.rho
+    attr(A, "M.rho") <- MemRBC_env$M.rho
     attr(A1, "run_id") = run_id
     if (min(1, exp(-(W - W0)/kT)) > runif(1)) {
-      cat("a :EAVC:", W/M.Es, FM$Area, FM$Volume, FM$Curv,
-          ":C0:", M.C0, ":kT:", kT, "\n")
+      cat("a :EAVC:", W/MemRBC_env$M.Es, FM$Area, FM$Volume, FM$Curv,
+          ":C0:", MemRBC_env$M.C0, ":kT:", kT, "\n")
       W0 = W
       A = A1
       Ar[rec] = oldA
@@ -128,13 +129,13 @@ MMCC<-function (M, curv = Curv(M), nsteps = 1000, plt = FALSE, pltfreq = 5,
           M$A = A
           rgl::clear3d()
           plot(M, col = "white")
-          rgl::title3d(paste("MMCC", round(W/M.Es, 5),
+          rgl::title3d(paste("MMCC", round(W/MemRBC_env$M.Es, 5),
                              M$MMCCiter + i, "kT", round(kT, 5), "C",
                              round(FM$Curv, 4)))
         }
       if (aa%%500 == 0)
         save(A, file = paste("A_MMCC_L", bas$L_max, "_C0_",
-                             M.C0, ".rdat", sep = ""))
+                             MemRBC_env$M.C0, ".rdat", sep = ""))
       if (aa%%LAfreq == 0)
         LA[[length(LA) + 1]] <- A
       if (aa%%kTfreq == 0)
@@ -165,7 +166,7 @@ MMCC<-function (M, curv = Curv(M), nsteps = 1000, plt = FALSE, pltfreq = 5,
     }
   }
   M$kT = kT
-  M$C0_MMC = M.C0
+  M$C0_MMC = MemRBC_env$M.C0
   M$E = FM$E
   M$A = A
   M$LA = LA

@@ -10,12 +10,9 @@
 # Frickenhaus S. (2024). MembraneR3 - A spectral model of membrane shape based on Helfrich spontaneous curvature in R. Zenodo. https://doi.org/10.5281/zenodo.13627757 ")}
 #
 
-#
-# todo: store cumulated time t=sum(dt_i)
-#
 
 #' Penalized Newton Equation of Motion
-#'
+#' @description
 #' run PNEM on an existing membrane object to simulate dynamics with viscosity
 #' @param M The input membrane with initial data and reference
 #' @param nsteps number of time steps to be run
@@ -38,16 +35,16 @@
 #' @return PNEMiter; total PNEM step counter, incl. previous calls
 #' @return history: history of App-calls that created the result
 #' @examples
-#' data("L5_stomatocyte_equilib")
-#' SetParams
-#' M<-L5_stomatocyte_equilib
+#' data(M4,package = "MemRBC")
+#' SetParams(M4)
 #' M.Rcpp=TRUE
 #' M.Rcpp_ncores=4
-#' M <- PNEM(M, nsteps=10000, dt=1e-3)
+#' if(exists("E_SCM_cxx")) { # catch problems in cran tests
+#' M <- PNEM(M4, nsteps=10000, dt=1e-3)
 #' plot(M)
-#' M
 #' # further data stored as attributes to coefficients A in LA
 #' attributes(M$A)
+#' }
 #' @export
 PNEM <-function (M, nsteps = 100, dt = 5e-04, LAfreq = 100, plt = TRUE,
                  rho = 1, sd0 = 0.001, pltfreq = 25, ncores = 4,
@@ -60,8 +57,8 @@ PNEM <-function (M, nsteps = 100, dt = 5e-04, LAfreq = 100, plt = TRUE,
   run_id = rlang::hash(M)
   if (!exists("M.Rcpp"))
     stop("Cannot process - probably load_param_MemRBC has not been called.")
-  M.Rcpp <<- TRUE
-  M.Rcpp_ncores <<- ncores
+  MemRBC_env$M.Rcpp <- TRUE
+  MemRBC_env$M.Rcpp_ncores <- ncores
   cl = match.call()
   E0 = 1000
   E_total = rep(0, nsteps)
@@ -91,7 +88,7 @@ PNEM <-function (M, nsteps = 100, dt = 5e-04, LAfreq = 100, plt = TRUE,
   if (zero_Av)
     Av[] = 0
   if (plt) {
-    if (!all(c(M.scr1, M$scr2) %in% rgl::rgl.dev.list()))
+    if (!all(c(MemRBC_env$M.scr1, MemRBC_env$M$scr2) %in% rgl::rgl.dev.list()))
       two_screens3d()
   }
   for (iter in (1:nsteps)) {
@@ -136,20 +133,20 @@ PNEM <-function (M, nsteps = 100, dt = 5e-04, LAfreq = 100, plt = TRUE,
     E_kin[iter] <- Ekin
     C_PNEM[iter] <- E$Curv
     print(Ekin)
-    if (Ekin/M.Es > E_crit) {
+    if (Ekin/MemRBC_env$M.Es > E_crit) {
       cat(crayon::red("BREAK by energy high\n"))
       break
     }
     cat("|dAv|:", pracma::Norm(Aa * dt), ":  |dA|:", pracma::Norm(Av *
-                                                                    dt), ":  Ekin:", Ekin/M.Es, ": Ekin_X:", Ekin_X/M.Es,
-        ":Ekin/Ekin_X:", Ekin/Ekin_X, ":Etot:", Etot/M.Es,
+                                                                    dt), ":  Ekin:", Ekin/MemRBC_env$M.Es, ": Ekin_X:", Ekin_X/MemRBC_env$M.Es,
+        ":Ekin/Ekin_X:", Ekin/Ekin_X, ":Etot:", Etot/MemRBC_env$M.Es,
         "\n")
-    cat("PNEM", iter, "E", E$E/M.Es, "Wb", E$Wb/M.Es, "Ws",
-        E$Ws/M.Es, "C0", M.C0, "C", E$Curv, "A", E$Area,
+    cat("PNEM", iter, "E", E$E/MemRBC_env$M.Es, "Wb", E$Wb/MemRBC_env$M.Es, "Ws",
+        E$Ws/MemRBC_env$M.Es, "C0", MemRBC_env$M.C0, "C", E$Curv, "A", E$Area,
         "V", E$Volume, "dt", dt, "v", viscosity, "\n", sep = ":")
     if (plt & iter%%pltfreq == 0) {
       two_draw3d(A, M, title = paste("PNEM", iter, "E",
-                                     round(E$E/M.Es, 4), "C", round(E$Curv, 4), sep = " "))
+                                     round(E$E/MemRBC_env$M.Es, 4), "C", round(E$Curv, 4), sep = " "))
       if (file.exists("STOP_PNEM.txt")) {
         cat(crayon::red("exit by presence of file STOP_PNEM\n"))
         file.remove("STOP_PNEM.txt")
@@ -157,7 +154,7 @@ PNEM <-function (M, nsteps = 100, dt = 5e-04, LAfreq = 100, plt = TRUE,
       }
     }
     attr(A, "method") <- "PNEM"
-    attr(A, "C0") <- M.C0
+    attr(A, "C0") <- MemRBC_env$M.C0
     attr(A, "Target") <- bas$Target
     attr(A, "iter") <- iter
     attr(A, "E") <- E$E
@@ -169,7 +166,7 @@ PNEM <-function (M, nsteps = 100, dt = 5e-04, LAfreq = 100, plt = TRUE,
     attr(A, "Etot") <- Etot
     attr(A, "rho_mass") <- rho
     attr(A, "run_id") <- run_id
-    attr(A, "M.rho") <- M.rho
+    attr(A, "M.rho") <- MemRBC_env$M.rho
     E0 <- E$E
     if (iter == 1) {
       cat("Full Penalized Newton Equation Step ")

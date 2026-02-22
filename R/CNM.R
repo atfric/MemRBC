@@ -39,30 +39,31 @@
 #' @return Hessian: energy Hessian matrix
 #' @return ConsHessians: Lagrangian Hessians from active constraints
 #' @examples
-#' data(L9__Stomatocyce_6); D5->M
-#' M.C0=-6
-#' plot(M)
-#' M <- CNM(M,nsteps=10,cluster=TRUE)
-#' plot(M)
+#' if(exists("E_SCM_cxx")) { # catch problems in cran tests
+#' data(M4)
+#' MemRBC_env$M.C0 <- -6
+#' plot(M4)
+#' M4 <- CNM(M4,nsteps=10,cluster=FALSE)
+#' plot(M4)
 #' M
+#' }
 #' @export
 CNM <- function (M, nsteps = 5, del = 0.3, del_control = FALSE, diag.reg = 0,
                  pinv = TRUE, LAfreq = 1, Mtol_Newton = 1e-04, ncores = 4,
                  keepEig2A = FALSE, plt = TRUE, cluster = FALSE, use_serial_cpp = FALSE)
-{
+{ cl=NULL # no cluster yet
   t0 = proc.time()
   if (del_control)
     alpha = NA
   else del = NA
-  cl = match.call()
   if (is.null(M$Ref))
-    stop("CNM needs SEN Reference; use MakeRef(M)->M;  If done so,  to switch off SEN, set M.mu=M.Ka=0.")
+    stop("CNM needs SEN Reference; use MakeRef(M)->M;  If done so,  to switch off SEN, set MemRBC_env$M.mu=MemRBC_env$M.Ka=0.")
   if (is.null(M$proc_time))
     M$proc_time <- 0
-  if (!exists("M.Rcpp"))
+  if (is.null(MemRBC_env$M.Rcpp))
     stop("Cannot process - probably load_param_MemRBC has not been called.")
-  M.Rcpp <<- TRUE
-  M.Rcpp_ncores <<- ncores
+  MemRBC_env$M.Rcpp <- TRUE
+  MemRBC_env$M.Rcpp_ncores <- ncores
   E0 = 1000
   if (is.null(M$LA))
     LA = list(M$A)
@@ -79,18 +80,18 @@ CNM <- function (M, nsteps = 5, del = 0.3, del_control = FALSE, diag.reg = 0,
   else Lambda = M$Lambda
   names(Lambda) = bas$Cons[1:bas$Nc]
   for (iter in (1:nsteps)) {
-    if (iter == 1)
-      tictoc::tic()
+    if (iter == 1)   tictoc::tic()
     A0 = A
     Lambda0 = Lambda
-    if (iter == 1)
-      tictoc::tic()
+    if (iter == 1)  {tictoc::tic(); cl=NULL}
     if (cluster) {
       H <- FullModelHessian_Par(A, grd, bas, Ref1, del = 1e-06,
-                                Mem_mc.cores = ncores, timing = iter == 1, startup = iter ==
-                                  1, stopdown = iter == nsteps)
+                                Mem_mc.cores = ncores, 
+                                timing = iter == 1, # startup if cl is NULL
+                                stopdown = iter == nsteps, cl=cl)
+      cl<-H$cl
     } else H <- FullModelHessian(A, grd, bas, Ref1, del = 1e-06)
-  
+    
 #    else { # this is incomplete Hessian, not better performing than cluster version
 #      if (use_serial_cpp) {
 #        warning("no Hessian of constraints in serial C++ Hessian")
@@ -143,8 +144,8 @@ CNM <- function (M, nsteps = 5, del = 0.3, del_control = FALSE, diag.reg = 0,
     w <- E_SEN(A, grd, bas, S, Ref1)
     E <- h2$Wb + w
     if (del_control)
-      cat("CNM", iter, crayon::green("E"), crayon::green(E/M.Es),
-          "Wb", h2$Wb/M.Es, "Ws", w/M.Es, "C0", M.C0, "C",
+      cat("CNM", iter, crayon::green("E"), crayon::green(E/MemRBC_env$M.Es),
+          "Wb", h2$Wb/MemRBC_env$M.Es, "Ws", w/MemRBC_env$M.Es, "C0", MemRBC_env$M.C0, "C",
           h2$Curv, "del", del, "\n", sep = ":")
     if (!del_control) {
       mu = max(abs(Lambda)) + 1
@@ -168,19 +169,19 @@ CNM <- function (M, nsteps = 5, del = 0.3, del_control = FALSE, diag.reg = 0,
       Lambda = Lambda + alpha * (Lambda_QP - Lambda)
       cat("Lambda (updated):", Lambda, "Lambda_QP:", Lambda_QP,
           "\n")
-      cat("\nCNM", iter, crayon::green("E"), crayon::green(E/M.Es),
-          "Wb", h2$Wb/M.Es, "Ws", w/M.Es, "C0", M.C0, "C",
+      cat("\nCNM", iter, crayon::green("E"), crayon::green(E/MemRBC_env$M.Es),
+          "Wb", h2$Wb/MemRBC_env$M.Es, "Ws", w/MemRBC_env$M.Es, "C0", MemRBC_env$M.C0, "C",
           h2$Curv, "alpha", alpha, "\n", sep = ":")
     }
     if (del_control)
       Lambda = Lambda + del * (Lambda_QP - Lambda)
     CNM_data[iter, ] <- c(E, h2$Wb, w, KKTnorm, RNorm, h2$Curv,
-                          M.C0, iter, del, alpha)
+                          MemRBC_env$M.C0, iter, del, alpha)
     if (plt)
-      two_draw3d(A, M, title = paste("CNM", iter, round(E/M.Es,
+      two_draw3d(A, M, title = paste("CNM", iter, round(E/MemRBC_env$M.Es,
                                                         3)))
     attr(A, "Lambda") <- Lambda
-    attr(A, "C0") <- M.C0
+    attr(A, "C0") <- MemRBC_env$M.C0
     attr(A, "Target") <- bas$Target
     if (keepEig2A) {
       attr(A, "EigsH") <- Eig.H
@@ -238,7 +239,7 @@ CNM <- function (M, nsteps = 5, del = 0.3, del_control = FALSE, diag.reg = 0,
   colnames(M$CNM_data) = c("E", "Wb", "Ws", "KKTnorm", "RNorm",
                            "C", "M.C0", "iter", "del", "alpha")
   M$last_App_called <- "CNM"
-  M$history <- append(M$history, cl)
+  M$history <- append(M$history, match.call() )
   t1 <- proc.time()
   M$proc_time <- M$proc_time + t1 - t0
   return(M)

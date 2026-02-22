@@ -13,20 +13,51 @@
 #
 #  global standard model parameters
 #' @export
-load_param_RBC<-function(msg)
-{  data(M.mu,M.C0,M.mu,M.Ka,M.K_b,M.K_ADE,M.Es,M.rho,M.a2,M.a3,M.a4,M.b0,M.b1,M.b2,M.rho,M.Rcpp,M.Rcpp_ncores,M.scr1,M.scr2,M.muk,M.lam,package = "MemRBC",envir = .GlobalEnv) }
+load_param_RBC<-function()
+{  data(M.mu,M.C0,M.mu,M.Ka,M.K_b,M.K_ADE,M.Es,M.rho,M.a2,M.a3,M.a4,M.b0,M.b1,M.b2,M.rho,M.Rcpp,M.Rcpp_ncores,M.scr1,M.scr2,M.muk,M.lam,M.cl,package = "MemRBC",envir = MemRBC_env) 
+}
+
+#' @export
+print_param_RBC<-function()
+{ sapply(names(MemRBC_env),function(x) {cat(x,MemRBC_env[[x]],"\n");return(NULL)}) ; return()}
 
 #
-# M.xxx parameters to be set in main program
+# MemRBC_env$M.xxx parameters to be modified in main program
 #
 
 #' @export
 citation.MemRBC<-function() {cat("when using this software for publications you must cite it as:\n Frickenhaus, S. (2025). MemRBC - a numerical modeling laboratory for the stomatocyte-discocyte-echinocyte-transformation of Red Blood Cell shape, ZENODO, DOI: https://doi.org/10.5281/zenodo.13908340 \n")}
 
 
+#' @export
+MemRBC_env <- new.env(parent = emptyenv())
+MemRBC_env$M.C0=0
+MemRBC_env$M.mu=2.5
+MemRBC_env$M.Ka=5
+MemRBC_env$M.K_ADE=0.2
+MemRBC_env$M.a3=-2
+MemRBC_env$M.a2=1
+MemRBC_env$M.b0=1
+MemRBC_env$M.a4=8
+MemRBC_env$M.b1=0.7
+MemRBC_env$M.b2=0.75
+MemRBC_env$M.cl=NULL
+MemRBC_env$M.Es=112
+MemRBC_env$M.K_b=0.2
+MemRBC_env$M.rho=50
+
+MemRBC_env$M.lam=c(1,1,1)
+MemRBC_env$M.muk=10
+MemRBC_env$M.scr1=-1
+MemRBC_env$M.scr2=-1
+MemRBC_env$M.Rcpp=TRUE
+MemRBC_env$M.Rcpp_ncores=4
+MemRBC_env$M.
+
+
 .onLoad <- function(libname, pkgname) {
   # startup message
-  msg="MemRBC, the red blood cell shape modeling R package... \n... with compiled SCM energy, gradient and Hessian by Rcpp.\n Needs time for compiling..."
+  msg="MemRBC, the red blood cell shape modeling R package... \n... with compiled SCM energy, gradient and Hessian by Rcpp.\n Needs time for compiling...\n use get_data_ZENODO() to load datasets, eg. for data(ss42denovo)\n"
 
   if(!interactive()) {
     msg[1] <- paste("Package 'MemRBC'")
@@ -34,26 +65,30 @@ citation.MemRBC<-function() {cat("when using this software for publications you 
 
   packageStartupMessage(msg)
   # to have cached objects available on parallel cluster, 
-  # place it in tempdir/.., not in tempdir, which may differ in seperate cluster R.
-  { if (length(grep("Windows",osVersion))==1) cdir=paste(tempdir(),"\\..\\MemRBC_cache",sep="")  else cdir="/tmp/MemRBC_cache"
-    if (!dir.exists(cdir)) {dir.create(cdir);cat("created ",cdir," for cpp-object cache\n");}
-    Rcpp::sourceCpp( cacheDir = cdir,
-      code='\\
+  # place it in tempdir/../cachedir, not in tempdir, which may differ in seperate cluster R.
+  { 
+    if (base::.Platform$OS.type=="windows") {
+      strsplit(tempdir(),"\\\\")[[1]]->s;
+      paste(c(s[1:(length(s)-1)],"MemRBC_cache"),sep="",collapse="\\")->cdir;
+      } else cdir="/tmp/MemRBC_cache"; # should work for MacOS and Linux
+    if (!dir.exists(cdir)) {dir.create(cdir);}
+    MemRBC_env$cache<-cdir;
+    Rcpp::sourceCpp( cacheDir = cdir, rebuild = FALSE,
+      code='\\   
 #include <Rcpp.h>
 #include<RcppEigen.h>
 using namespace std;
 using namespace Rcpp;
-
 #include <omp.h>
 
-//[[Rcpp::plugins(RcppEigen]]
-//[[Rcpp::plugins(openmp)]]
+// [[Rcpp::plugins(RcppEigen]]
+// [[Rcpp::plugins(openmp)]]
 // [[Rcpp::depends(RcppEigen)]]
 
 // integration with Rcpp, see RcppCore,Bates/Eddelbuettel, https://github.com/RcppCore/RcppEigen/blob/master/README.md
-using Eigen::Map;                       // maps rather than copies
-using Eigen::MatrixXd;                  // variable size matrix, double precision
-using Eigen::VectorXd;                  // variable size vector, double precision
+using Eigen::Map;         // maps rather than copies
+using Eigen::MatrixXd;    // variable size matrix, double precision
+using Eigen::VectorXd;    // variable size vector, double precision
 
 // for a faster version of cotan Laplacian GEMINI-Pro was asked
 // to derive a R to C++ translation for Rcpp
@@ -67,6 +102,7 @@ using Eigen::VectorXd;                  // variable size vector, double precisio
 
 using namespace Eigen;
 
+// Typedefs not possible in src/*.cpp 
 // Typedef for the sparse matrix (double precision)
 typedef SparseMatrix<double> SpMat;
 typedef Triplet<double> T;
@@ -431,7 +467,7 @@ double N_LK_bosh(int L, int K)
   else{ return std::sqrt((2-int(K==0))*(2*L+1)*factorial(L-K)/factorial(L+K));}
 }
 
-//[[Rcpp::export(.L_Ylm)]]
+// [[Rcpp::export]]
 List L_Ylm(int L_max, Eigen::Map<Eigen::MatrixXd> t, Eigen::Map<Eigen::MatrixXd> p)
 {
   MatrixXd ct, plk_mat, tmp, tmp2, tmp3,theta,phi;
@@ -481,7 +517,7 @@ List L_Ylm(int L_max, Eigen::Map<Eigen::MatrixXd> t, Eigen::Map<Eigen::MatrixXd>
 // Output:	YLK matrix dimensions [p.cols()xp.rows()] x (L_max + 1)^2 and holds the basis vectors
 //			in the sequence 0,0   1,-1   1,0   1,1   2,-2   2,-1 ... etc.
 //			PLK matrix of same dimensions as YLK, only holds the associated Legendre function values for use in derivative calculations
-//[[Rcpp::export(.Ylm_v)]]
+// [[Rcpp::export]]
 MatrixXd Ylm_v(int L_max,Eigen::Map<Eigen::MatrixXd> t,Eigen::Map<Eigen::MatrixXd> p,Eigen::Map<Eigen::MatrixXd> PP)
 {
   MatrixXd tmp, tmp2, tmp3, phi, theta;
@@ -525,7 +561,7 @@ MatrixXd Ylm_v(int L_max,Eigen::Map<Eigen::MatrixXd> t,Eigen::Map<Eigen::MatrixX
 }
 
 
-//[[Rcpp::export(.Ylm_vv)]]
+// [[Rcpp::export]]
 MatrixXd Ylm_vv(int L_max, Eigen::Map<Eigen::MatrixXd> t,Eigen::Map<Eigen::MatrixXd> p,Eigen::Map<Eigen::MatrixXd> PP)
 {
   MatrixXd tmp, tmp2, tmp3, phi, theta, Y_PP;
@@ -566,7 +602,7 @@ MatrixXd Ylm_vv(int L_max, Eigen::Map<Eigen::MatrixXd> t,Eigen::Map<Eigen::Matri
 }
 
 
-//[[Rcpp::export(.L_Ylm_u)]]
+// [[Rcpp::export]]
 List L_Ylm_u(int L_max, Eigen::Map<Eigen::MatrixXd> t,Eigen::Map<Eigen::MatrixXd> p,Eigen::Map<Eigen::MatrixXd> PP )
 {
   MatrixXd tmp, tmp2, tmp3, phi, theta,Y_T, P_T, P;
@@ -605,7 +641,7 @@ List L_Ylm_u(int L_max, Eigen::Map<Eigen::MatrixXd> t,Eigen::Map<Eigen::MatrixXd
 }
 
 
-//[[Rcpp::export(.Ylm_uv)]]
+// [[Rcpp::export]]
 MatrixXd Ylm_uv(int L_max, Eigen::Map<Eigen::MatrixXd> t,Eigen::Map<Eigen::MatrixXd> p,Eigen::Map<Eigen::MatrixXd> PP,Eigen::Map<MatrixXd> PP_T  )
 {
   MatrixXd tmp, tmp2, tmp3, phi, theta, Y_TP, P, P_T;
@@ -644,7 +680,7 @@ MatrixXd Ylm_uv(int L_max, Eigen::Map<Eigen::MatrixXd> t,Eigen::Map<Eigen::Matri
 }
 
 
-//[[Rcpp::export(.Ylm_uu)]]
+// [[Rcpp::export]]
 MatrixXd Ylm_uu(int L_max,Eigen::Map<Eigen::MatrixXd> t,Eigen::Map<Eigen::MatrixXd> p, Eigen::Map<Eigen::MatrixXd> PP_T  )
 {
   MatrixXd tmp, tmp2, tmp3, phi, theta, P_T, P_TT, Y_TT;
@@ -681,12 +717,12 @@ MatrixXd Ylm_uu(int L_max,Eigen::Map<Eigen::MatrixXd> t,Eigen::Map<Eigen::Matrix
   }
   return Y_TT;
 }
-//[[Rcpp::export(.dot2)]]
+// [[Rcpp::export(.dot2)]]
 double dot2(NumericVector x, NumericVector y) {
   return std::inner_product(x.begin(), x.end(), y.begin(), 0.0);
 }
 
-//[[Rcpp::export(.IntegM)]]
+// [[Rcpp::export(.IntegM)]]
 NumericVector IntegM(NumericVector q, List grd,List bas)
 {
   int Aimax=bas["Ai_max"];
@@ -732,7 +768,7 @@ double IntegS(NumericVector q, List grd)
   return I;
 }
 
-// [[Rcpp::export(.E_SCM_cxx)]]
+// [[Rcpp::export]]
 List E_SCM_cxx( NumericMatrix A, List grd, List bas, List C,
                 double C0, double K_b, double K_ADE ) //# dbg=TRUE means no stop on NA
 { int i,k;
@@ -804,7 +840,7 @@ List E_SCM_cxx( NumericMatrix A, List grd, List bas, List C,
 } // E_SCM_cxx
 
 
-//[[Rcpp::export(.Grad_SCM_cxx)]]
+// [[Rcpp::export]]
 List Grad_SCM_cxx(
     List h2, List grd, List B, List CC, double C0,
     int ncores, double K, double KADE)
@@ -1007,10 +1043,9 @@ return( Ret );
   } # sourceCPP
   
   
-
 citation.MemRBC();
-utils::data(M.mu,M.C0,M.mu,M.Ka,M.K_b,M.K_ADE,M.Es,M.rho,M.a2,M.a3,M.a4,M.b0,M.b1,M.b2,M.rho,M.Rcpp,M.Rcpp_ncores,package = "MemRBC",envir = .GlobalEnv)
-M.scr1=M.scr2=-1
+
+utils::data(M.mu,M.C0,M.mu,M.Ka,M.K_b,M.K_ADE,M.Es,M.rho,M.a2,M.a3,M.a4,M.b0,M.b1,M.b2,M.rho,M.Rcpp,M.Rcpp_ncores,M.cl,M.muk,M.lam,M.scr1,M.scr2,cache,package = "MemRBC",envir = MemRBC_env)
 }
 
 
@@ -1031,6 +1066,16 @@ severe<-function(q1,q2, what="some test", tol=1e-12)
 #{cat(q,":");if (all(abs(q)>tol)) {stop("severe imprecision, STOP")} else
 #  cat(crayon::green("OK:",what,"\n"))
 #}
+
+
+# @useDynLib MemRBC, .registration = TRUE
+# @importFrom Rcpp sourceCpp
+# NULL
+
+#
+# not working when Rcpp-code is loaded
+#cleanCache<-function(){cat("clean up ",MemRBC_env$cache,"\n");file.remove(MemRBC_env$cache)}
+
 
 #
 # Functionals
@@ -1064,6 +1109,7 @@ severe<-function(q1,q2, what="some test", tol=1e-12)
 #  and H = c1 + c2 = 2 * H_mean ; H_mean in the usual sense like in Rvcg
 #
 
+#' E_SCM
 #' Bending energy , returns list with "Wb" as bending energy
 #' @description
 #' compute bending energy
@@ -1073,10 +1119,15 @@ severe<-function(q1,q2, what="some test", tol=1e-12)
 #' @export
 E_SCM <- function (A, grd, bas, C, plt = FALSE, dbg = FALSE, clp = FALSE)
 {
-  if (!M.Rcpp)
-    return(E_SCM_R(A, grd, bas, C, plt = FALSE, dbg = FALSE,
-                   clp = FALSE))
-  return(.E_SCM_cxx(A, grd, bas, C, M.C0, M.K_b, M.K_ADE))
+  if (!MemRBC_env$M.Rcpp)
+    return(
+      structure(class="MemESCM",
+      E_SCM_R(A, grd, bas, C, plt = FALSE, dbg = FALSE,
+                   clp = FALSE)) 
+       )
+  return(structure(class="MemESCM",
+    E_SCM_cxx(A, grd, bas, C, MemRBC_env$M.C0, MemRBC_env$M.K_b, MemRBC_env$M.K_ADE))
+    )
 }
 
 
@@ -1139,11 +1190,11 @@ E_SCM_R <- function(A,grd,bas,C,plt=FALSE,dbg=FALSE,clp=FALSE) # dbg=TRUE means 
   curv_sq[is.na(curv_sq)]<-0# warning("one or more Inf in 2curv_sq!")
   (H2_BC <- int2d_s(curv_sq,grd))
   # dA0f = deltaA0/A set zero, since not yet tested
-  H2 <- M.K_b/2 * (H2_BC - 2*M.C0*Curv) + # + K_b/2*C0^2*Area + # constant terms out
-    + M.K_ADE*(Curv^2 ) /Area
+  H2 <- MemRBC_env$M.K_b/2 * (H2_BC - 2*MemRBC_env$M.C0*Curv) + # + K_b/2*C0^2*Area + # constant terms out
+    + MemRBC_env$M.K_ADE*(Curv^2 ) /Area
 
-  E_SCM_dens<-M.K_b/2 * (curv_sq - 2*M.C0*curv) + # + K_b/2*C0^2 + # constant terms out
-    + M.K_ADE*(curv*Curv ) /Area
+  E_SCM_dens<-MemRBC_env$M.K_b/2 * (curv_sq - 2*MemRBC_env$M.C0*curv) + # + K_b/2*C0^2 + # constant terms out
+    + MemRBC_env$M.K_ADE*(curv*Curv ) /Area
 
   retL<-list(Wb=H2,H2_BC=H2_BC,Area=Area,Volume=Volume,Curv=Curv,
              E=E,FF=FF,G=G,L=L,M=M,NN=NN,Nn=Nn,dA=dA,dV=dV,
@@ -1171,8 +1222,8 @@ E_SCM_R <- function(A,grd,bas,C,plt=FALSE,dbg=FALSE,clp=FALSE) # dbg=TRUE means 
 #' @param int2d_m : integration function, e.g. .IntegM (hidden c++ R-function)
 #' @export
 Grad_SCM <- function(h2,grd,bas,C,int2d_m=.IntegM)
-{ if (!M.Rcpp) return(Grad_SCM_R(h2,grd,bas,C))
-  G2<-.Grad_SCM_cxx(h2,grd, bas, C, M.C0, M.Rcpp_ncores, M.K_b, M.K_ADE)
+{ if (!MemRBC_env$M.Rcpp) return(Grad_SCM_R(h2,grd,bas,C))
+  G2<-Grad_SCM_cxx(h2,grd, bas, C, MemRBC_env$M.C0, MemRBC_env$M.Rcpp_ncores, MemRBC_env$M.K_b, MemRBC_env$M.K_ADE)
   return(list(ddA=array(G2$ddA,c(grd$ndof,bas$Ai_max,3)),
               ddV=array(G2$ddV,c(grd$ndof,bas$Ai_max,3)),
               grad_SCM=G2$grad_SCM,gradV=G2$gradV,gradA=G2$gradA,gradC=G2$gradC,
@@ -1279,8 +1330,8 @@ Grad_SCM_R <- function(Wb, grd, bas,C,int2d_m=int2d_matrix)
   gradH2BC<-int2d_m(dcurv_sq,grd) # no C0, no ADE
   gradC   <-int2d_m(dcurv,grd)
   gradA   <- int2d_m(ddA,grd)
-  gradH2  <-  M.K_b/2 * (gradH2BC  - 2*M.C0*gradC ) +
-    + M.K_ADE * (2 * H2$Curv * gradC / H2$Area - gradA * H2$Curv^2 / H2$Area^2 )
+  gradH2  <-  MemRBC_env$M.K_b/2 * (gradH2BC  - 2*MemRBC_env$M.C0*gradC ) +
+    + MemRBC_env$M.K_ADE * (2 * H2$Curv * gradC / H2$Area - gradA * H2$Curv^2 / H2$Area^2 )
 
   # pure Spontaneous Curvature Model,
   # keep deltaA_0 zero everywhere
@@ -1492,8 +1543,8 @@ SEN<-function (A, grd, bas, Ref, Wb_cur)
 #' @export
 E_SEN<-function(A,grd,bas,S,Ref)
 { if (!is.null(Ref)){
-  WS<- M.Ka/2 * .IntegS((M.a2*S$alpha^2+M.a3*S$alpha^3+M.a4*S$alpha^4)*Ref$h2ref$dA,grd) +
-    + M.mu*.IntegS( ( (M.b0+M.b1*S$alpha)*S$beta + M.b2*S$beta^2)*Ref$h2ref$dA, grd)
+  WS<- MemRBC_env$M.Ka/2 * .IntegS((MemRBC_env$M.a2*S$alpha^2+MemRBC_env$M.a3*S$alpha^3+MemRBC_env$M.a4*S$alpha^4)*Ref$h2ref$dA,grd) +
+    + MemRBC_env$M.mu*.IntegS( ( (MemRBC_env$M.b0+MemRBC_env$M.b1*S$alpha)*S$beta + MemRBC_env$M.b2*S$beta^2)*Ref$h2ref$dA, grd)
   return(WS)} else return(0)
 }
 
@@ -1523,12 +1574,12 @@ Grad_SEN<-function(A, grd, bas, h2cur_grad, S, Ref, int2d_m = .IntegM){
     }
   gradAlpha = h2cur_grad$ddA / Ref$h2ref$dA
   gradBeta = dm / (S$alpha+1) - gradAlpha*S$m / (S$alpha+1)^2
-  gradS <- (M.Ka*0.5 * int2d_m( Ref$h2ref$dA *
-                              gradAlpha*(M.a2*2*S$alpha + 3*M.a3*S$alpha^2 +
-                                                   + 4*M.a4*S$alpha^3),grd,bas)  +
-    +   M.mu * int2d_m( Ref$h2ref$dA *
-                          ( gradBeta*( M.b0 + M.b1*S$alpha + 2*M.b2*S$beta) +
-                                          + M.b1*gradAlpha*S$beta), grd, bas)
+  gradS <- (MemRBC_env$M.Ka*0.5 * int2d_m( Ref$h2ref$dA *
+                              gradAlpha*(MemRBC_env$M.a2*2*S$alpha + 3*MemRBC_env$M.a3*S$alpha^2 +
+                                                   + 4*MemRBC_env$M.a4*S$alpha^3),grd,bas)  +
+    +   MemRBC_env$M.mu * int2d_m( Ref$h2ref$dA *
+                          ( gradBeta*( MemRBC_env$M.b0 + MemRBC_env$M.b1*S$alpha + 2*MemRBC_env$M.b2*S$beta) +
+                                          + MemRBC_env$M.b1*gradAlpha*S$beta), grd, bas)
   )
   return(list(grad_SEN=gradS, gradAlpha=gradAlpha,
               gradBeta=gradBeta, dm=dm ))
@@ -1548,7 +1599,7 @@ nm=apply(bas$LM,1,paste,sep=";",collapse=";")
 if (!is.matrix(A)) A=matrix(A,ncol=3)
 rownames(A)<-nm;
 colnames(A)<-LETTERS[24:26];
-attr(A,"C0")<-M.C0
+attr(A,"C0")<-MemRBC_env$M.C0
 attr(A,"V0")<-bas$Target["Volume"]
 attr(A,"A0")<-bas$Target["Area"]
 if (bas$Nc>2) attr(A,"Ct")<-bas$Target["Curv"]
@@ -1587,8 +1638,8 @@ loadAlm<-function(file,bas)
 TotalEnergyDensity<-function(S)
 {
   return( S$h2cur$E_SCM_dens +
-            M.Ka/2 * (S$alpha^2+M.a3*S$alpha^3+M.a4*S$alpha^4) + #*Ref$h2ref$dA +
-            + M.mu* ( (1+M.b1*S$alpha)*S$beta + M.b2*S$beta^2) # *Ref$h2ref$dA
+            MemRBC_env$M.Ka/2 * (S$alpha^2+MemRBC_env$M.a3*S$alpha^3+MemRBC_env$M.a4*S$alpha^4) + #*Ref$h2ref$dA +
+            + MemRBC_env$M.mu* ( (1+MemRBC_env$M.b1*S$alpha)*S$beta + MemRBC_env$M.b2*S$beta^2) # *Ref$h2ref$dA
   )
 }
 
@@ -1684,7 +1735,7 @@ imag.obj.colorbar.simple<-function(obj,f,clr=TRUE,...) {
   if(clr) rgl::clear3d()
   cols=rainbow(100);
   rgl::shade3d(obj,meshcolor="vertices",color=cols[(f-min(f))/diff(range(f))*99+1],...)
-  rgl::bgplot3d(imagePlot(legend.only = TRUE, zlim = range(f), col = cols) )
+  rgl::bgplot3d(own.imagePlot(legend.only = TRUE, zlim = range(f), col = cols) )
 }
 
 
@@ -1704,7 +1755,7 @@ imag.obj.colorbar<-function(obj,f,limits=range(f),clr=FALSE,pal=heat.colors,widt
   col[limits[1]>f]="#000000"
   col[limits[2]<f]="#000000"
   rgl::shade3d(obj,meshcolor="vertices",col=col,...)
-  rgl::bgplot3d(imagePlot(legend.only = TRUE,add=TRUE,zlim = limits, col = cols) )
+  rgl::bgplot3d(own.imagePlot(legend.only = TRUE,add=TRUE,zlim = limits, col = cols) )
 }
 
 #' MakeGrid_GaussLegendre
@@ -1845,35 +1896,35 @@ MakeBasis_UV<-function (L_max = 4, u, v, Pointsymmetry = FALSE,
   n.v = length(u)
   if (length(v) != n.v)
     stop("u not same length like v")
-  L_Ylm = .L_Ylm(L_max, u, v)
-  Ylm = L_Ylm$Ylm[, -1]/sqrt(4 * pi)
+  L_Ylm_ = L_Ylm(L_max, u, v)
+  Ylm_ = L_Ylm_$Ylm[, -1]/sqrt(4 * pi)
   if (!only_Ylm){
-   Ylm_v = .Ylm_v(L_max, u, v, L_Ylm$PLK)[, -1]/sqrt(4 * pi)
-   Ylm_vv = .Ylm_vv(L_max, u, v, L_Ylm$PLK)[, -1]/sqrt(4 * pi)
-   L_Y_u = .L_Ylm_u(L_max, u, v, L_Ylm$PLK)
-   Ylm_u = L_Y_u$Ylm_u[, -1]/sqrt(4 * pi)
-   Ylm_uu = .Ylm_uu(L_max, u, v, L_Y_u$P_T)[, -1]/sqrt(4 * pi)
-   Ylm_uv = .Ylm_uv(L_max, u, v, L_Ylm$PLK, L_Y_u$P_T)[, -1]/sqrt(4 * pi)
+   Ylm_v_ = Ylm_v(L_max, u, v, L_Ylm_$PLK)[, -1]/sqrt(4 * pi)
+   Ylm_vv_ = Ylm_vv(L_max, u, v, L_Ylm_$PLK)[, -1]/sqrt(4 * pi)
+   L_Y_u_ = L_Ylm_u(L_max, u, v, L_Ylm_$PLK)
+   Ylm_u_ = L_Y_u_$Ylm_u[, -1]/sqrt(4 * pi)
+   Ylm_uu_ = Ylm_uu(L_max, u, v, L_Y_u_$P_T)[, -1]/sqrt(4 * pi)
+   Ylm_uv_ = Ylm_uv(L_max, u, v, L_Ylm_$PLK, L_Y_u_$P_T)[, -1]/sqrt(4 * pi)
    }
   l = LM[, 1]
   m = LM[, 2]
-  bas = list(n.v = n.v, uv = cbind(u, v), Ylm = Ylm[, w], LM = LM, Ai_max = Ai_max, l = l,
+  bas = list(n.v = n.v, uv = cbind(u, v), Ylm = Ylm_[, w], LM = LM, Ai_max = Ai_max, l = l,
              m = m, A = matrix(0, Ai_max, 3), L_max = L_max, G.tk = l^2 *
                (l + 1)^2, Wt = l * (l + 1), comment = "(for double entries masked) irregular or Gauss-Legendre-Simpson basis from (u,v), computed with W. Bosch/ K. Khairy codes excluding l=0, A/V constraints set",
              Nupd = 0, Lset = unique(l), Mset = unique(m), Nc = 2,
              Cons = c("gradA", "gradV"), QCons = c("Area", "Volume"),
-             Target = c(140, 100), TNorm = c(140, 100), Pointsymmetry = Pointsymmetry)
-  names(bas$Cons) = names(bas$QCons) = names(bas$TNorm) = names(bas$Target) = c("Area","Volume")
+             Target = c(140, 100), Pointsymmetry = Pointsymmetry)
+  names(bas$Cons) = names(bas$QCons) = names(bas$Target) = c("Area","Volume")
   if (!only_Ylm){
-    bas$Ylm_u = Ylm_u[,w];
-    bas$Ylm_v = Ylm_v[,w];
-    bas$Ylm_uu = Ylm_uu[,w];
-    bas$Ylm_uv = Ylm_uv[,w];
-    bas$Ylm_vv = Ylm_vv[,w];
+    bas$Ylm_u = Ylm_u_[,w];
+    bas$Ylm_v = Ylm_v_[,w];
+    bas$Ylm_uu = Ylm_uu_[,w];
+    bas$Ylm_uv = Ylm_uv_[,w];
+    bas$Ylm_vv = Ylm_vv_[,w];
   }
   bas$A = LM2A(bas$A, bas)
   mask = double_uv_ind(u, v)
-  bas$mask <- ifelse(is.numeric(mask) == 0, mask, 1)
+  bas$mask <- ifelse(is.numeric(mask), mask, 1) # minimum mask needed
   bas$kind=kind
   return(bas) }
   if (kind=="Fourier") {
@@ -1887,41 +1938,41 @@ MakeBasis_UV<-function (L_max = 4, u, v, Pointsymmetry = FALSE,
     if (KleinBottle) uspace= (1:L)/2 else uspace= 1:L_max
     cat("U factors:",uspace,"\n")
     Ylm[,1]=1
-    if (!only_Ylm) {Ylm_u[,1]=Ylm_v[,1]=Ylm_vv[,1]=Ylm_uu[,1]=Ylm_uv[,1]=0}
+    if (!only_Ylm) {Ylm_u_[,1]=Ylm_v_[,1]=Ylm_vv_[,1]=Ylm_uu_[,1]=Ylm_uv_[,1]=0}
     k=2
     for (i in uspace)
      for (j in 1:L_max){
-      Ylm[,k]  = sin(i*u)*sin(j*v)
-    Ylm[,k+1] = sin(i*u)*cos(j*v)
-    Ylm[,k+2] = cos(i*u)*cos(j*v)
-    Ylm[,k+3] = cos(i*u)*sin(j*v)
+      Ylm_[,k]  = sin(i*u)*sin(j*v)
+    Ylm_[,k+1] = sin(i*u)*cos(j*v)
+    Ylm_[,k+2] = cos(i*u)*cos(j*v)
+    Ylm_[,k+3] = cos(i*u)*sin(j*v)
 
     if (!only_Ylm) {
 
-    Ylm_u[,k]  =  i*cos(i*u)*sin(j*v)
-    Ylm_u[,k+1]=  i*cos(i*u)*cos(j*v)
-    Ylm_u[,k+2]= -i*sin(i*u)*cos(j*v)
-    Ylm_u[,k+3]= -i*sin(i*u)*sin(j*v)
+    Ylm_u_[,k]  =  i*cos(i*u)*sin(j*v)
+    Ylm_u_[,k+1]=  i*cos(i*u)*cos(j*v)
+    Ylm_u_[,k+2]= -i*sin(i*u)*cos(j*v)
+    Ylm_u_[,k+3]= -i*sin(i*u)*sin(j*v)
 
-    Ylm_v[,k]  =  j*sin(i*u)*cos(j*v)
-    Ylm_v[,k+1]= -j*sin(i*u)*sin(j*v)
-    Ylm_v[,k+2]= -j*cos(i*u)*sin(j*v)
-    Ylm_v[,k+3]=  j*cos(i*u)*cos(j*v)
+    Ylm_v_[,k]  =  j*sin(i*u)*cos(j*v)
+    Ylm_v_[,k+1]= -j*sin(i*u)*sin(j*v)
+    Ylm_v_[,k+2]= -j*cos(i*u)*sin(j*v)
+    Ylm_v_[,k+3]=  j*cos(i*u)*cos(j*v)
 
-    Ylm_uu[,k]  =  i^2*Ylm[,k]
-    Ylm_uu[,k+1]=  i^2*Ylm[,k+1]
-    Ylm_uu[,k+2]=  i^2*Ylm[,k+2]
-    Ylm_uu[,k+3]=  i^2*Ylm[,k+3]
+    Ylm_uu_[,k]  =  i^2*Ylm_[,k]
+    Ylm_uu_[,k+1]=  i^2*Ylm_[,k+1]
+    Ylm_uu_[,k+2]=  i^2*Ylm_[,k+2]
+    Ylm_uu_[,k+3]=  i^2*Ylm_[,k+3]
 
-    Ylm_vv[,k]  =  j^2*Ylm[,k]
-    Ylm_vv[,k+1]=  j^2*Ylm[,k+1]
-    Ylm_vv[,k+2]=  j^2*Ylm[,k+2]
-    Ylm_vv[,k+3]=  j^2*Ylm[,k+3]
+    Ylm_vv_[,k]  =  j^2*Ylm_[,k]
+    Ylm_vv_[,k+1]=  j^2*Ylm_[,k+1]
+    Ylm_vv_[,k+2]=  j^2*Ylm_[,k+2]
+    Ylm_vv_[,k+3]=  j^2*Ylm_[,k+3]
 
-    Ylm_uv[,k]  = -j*i*cos(i*u)*cos(j*v)
-    Ylm_uv[,k+1]= -j*i*cos(i*u)*sin(j*v)
-    Ylm_uv[,k+2]= -i*j*sin(i*u)*sin(j*v)
-    Ylm_uv[,k+3]= -i*j*sin(i*u)*cos(j*v)
+    Ylm_uv_[,k]  = -j*i*cos(i*u)*cos(j*v)
+    Ylm_uv_[,k+1]= -j*i*cos(i*u)*sin(j*v)
+    Ylm_uv_[,k+2]= -i*j*sin(i*u)*sin(j*v)
+    Ylm_uv_[,k+3]= -i*j*sin(i*u)*cos(j*v)
     }
      LM[k:(k+3),]=c(i,j)
 
@@ -1933,15 +1984,15 @@ MakeBasis_UV<-function (L_max = 4, u, v, Pointsymmetry = FALSE,
     m=LM[,2]
   w=1:Ai_max # no symmetries
   mask = double_uv_ind(u, v)
-  bas = list(n.v = n.v, uv = cbind(u, v), Ylm = Ylm[, w], LM = LM, Ai_max = Ai_max, l = l,
+  bas = list(n.v = n.v, uv = cbind(u, v), Ylm = Ylm_[, w], LM = LM, Ai_max = Ai_max, l = l,
              m = m,  L_max = L_max, G.tk = l^2*m^2, Wt = l*m, comment = "Fourier basis, no cos(0)",
              Nupd = 0, Lset = unique(l), Mset = unique(m), Nc = 2,
              Cons = c("gradA", "gradV"), QCons = c("Area", "Volume"),
-             Target = c(140, 100), TNorm = c(140, 100),
+             Target = c(140, 100),  
              Pointsymmetry = NA)
-  if (!only_Ylm) {bas$Ylm_u=Ylm_u[,w];bas$Ylm_v=Ylm_v[,w];
-                  bas$Ylm_uu=Ylm_uu[,w];bas$Ylm_uv=Ylm_uv[,w];
-                  bas$Ylm_vv=Ylm_vv[,w]}
+  if (!only_Ylm) {bas$Ylm_u=Ylm_u_[,w];bas$Ylm_v=Ylm_v_[,w];
+                  bas$Ylm_uu=Ylm_uu_[,w];bas$Ylm_uv=Ylm_uv_[,w];
+                  bas$Ylm_vv=Ylm_vv_[,w]}
 
   bas$LM=LM
   bas$uv=cbind(c(u),c(v))
@@ -2030,9 +2081,8 @@ return(Q[,])
 #' @param X Coordiates, e.g. in C$X from updateX()
 #' @param grd grid with a basic rgl-object grd$Obj
 #' @examples
-#' data("M1")  # take required data from M1
-#' plot3a(updateX(M1$A,M1$grd,M1$bas,M1$)$X,M1$grd)
-#'
+#' data("M4",package = "MemRBC")  # take required data from M5
+#' plot3a(updateX(M4$A,M4$grd,M4$bas)$X,M4$grd)
 #' @export
 plot3a<-function (X, grd, pnts = FALSE, clip = FALSE, col = "black",
                   alpha = 1, cont = TRUE, cont.grid = FALSE, fill = TRUE, fn = "z",
@@ -2071,8 +2121,8 @@ plot3a<-function (X, grd, pnts = FALSE, clip = FALSE, col = "black",
 #' @param X Coordiates, e.g. in C$X from updateX()
 #' @param grd grid with a basic rgl-object grd$Obj
 #' @examples
-#' data("M1")  # take required data from M1
-#' plot3q(updateX(M1$A,M1$grd,M1$bas,M1$)$X,M1$grd)
+#' data("M4",package = "MemRBC")  # take required data from M4
+#' plot3q(updateX(M4$A,M4$grd,M4$bas)$X,M4$grd)
 #' @export
 plot3q<-function (X, grd, col = "black", alpha = 1, ...)
 {
@@ -2093,11 +2143,13 @@ plot3q<-function (X, grd, col = "black", alpha = 1, ...)
 #' @param s scalar to plot as color code on shape
 #' @param pal (=heat.colors) color palette to use 
 #' @examples
-#' data("M1"); SetParams(M1) # take required data from M1
-#'  update(M1,"dA")->M1
+#' \dontrun{
+#' data("M4",package = "MemRBC"); 
+#' SetParams(M4)
+#'  update(M4,"dA")->M4
 #'  #plot area sizes as color code
-#' plot3qs(updateX(M1$A,M1$grd,M1$bas,M1$)$X,M1$grd,M1$dA)
-#'
+#' plot3qs(updateX(M4$A,M4$grd,M4$bas)$X,M4$grd,M4$dA)
+#' }
 #' @export
 plot3qs<-function (X, grd, s, alpha = 1, specular = "black", pal=heat.colors, ...)
 {
@@ -2240,7 +2292,7 @@ vectoarr_cxx<-function(x,ndof,Aimax)  return(array(x,c(ndof,Aimax,3)))
 #' @description
 #' fit coefficients from 3d-coordinates
 #' @param X,bas : input data and basis; bas$mask must be set to ecluded X points indices
-#' @param WX (=1) : spatial weights, could be sin(grd$U)
+#' @param WX (=1) : spatial weights, could better be sin(grd$U)
 #' @export
 FitAlm <- function (X, bas, WX = rep(1, nrow(X)))
 { A=FitAlm_Tikhonov(X,bas,lambda=0, WX = WX)
@@ -2330,14 +2382,11 @@ FitAlm_Tikhonov<-function (X, bas, lambda = 0,
   if (is.null(mask))
     stop("no mask in bas; create at least bas$mask=1")
   A <- matrix(0, bas$Ai_max + 1, 3)
-#  cat(dim(X),length(WX),"\n")
-
   if (any(WX < 0))
     warning("negative spatial weights in FitAlm_Tikhonov - abs(WX) is taken")
   WX = abs(WX)
   WX = WX[-mask]
   X1 <- X[-mask, ]
-#  cat(dim(X1),length(WX),"\n")
   if (is.null(bas$IM))
     newIM = TRUE
   if (newIM) {
@@ -2458,7 +2507,7 @@ synth_update_inplace<-function (C, bas, i, k, del=1e-6)
       C$X_uv[, k] = C$X_uv[, k] + bas$Ylm_uv[, i] * del
       C$X_vv[, k] = C$X_vv[, k] + bas$Ylm_vv[, i] * del
       C
-  }, env = rlang::env_parent())
+  }, envir = rlang::env_parent())
 
 }
 
@@ -2472,7 +2521,7 @@ scale_inplace<-function (m, s)
       m$A = m$A * s
       "scaled m in place"
     }, NULL)
-  }, env = rlang::env_parent())
+  }, envir = rlang::env_parent())
 }
 
 #' deltaX_norm
@@ -2609,7 +2658,7 @@ plotLseries<-function (nr = 4, nc = 5, A, C, grd, bas,
       S = list(alpha = 0)
     plot3qs(Y, grd, S$alpha)
     rgl::title3d(paste(l, ": E",
-                       round((h2$Wb + E)/M.Es,
+                       round((h2$Wb + E)/MemRBC_env$M.Es,
                               3), " C", round(h2$Curv, 3)))
     k = k + 1
     if (k > nr * nc)
@@ -2659,7 +2708,7 @@ Membrane_LaplacianOBJ <- function(X)
   ia=c(X$it[1,],X$it[2,],X$it[3,]);ja=c(X$it[2,],X$it[3,],X$it[1,])
   N<-max(max(ia),ja); TN <- Matrix::sparseMatrix(dims=c(N,N),i=ia,j=ja,x=rep(1,length(ia)),
                                          use.last.ij=FALSE)
-  ig <- igraph::graph.adjacency(TN,mode="undirected",diag = FALSE)
+  ig <- igraph::graph_from_adjacency_matrix(TN,mode="undirected",diag = FALSE)
   # remove doubles by /2
   return(igraph::laplacian_matrix(ig,normalization="unnormalized",sparse = TRUE)/2)
 }
@@ -2670,7 +2719,7 @@ Membrane_LaplacianOBJ <- function(X)
 Membrane_LaplaciansOBJ <- function(X)
 {
   ia=c(X$it[1,],X$it[2,],X$it[3,]);ja=c(X$it[2,],X$it[3,],X$it[1,])
-  N<-max(max(ia),ja); TN <- sparseMatrix::sparseMatrix(dims=c(N,N),i=ia,j=ja,x=rep(1,length(ia)),
+  N<-max(max(ia),ja); TN <- Matrix::sparseMatrix(dims=c(N,N),i=ia,j=ja,x=rep(1,length(ia)),
                                          use.last.ij=FALSE)
   ig <- igraph::graph.adjacency(TN,mode="undirected",diag = FALSE)
   # recompute  u directly from Laplacian
@@ -2842,9 +2891,10 @@ imag.delta.arrowws.pca <- function(A1,A2,grd2,bas2,O1)
 #' @param grd2,bas2 grid and basis of A2
 #' @returns obj1,obj2 aligned 3d-objects
 #' @examples
-#' data(D5)
-#' data(D5c5)
-#' imag.delta.aligned(D5$A,D5c5$A,D5c5$grd,D5c5$bas)->L
+#' data("M4",package = "MemRBC")
+#' M4p=M4
+#' M4p$A=M4$A+rnorm(M4$bas$Ai_max*3,sd=0.4)
+#' imag.delta.aligned(M4p$A,M4$A,M4$grd,M4$bas)->L
 #' rgl::open3d()
 #' rgl::plot3d(L$obj1,alpha=0.6,col=1,aspect=FALSE)
 #' rgl::plot3d(L$obj2,alpha=0.6,col=2,add=TRUE)
@@ -3082,8 +3132,8 @@ SErenumbered_2_OBJ <- function(f.in,f.out,comment="o")
 #' @param L The Cotangent Laplacian matrix. If NULL, it is computed.
 #' @param spherical (=TRUE) for giving not uv on a disk but spherical coordinates (u,v)
 #' @return A list containing the 2D coordinates and the flattened mesh.
+#' @export
 GEMINI_disk_conformal_map <- function(mesh, L = NULL,plt=FALSE,spherical=TRUE) {
-
   num_verts <- ncol(mesh$vb)
 
   if (is.null(L)) {
@@ -3132,8 +3182,8 @@ GEMINI_disk_conformal_map <- function(mesh, L = NULL,plt=FALSE,spherical=TRUE) {
   str(u_fixed)
   rhs_u <- -L_ib %*% u_fixed
   rhs_v <- -L_ib %*% v_fixed
-  u_in <- solve(L_ii, rhs_u)
-  v_in <- solve(L_ii, rhs_v)
+  u_in <- solve(L_ii, rhs_u[,1])
+  v_in <- solve(L_ii, rhs_v[,1])
   u_full <- numeric(num_verts)
   v_full <- numeric(num_verts)
 
@@ -3146,7 +3196,7 @@ GEMINI_disk_conformal_map <- function(mesh, L = NULL,plt=FALSE,spherical=TRUE) {
   flat_mesh$vb[1,] <- u_full
   flat_mesh$vb[2,] <- v_full
   flat_mesh$vb[3,] <- 0
-  if(plt)  rgl::wire3d(flat_mesh)
+  if(plt)  plot(u_full,v_full,pch=".",cex=2)
   if(spherical) { u_full=u_full*pi/2+pi/2;v_full=v_full*pi+pi}
   return(list(uv = data.frame(u=u_full, v=v_full), mesh_flat = flat_mesh, bnd=b_indices))
 }
@@ -3162,6 +3212,7 @@ GEMINI_disk_conformal_map <- function(mesh, L = NULL,plt=FALSE,spherical=TRUE) {
 #' @param path A vector of integer vertex indices representing the cut path.
 #'             Must be a connected sequence of edges.
 #' @return A new mesh3d object with the cut applied (more vertices, updated faces).
+#' @export
 GEMINI_cut_mesh_along_path <- function(mesh, path) {
   path=as.integer(path)
   if(length(path) < 3) stop("Path must have at least 3 vertices to define a cut.")
@@ -3250,7 +3301,7 @@ GEMINI_cut_mesh_along_path <- function(mesh, path) {
 #' @return NS=c(N,S), North and South vertex indices
 #' @return Path: list of index vectors connecting N and S by k-shortest path
 #' @examples
-#' data(SF4lr)
+#' data("SF4lr",package = "MemRBC")
 #' SF4lr->O
 #' NorthSouth(O,13)->P # take 13th path
 #' P$Paths # candidate paths of vertices for cutting
@@ -3293,6 +3344,7 @@ PlotPaths<-function(O,P,LVPath=TRUE)
 #' The original algorithm from Brechbühler (1995) is implemented,
 #' but spherical areas are not iterated for refinement.
 #' The resulting (u,v) may not be optimal for fitting.
+#' A better result comes from algorithm GEMINI_disk_conformal_map()
 #' @export
 Brechbuehler.Init.uv.2<-function (X1, Fit_order = 12, InitFit = FALSE, poles.axis = 2,
                                   mat.mode = c("cotan.lapl", "cotan.chi", "euclid"), file.out = "Brechbuehler-init-uv-2.obj",
@@ -3610,7 +3662,7 @@ CenterX<-function(X)
 
 #' TriMesh_Unduloid
 #' @description
-#' create an Unduloid 3d object for a fraction or  multiple periods.
+#' create an Unduloid 3d object for a fraction or multiple periods.
 #' Unduloids may be interesting shapes to fit, see example.
 #' @examples
 #' # a special grid is made with hole at north and south pole,
@@ -3652,7 +3704,7 @@ CenterX<-function(X)
 #' M$grd$Obj<-X2Obj(M$grd$Obj,X1)
 #' rgl::shade3d(M$grd$Obj,alpha=0.2)
 #' mean(E$curv/E$dA/2)
-#' M.C0=0;M.mu=0;M.Ka=0
+#' MemRBC_env$M.C0<-0;MemRBC_env$M.mu<-0;MemRBC_env$M.Ka<-0
 #' M$bas$Target[1:2]=c(E$Area,E$Volume)
 #' save_MemRBC(M,"Unduloid.rdat")
 #' MMC(M,1000,plt=TRUE,pltfreq=2,C0=0)
@@ -3814,7 +3866,7 @@ ConsIter<-function(A,grd,bas,C,g2, Ctol=1e-3, nsteps=20,
   updateX(A,grd,bas)->C
   h2=E_SCM(A,grd,bas,C)
   Cons_RHS <-ConsRHS(h2,bas)
-  NCons<-max(abs(Cons_RHS)/bas$Target)
+  NCons<-max(abs(Cons_RHS))
   if(prn) cat(crayon::yellow(l,": Cons_%:"), crayon::cyan(round(100*Cons_RHS/bas$Target,4)),crayon::yellow(" |Cons|:"),ifelse(NCons>Ctol,crayon::red(NCons),crayon::green(NCons)),"\n")
 
   if (NCons<=Ctol) {
@@ -3822,7 +3874,7 @@ ConsIter<-function(A,grd,bas,C,g2, Ctol=1e-3, nsteps=20,
     Grad_SCM(h2,grd,bas,C) -> g2
 
     Cons_RHS <-ConsRHS(h2,bas)
-    NCons<-max(abs(Cons_RHS)/bas$TNorm)
+    NCons<-max(abs(Cons_RHS))
   };
   sol=rep(0,Nc) # default to return
   while ((NCons>Ctol & l<nsteps) | ( l==0 )){
@@ -3842,7 +3894,7 @@ ConsIter<-function(A,grd,bas,C,g2, Ctol=1e-3, nsteps=20,
     Grad_SCM(h2,grd,bas,C) -> g2
 
     Cons_RHS <-ConsRHS(h2,bas)
-    NCons<-max(abs(Cons_RHS)/bas$TNorm)
+    NCons<-max(abs(Cons_RHS))
     if (prn) cat(crayon::green(l," ",round(NCons,9)),"\r");
     l=l+1
     if(NCons1==NCons) break
@@ -3860,13 +3912,12 @@ ConsIter<-function(A,grd,bas,C,g2, Ctol=1e-3, nsteps=20,
 
 #' FullModelHessian
 #' @description
-#'  computes the full model Hessian
-#' of the coefficients, as used in CNM.
+#' computes the full model Hessian of the energy, as used in CNM.
 #' It is based on finite differences of gradients
-#' with a symmetrization.
+#' with a symmetrization; includes full Lagrangian.
 #' @param A, grd, bas, Ref : standard objects of a MemRBC
 #' @param del (=1e-6) finite difference delta for coefficients
-#' @returns Full Hessian matrix, ie also constraint Jacobian, but not bordered
+#' @returns Full Hessian matrix, ie also constraints, but not bordered
 #' @export
 FullModelHessian<-function (A, grd, bas, Ref, del = 1e-06, Ctol = 0.001)
 {
@@ -3923,18 +3974,15 @@ ID<-function(A,bas)
 
 #' FullModelHessian_Par
 #' @description parallel computed Hessian including constraint gradients; serial gradients but a list-parallel approach to assemble H
+#' @param cl : parallel cluster-ID from previous result (H$cl in CNM)
 #' @export
-FullModelHessian_Par <- function (A, grd, bas, Ref, del = 5e-06, 
-                                  Mem_mc.cores = 4, timing = TRUE, startup = TRUE,
-                                  stopdown = TRUE)
-{
-  pt0 = proc.time()
+FullModelHessian_Par <- function(A, grd, bas, Ref, del = 5e-06, 
+                                 Mem_mc.cores = 4, timing = TRUE, 
+                                 stopdown = TRUE, cl=NULL)
+{ pt0 = proc.time()
+  startup=is.null(cl)
   Ai_max = bas$Ai_max
   C = updateX(A, grd, bas)
-  .M.C00 <<- M.C0
-  .M.Ref <<- Ref
-  .M.bas <<- bas
-  .M.grd <<- grd
   h20 = E_SCM(A, grd, bas, C)
   S = SEN(A, grd, bas, Ref, h20)
   ES = E_SEN(A, grd, bas, S, Ref)
@@ -3942,50 +3990,82 @@ FullModelHessian_Par <- function (A, grd, bas, Ref, del = 5e-06,
   GS0 = Grad_SEN(A, grd, bas, Gh20, S, Ref)
   G0 = c(Gh20$grad_SCM + GS0$grad_SEN)
   L = L0 = list()
-  for (m in bas$Cons[1:bas$Nc]) L[[m]] = L0[[m]] = matrix(0,
-                                                          Ai_max * 3, Ai_max * 3)
-  for (m in bas$Cons[1:bas$Nc]) for (j in 1:(3 * Ai_max)) L0[[m]][,
-                                                                  j] = Gh20[[m]]
+  for (m in bas$Cons[1:bas$Nc]) 
+    L[[m]] = L0[[m]] = matrix(0, Ai_max * 3, Ai_max * 3)
+  for (m in bas$Cons[1:bas$Nc]) for (j in 1:(3 * Ai_max)) 
+    L0[[m]][,j] = Gh20[[m]]
   H = matrix(0, Ai_max * 3, Ai_max * 3)
   Lpar = list()
   L = list()
-  for (i in bas$Cons[1:bas$Nc]) L[[i]] = matrix(0, Ai_max *
-                                                  3, Ai_max * 3)
+  for (i in bas$Cons[1:bas$Nc]) L[[i]] = matrix(0, Ai_max * 3, Ai_max * 3)
   if (timing)
     tictoc::tic()
   A1 = A
+  cat("Par: ENV C0",MemRBC_env$M.C0,"\n")
   for (j in 1:(3 * Ai_max)) {
     A1[j] = A1[j] + del
-    Lpar[[j]] = list(A = A1, M.C0 = M.C0, M.K_ADE = M.K_ADE,
-                     M.K_b = M.K_b, M.mu = M.mu, M.Ka = M.Ka, M.a3 = M.a3,
-                     M.a4 = M.a4, M.b1 = M.b1, M.b2 = M.b2, M.Rcpp = TRUE,
-                     M.Rcpp_ncores = M.Rcpp_ncores, index = j)
+    Lpar[[j]] = list(A = A1, 
+                     M.C0 = MemRBC_env$M.C0, 
+                     M.K_ADE = MemRBC_env$M.K_ADE,
+                     M.K_b = MemRBC_env$M.K_b, 
+                      M.mu = MemRBC_env$M.mu, 
+                      M.Ka = MemRBC_env$M.Ka, 
+                      M.a3 = MemRBC_env$M.a3,
+                      M.a4 = MemRBC_env$M.a4, 
+                      M.b1 = MemRBC_env$M.b1, 
+                      M.b2 = MemRBC_env$M.b2, 
+                    M.Rcpp = TRUE,
+             M.Rcpp_ncores = MemRBC_env$M.Rcpp_ncores, 
+                     index = j)
     A1[j] = A1[j] - del
   }
   if (timing) {
     cat("paralleliz. preperation  ")
     tictoc::toc()
-  }
-  if (timing)
     tictoc::tic()
-  {
-    if (startup) {
-      cat("setup Cluster\n")
-      M.cl <<- parallel::makeCluster(Mem_mc.cores, outfile = "tmp_cluster.txt")
-    }
-    parallel::clusterExport(M.cl, varlist = c("M.C0", "M.K_ADE",".M.C00",
-                                              "M.K_b", "M.mu", "M.Ka", "M.a3", "M.a4", "M.b1",
-                                              "M.b2", "M.Rcpp", "M.Rcpp_ncores", ".M.grd", ".M.bas",
-                                              ".M.Ref", "int2d_matrix_cxx", "vectomat_cxx", "vectoarr_cxx"))
+  }
+  { if (is.null(cl)) {
+      cat("setup Cluster on ",Mem_mc.cores," cores\n")
+      cl <- parallel::makeCluster(Mem_mc.cores,type="PSOCK", outfile = "tmp_cluster.txt")
+  }  
+    # variables to ship to cluster nodes:
+    M.C0 = MemRBC_env$M.C0 
+    M.K_ADE = MemRBC_env$M.K_ADE
+    M.K_b = MemRBC_env$M.K_b
+    M.mu = MemRBC_env$M.mu
+    M.Ka = MemRBC_env$M.Ka 
+    M.a3 = MemRBC_env$M.a3
+    M.a4 = MemRBC_env$M.a4 
+    M.b1 = MemRBC_env$M.b1 
+    M.b2 = MemRBC_env$M.b2 
+    M.Rcpp = TRUE
+    M.Rcpp_ncores = MemRBC_env$M.Rcpp_ncores
+    M.Ref=Ref
+    M.bas=bas
+    M.grd=grd
+    a=pi
+#    parallel::clusterEvalQ(cl,{print("Node lives")})
+#    parallel:::checkCluster(cl)
+#    print("Cluster checked")
+    parallel::clusterExport(cl, varlist=
+                          c("a","M.bas", "M.grd","M.Ref",
+                            "M.C0", "M.K_ADE",
+                            "M.K_b", "M.mu", "M.Ka", 
+                            "M.a3", "M.a4", "M.b1",
+                            "M.b2", "M.Rcpp", "M.Rcpp_ncores",
+                            "int2d_matrix_cxx", 
+                            "vectomat_cxx", 
+                            "vectoarr_cxx"
+                           ),envir = environment())
+#    parallel::clusterEvalQ(cl,{library(MemRBC);print(MemRBC_env$M.C0)})
     if (timing) {
-      cat("cluster startup ")
-      tictoc::toc()
+      cat("cluster startup ");  tictoc::toc()
       tictoc::tic()
-    }
-    LH <- parallel::parLapply(M.cl, Lpar, FullHessian_Client)
+    } #parLapply
+    LH <- parallel::parLapply(cl, Lpar, FullHessian_Client)
     if (stopdown) {
-      cat("stop Cluster\n")
-      parallel::stopCluster(M.cl)
+      parallel::stopCluster(cl)
+      cl=NULL # returns in H that cluster is dead
     }
     }
   if (timing) {
@@ -4007,45 +4087,57 @@ FullModelHessian_Par <- function (A, grd, bas, Ref, del = 5e-06,
               E = h20$Wb + ES, ES = ES, Wb = h20$Wb, h2 = h20, C = C,
               gradC = Gh20$gradC, gradA = Gh20$gradA, gradV = Gh20$gradV,
               A = A, proc_time_clients = pt, proc_time_total = pt0,
-              Nclients = Mem_mc.cores, Par = pt0/pt))
+              Nclients = Mem_mc.cores, Par = pt0/pt, cl=cl ))
 }
-
 
 # export - but internal to FullHessian_Par
 #' FullHessian_Client
-#' for your inspection/replacement
+#' @description
+#' code exported for your inspection/replacement
 #' @export
 FullHessian_Client<-function(L,DBG=FALSE) # Lmax=13 takes 4 seconds per call/core
 { pt=proc.time()
-  M.Rcpp=L$M.Rcpp;M.Rcpp_ncores=L$M.Rcpp_ncores
-  Ai_max=.M.bas$Ai_max
-  M.C0<<-L$M.C0
-  if(DBG)cat(tictoc::toc()[[4]],":",paste(err),"\n",file="setup.txt",append = TRUE);
-  cat("CLIENT C0",M.C0,".M.C00",.M.C00,"\n")
-  C=updateX(L$A,.M.grd,.M.bas) # no longer in L
-  h2=E_SCM(L$A,.M.grd,.M.bas,C)
-  S=SEN(L$A,.M.grd,.M.bas,.M.Ref,h2)
+  cat("CLIENT C0 before ENV",MemRBC_env$M.C0,"\t",L$M.C0,"\n")
+  
+  MemRBC_env$M.Rcpp<-L$M.Rcpp;
+  MemRBC_env$M.Rcpp_ncores<-L$M.Rcpp_ncores
+  MemRBC_env$M.C0<-L$M.C0
+  MemRBC_env$M.K_ADE<-L$M.K_ADE 
+  MemRBC_env$M.K_b<-L$M.K_b 
+  MemRBC_env$M.mu<-L$M.mu  
+  MemRBC_env$M.Ka<-L$M.Ka  
+  MemRBC_env$M.a3<-L$M.a3 
+  MemRBC_env$M.a4<-L$M.a4 
+  MemRBC_env$M.b1<-L$M.b1
+  MemRBC_env$M.b2<-L$M.b2
+  Ai_max=M.bas$Ai_max
+  
+  cat("CLIENT C0 from ENV",MemRBC_env$M.C0,"\n")
+  C=updateX(L$A,M.grd,M.bas) # no longer in L
+  h2=E_SCM(L$A,M.grd,M.bas,C)
+  S=SEN(L$A,M.grd,M.bas,M.Ref,h2)
 
   # decide by M.Rcpp for openmp-parallel code
   #       cant directly use Grad_SCM on cluster due to scattered objects names
-  if(!M.Rcpp) {Gh2=Grad_SCM_R(h2,.M.grd,.M.bas,C)} else {
-    G2=.Grad_SCM_cxx(h2,.M.grd, .M.bas, C, M.C0, L$M.Rcpp_ncores, L$M.K_b, L$M.K_ADE)
-    Gh2=list(ddA=array(G2$ddA,c(.M.grd$ndof,.M.bas$Ai_max,3)),
-             ddV=array(G2$ddV,c(.M.grd$ndof,.M.bas$Ai_max,3)),
+  if(!MemRBC_env$M.Rcpp) {Gh2=Grad_SCM_R(h2,M.grd,M.bas,C)} else {
+    G2=Grad_SCM_cxx(h2, M.grd, M.bas, C, L$M.C0, L$M.Rcpp_ncores, L$M.K_b, L$M.K_ADE)
+    Gh2=list(ddA=array(G2$ddA,c(M.grd$ndof,M.bas$Ai_max,3)),
+             ddV=array(G2$ddV,c(M.grd$ndof,M.bas$Ai_max,3)),
              grad_SCM=G2$grad_SCM,gradV=G2$gradV,gradA=G2$gradA,gradC=G2$gradC,
-             dE=array(G2$dE,c(.M.grd$ndof,.M.bas$Ai_max,3)),
-             dF=array(G2$dF,c(.M.grd$ndof,.M.bas$Ai_max,3)),
-             dG=array(G2$dG,c(.M.grd$ndof,.M.bas$Ai_max,3)))
+             dE=array(G2$dE,c(M.grd$ndof,M.bas$Ai_max,3)),
+             dF=array(G2$dF,c(M.grd$ndof,M.bas$Ai_max,3)),
+             dG=array(G2$dG,c(M.grd$ndof,M.bas$Ai_max,3)))
     }
-  GS=Grad_SEN(L$A,.M.grd,.M.bas,Gh2, S,.M.Ref)
+  GS=Grad_SEN(L$A,M.grd,M.bas,Gh2, S, M.Ref)
   Gj=c(Gh2$grad_SCM + GS$grad_SEN)
   Lj=list()
-  for (k in .M.bas$Cons[1:.M.bas$Nc])  Lj[[k]] = G2[[k]]
+  for (k in M.bas$Cons[1:M.bas$Nc])  Lj[[k]] = G2[[k]]
 
-  cat("client done with",L$index," at C0=",M.C0," in ",proc.time()-pt,"\n")
+  cat("client done with",L$index," at C0=",MemRBC_env$M.C0," in ",proc.time()-pt,"\n")
   return(list(G=Gj,Lj=Lj,time=proc.time()-pt,index=L$index))
 }
 
+# unlockBinding("M.C0", env = MemRBC_env)
 
 #'mat2vec
 #' @export
@@ -4074,38 +4166,36 @@ matadd2vec<-function(m1,m2)
 #' @param Cons vector of character of constraint gradients, from "gradA","gradV" and "gradC"
 #' @param QCons vector of constraint names, from "Area","Volume","Curv", same order as Cons
 #' @param Target vector of constraint values, like c(140,100,88) for Area, Volume and Curv
-#' @param TNorm vector of normalization constants for calculating the norm, i.e. degree of total constraint violation
 #' @examples
-#' data(D5); SetParams(D5)
+#' data("M4",package = "MemRBC"); SetParams(M4)
 #'
 #' # add curvature constraint:
-#' SetConstraints(D5$bas,Cons=c("gradA","gradV","gradC"),
+#' SetConstraints(M4$bas, Cons=c("gradA","gradV","gradC"),
 #'   QCons=c("Area","Volume","Curv"),
-#'   Target=c(140,100,121),
-#'   TNorm=c(140,100,121)) -> D5$bas  # store modified basis back into membranes D5 basis
+#'   Target=c(140,100,121) ) -> M4$bas  # store modified basis back into membranes D5 basis
 #'
 #' # minimize with steepest descend under Rosen Constraint Projection
-#'
-#' SDRC(D5,100)->D5sdrc
-#'
+#' \donttest{
+#' SDRC(M4,100)->M4sdrc
 #' # pair-plots of target quantities and energy E
-#' plot(D5sdrc$SDRC_Sample[c("E","A","V","C")])
-#'
+#' plot(M4sdrc$SDRC_Sample[c("E","A","V","C")])
+#' }
+#'@param bas: either basis like M$bas or MemRBC-object M
+#'@return MemRBC, if bas is a MemRBC-object, or updated basis 
 #' @export
 SetConstraints<-function(bas,Cons=c("gradA","gradV"),
                          QCons=c("Area","Volume"),
-                         Target=c(140, 100),
-                         TNorm=c(140, 100)) # any further (implemented) gradients allowed
+                         Target=c(140, 100)) # any further (implemented) gradients allowed
 {
-  if(class(bas)=="MemRBC)") {M=bas;bas=M$bas;toMemRBC=TRUE} else toMemRBC=FALSE
+  if(is(bas,"MemRBC")) {M=bas;bas=M$bas;toMemRBC=TRUE} else toMemRBC=FALSE
   bas$Cons=Cons
   bas$Nc=length(Cons)
   bas$Target=Target
   bas$QCons=QCons
-  bas$TNorm=TNorm
+ 
   names(bas$Cons)= QCons
   names(bas$QCons)= QCons
-  names(bas$TNorm)= QCons
+
   names(bas$Target)= QCons
   message("SetConstraints: for CNM, remember to set M$Lambda with bas$Nc, eg M$Lambda=rep(0.1,M$bas$Nc) \n")
   if (!toMemRBC) return(bas) else {M$bas<-bas; return(M)}
@@ -4233,7 +4323,7 @@ Cons_filter_delta<-function(delta,grd,bas,H2,nm=TRUE)
       e = 0
       S = NULL
     }
-    E <- h2$Wb + e + M.rho * ((h2$Volume - bas$Target["Volume"])^2 +
+    E <- h2$Wb + e + MemRBC_env$M.rho * ((h2$Volume - bas$Target["Volume"])^2 +
                                 (h2$Area - bas$Target["Area"])^2)
     names(E) = NULL
     return(list(E = E, Wb = h2$Wb, Ws = e, E_uncons = h2$Wb +
@@ -4250,11 +4340,11 @@ Grad_FullModel_Penalty_AV<-
     G_SCM <- Grad_SCM(h2, grd, bas, C)
     if (!is.null(Ref)) {
       G_SEN <- Grad_SEN(A, grd, bas, G_SCM, S, Ref)
-      G <- G_SCM$grad_SCM + G_SEN$grad_SEN + 2 * M.rho * (G_SCM$gradV *
+      G <- G_SCM$grad_SCM + G_SEN$grad_SEN + 2 * MemRBC_env$M.rho * (G_SCM$gradV *
                                                             (h2$Volume - bas$Target["Volume"]) + +G_SCM$gradA *
                                                             (h2$Area - bas$Target["Area"]))
     }
-    else G <- G_SCM$grad_SCM + 2 * M.rho * (G_SCM$gradV * (h2$Volume -
+    else G <- G_SCM$grad_SCM + 2 * MemRBC_env$M.rho * (G_SCM$gradV * (h2$Volume -
                                                              bas$Target["Volume"]) + +G_SCM$gradA * (h2$Area - bas$Target["Area"]))
     return(G)
   }
@@ -4275,7 +4365,7 @@ E_FullModel_Penalty_AVC<-function (A, grd, bas, Ref)
       e = 0
       S = NULL
     }
-    E <- h2$Wb + e + M.rho * ((h2$Volume - bas$Target["Volume"])^2 +
+    E <- h2$Wb + e + MemRBC_env$M.rho * ((h2$Volume - bas$Target["Volume"])^2 +
                                 (h2$Area - bas$Target["Area"])^2 + (h2$Curv - bas$Target["Curv"])^2)
     names(E) = NULL
     return(list(E = E, Wb = h2$Wb, Ws = e, E_uncons = h2$Wb +
@@ -4293,12 +4383,12 @@ Grad_FullModel_Penalty_AVC<-function (A, grd, bas, Ref, S)
   G_SCM <- Grad_SCM(h2, grd, bas, C)
   if (!is.null(Ref)) {
     G_SEN <- Grad_SEN(A, grd, bas, G_SCM, S, Ref)
-    G <- G_SCM$grad_SCM + G_SEN$grad_SEN + 2 * M.rho * (G_SCM$gradV *
+    G <- G_SCM$grad_SCM + G_SEN$grad_SEN + 2 * MemRBC_env$M.rho * (G_SCM$gradV *
                                                           (h2$Volume - bas$Target["Volume"]) + +G_SCM$gradA *
                                                           (h2$Area - bas$Target["Area"]) + +G_SCM$gradC * (h2$Curv -
                                                                                                              bas$Target["Curv"]))
   }
-  else G <- G_SCM$grad_SCM + 2 * M.rho * (G_SCM$gradV * (h2$Volume -
+  else G <- G_SCM$grad_SCM + 2 * MemRBC_env$M.rho * (G_SCM$gradV * (h2$Volume -
                                                            bas$Target["Volume"]) + +G_SCM$gradA * (h2$Area - bas$Target["Area"]) +
                                             +G_SCM$gradC * (h2$Curv - bas$Target["Curv"]))
   return(G)
@@ -4503,14 +4593,14 @@ Rewind<-function(M,last=2)
   return(M)
 }
 
-imagePlot<-function (..., add = FALSE, breaks = NULL, nlevel = 64, col = NULL, 
+own.imagePlot<-function (..., add = FALSE, breaks = NULL, nlevel = 64, col = NULL, 
                      horizontal = FALSE, legend.shrink = 0.9, legend.width = 1.2, 
                      legend.mar = ifelse(horizontal, 3.1, 5.1), legend.lab = NULL, 
                      legend.line = 2, graphics.reset = FALSE, bigplot = NULL, 
                      smallplot = NULL, legend.only = FALSE, lab.breaks = NULL, 
                      axis.args = NULL, legend.args = NULL, legend.cex = 1, midpoint = FALSE, 
                      border = NA, lwd = 1, verbose = FALSE) 
-{ pn=(rgl::cur3d()>1)
+{ pn=(rgl::cur3d()>0)
   old.par <- par(no.readonly = TRUE)
   if (is.null(col)) {
     col <- tim.colors(nlevel)
@@ -4567,7 +4657,7 @@ imagePlot<-function (..., add = FALSE, breaks = NULL, nlevel = 64, col = NULL,
     print(iz)
     print(col)
   }
-  par(new = pn, pty = "m", plt = smallplot, err = -1)
+  par(new = FALSE, pty = "m", plt = smallplot, err = -1)
   if (!horizontal) {
     image(ix, iy, iz, xaxt = "n", yaxt = "n", xlab = "", 
           ylab = "", col = col, breaks = breaks)
@@ -4621,7 +4711,7 @@ Grad_FullModel_Penalty <- function (A, grd, bas, Ref, S)
   }
   else G <- G_SCM$grad_SCM
   for (i in 1:bas$Nc) {
-    G <- G + 2 * M.rho * G_SCM[[bas$Cons[i]]] * (h2[[bas$QCons[i]]] -
+    G <- G + 2 * MemRBC_env$M.rho * G_SCM[[bas$Cons[i]]] * (h2[[bas$QCons[i]]] -
                                                    bas$Target[[bas$QCons[i]]])
   }
   return(G)
@@ -4642,7 +4732,7 @@ E_FullModel_Penalty <- function (A, grd, bas, Ref)
     S = NULL
   }
   E <- h2$Wb + e
-  for (i in bas$QCons[1:bas$Nc]) E <- E + M.rho * (h2[[i]] -
+  for (i in bas$QCons[1:bas$Nc]) E <- E + MemRBC_env$M.rho * (h2[[i]] -
                                                      bas$Target[i])^2
   names(E) = NULL
   return(list(E = E, Wb = h2$Wb, Ws = e, Wuncons = h2$Wb +
@@ -4669,11 +4759,47 @@ create_data <- function()
   SDRC(SSsdrc,20,del_cons = 1e-1, del_min=1e-4,max_iter = 20,prn_ci = TRUE)->SSsdrc   
   plot(SSsdrc$SDRC_Sample$E,type="l")
   plot(SSsdrc$SDRC_Sample$C,type="l")
-  # the following CNM can have massive speedup with cluster=TRUE, M.Rcpp_ncores=2, 
+  # the following CNM can have massive speedup with cluster=TRUE, MemRBC_env$M.Rcpp_ncores=2, 
   #       ncores=60, e.g. on a fat node with 120 cores and enough memory 
   # 
   CNM(SSsdrc,2,cluster = FALSE)-> SSsdrc_cnm # takes >100minutes on Ryzen 7 Pro laptop
   save_MemRBC(SSsdrc_cnm,"SSsdrc_cnm",qs2=TRUE) # fast compressed save
-  
-  
+
+}
+
+#' get_data_ZENODO
+#' @description
+#' get the additional data by downloading from ZENODO
+#' and moving to data-folder
+#' @param local (=FALSE) to download in current dir, not packages data
+#' @param folder (="data") name of local download folder (is kept on exit)
+#' @param L (=NULL) specific files for download (vector of character)
+#' @export
+get_data_ZENODO <- function(local=FALSE,folder="data",L=NULL){
+  if(!dir.exists(folder)) dir.create(folder)
+  Pre="https://zenodo.org/records/18667916/files/"
+  L0=c("D5.rda","D6.rda","D6_cnm_C00.rda","D6_eq.rda","KleinBottle6.rda","L5_stoma_4.rda","ss42denovo.rda",
+       "L5_stoma_6.rda","L5_stomatocyte_equilib.rda","L9_Stomatocyce_6.rda",
+       "M_stomatocyte_L12.rda","M_stomatocyte_L12_rotated.rda","S18-C0--5.qs2",
+       "S18-C0-17.qs2","S18-C0-23.qs2","S18-C0-27.qs2","SF4obj.rda","SS.rda","SS20.rda","SS42.rda","ss42denovo_mmc.rda",
+       "ss42denovo_pnem.rda","U17R.rda")
+  if (is.null(L)) L=L0 else if(! all(L %in% L0)) stop("req. data not in repo.\n")
+  for (x in L){
+    destfile=paste(folder,x,sep="/")
+    cat(destfile,"\r")
+    if (!file.exists(destfile)) utils::download.file(paste(Pre,x,"?download=1",sep=""),
+                  destfile=destfile,
+                  method="curl") 
+  }
+  if (!local){
+  p=.libPaths()
+   if (dir.exists(paste(p[1],"MemRBC/data",sep="/")))
+    for (x in L){
+      cat(x,"\r")
+      cpfile=paste(folder,x,sep="/")
+      target=paste(p[1],"MemRBC/data",x,sep="/")
+      if (!file.exists(target)) try(file.copy(cpfile,target))
+    }
+  }
+  cat("data left in folder ",folder,"\n")
 }

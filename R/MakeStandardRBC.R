@@ -30,22 +30,21 @@
 #' @return ARef:  coefficients of reference shape
 #' @return history: history of App-calls that created the result
 #' @examples
-#' library(MemRBC)
-#' load_param_MemRBC()
-#' M.C0=0
+#' MemRBC_env$M.C0 <- 0
 #' # for fast experiments take a low-order L=5:
+#' if(exists("E_SCM_cxx")) { # catch problems in cran tests
 #' M <- MakeStandardRBC(L=5,prn=TRUE)
 #' plot(M)
 #' PSD(M,plt=TRUE)
 #' M
+#' }
 #' @export
 MakeStandardRBC <- function(A0=140, V0=100, V0_Ref=148, L=9,C0=-1,
                                 n=(L+1) * 5 + 2, prn=FALSE,
-                                del_cons=0.1,del=2e-7,dt=1e-5)
-{ # symm=Axi for reduced basis
-  # if(L<4) warning("MakeStandardRBC: probably no solution for L>5")
-  t0=proc.time()
-  if (M.C0!=C0) warning("M.C0 not equal demanded C0")
+                                del_cons=0.1,del=2e-7,dt=1e-5,plt=FALSE)
+{ t0=proc.time()
+  data("Mempty",package="MemRBC",envir = environment())
+  if (MemRBC_env$M.C0!=C0) warning("MemRBC_env$M.C0 not equal demanded C0")
   cl <- match.call()
 
   grd <- MakeGrid_GaussLegendreSimpson(n)
@@ -57,33 +56,28 @@ MakeStandardRBC <- function(A0=140, V0=100, V0_Ref=148, L=9,C0=-1,
   g2<-Grad_SCM(Wb,grd,bas.axi,C)
   # re-iterate to new V0_Ref if needed
   bas.axi$Nc=2
-  bas.axi$Target=bas.axi$TNorm=c(A0,V0_Ref)
+  bas.axi$Target=c(A0,V0_Ref)
   bas.axi$QCons=c("Area","Volume")
   bas.axi$Cons=c("gradA","gradV")
   ConsRHS(Wb,bas.axi)
 
   # compute Reference shape for A0, V0_Ref
-  CI=ConsIter(A,grd,bas.axi,C,g2,Ctol=1e-4,del_cons = del_cons,
+  CI=ConsIter(A,grd,bas.axi,C,g2,Ctol=1e-6,del_cons = del_cons,
               nsteps = 1000,prn=prn)
   Aref=CI$A
   attr(Aref,"V0")=V0_Ref
   Filter_1_A<-function(A) {A[1,2:3]=A[2,1:2]=A[3,c(1,3)]=0;return(A)}
   Aref=Filter_1_A(Aref)
-
   updateX(Aref,grd,bas.axi)->C
-
-  rgl::plot3d(C$X,aspect=FALSE)
+  if(plt)rgl::plot3d(C$X,aspect=FALSE)
   # now the target L shape by energy minimization
   bas <- MakeBasis_UV(L,grd$U,grd$V)
-
   A=bas$A
   A[]=0;A[1:3,]=Aref[]
-
   tictoc::tic()
   cat("Reference Tensors ...");
   Ref <- Ref4CauchyGreen( A, grd, bas )
   cat(" took ");tictoc::toc()
-
   bas$Target=c(A0,V0)
   names(bas$Target)=c("Area","Volume")
   bas$Nc=2
@@ -91,44 +85,39 @@ MakeStandardRBC <- function(A0=140, V0=100, V0_Ref=148, L=9,C0=-1,
   M=structure(list(grd=grd, bas=bas, A=A, Ref=Ref, ARef=Aref,
                      hash_Ref=rlang::hash(Ref), Lambda=c(1,1),
                      LA=list(A), history=list(cl)), class="MemRBC")
-  plot(M)
+  if(plt)plot(M)
   Quantities(M)
 
-  data("D5")
+  Mempty->D5
   SetParams(D5)
+  D5$ARef
+  D5<-update(D5,c("Grid","Basis","Class","Ref","Coor"))
   transplant(D5,M)->M1
-  rgl::open3d();plot(M1)
+  if(plt) {rgl::open3d();plot(M1)}
   t1=proc.time()
   M1$proc_time <-  t1-t0
-  M1$comment="created from data(D5)"
+  M1$comment="created from scratch"
   StoreParams(M1)->M1
   SetParams(M1)
+  update(M1,"Class")->M1
   return(M1)
 } # end of MakeStandardRBC
 
-
+#' MakeDiscocyteRBC
+#' @description
+#' build from data M4 a higher spectral order discocyte object
+#' @param L : spectral order of created object, L>5
 #' @export
 MakeDiscocyteRBC<-function(L)
 {
-  data(D5, envir = environment())
-  update(D5,what=c("Grid","Basis","Ref"),n=(L+1)*5+2,L=L)->M
-  transplant(D5,M)->M1
-  M1$proc_time=D5$proc_time
-  StoreParams(M1)->M1
-  return(M1)
-}
-
-#' make a stomatocyte from present data
-#' @param L (=5) spectral order
-#' @export
-MakeStomatocyteRBC<-function(L=5 )
-{
-  data("L5_stomatocyte_equilib", envir = environment())
-  SetParams(L5_stomatocyte_equilib)
-  S5<-L5_stomatocyte_equilib
-  update(S5,what=c("Grid","Basis","Ref"),n=(L+1)*5+2,L=L) -> M
+  data(M4, package = "MemRBC")
+  update(M4,what=c("Grid","Basis","Ref"),n=(L+1)*5+2,L=L)->M
+  transplant(M4,M)->M
+  M$proc_time=M4$proc_time
+  StoreParams(M)->M
   return(M)
 }
+
 
 #' @export
 invag_N<-function (X, width = 0.1, depth = 0.1)
@@ -152,6 +141,7 @@ invag_N<-function (X, width = 0.1, depth = 0.1)
 #' @param rz (=1) helps to scale z, rz<1 : oblate, rz>1 : prolate shape
 #' @examples
 #' # example code for spiculated sphere ss
+#' if(exists("E_SCM_cxx")) { # catch problems in cran tests
 #' MakeSpiculated(N=12,w=0.06,d=-0.6,r=0.65) -> ss
 #' ss
 #' ss$bas$Target
@@ -159,12 +149,13 @@ invag_N<-function (X, width = 0.1, depth = 0.1)
 #'
 #' rgl::open3d()
 #' plot(ss)
-#' M.C0 <- 20
+#' MemRBC_env$M.C0 <- 20
 #' MMC(ss,100000,plt=TRUE,pltfreq=100,LAfreq=1000,C0=20) -> ss_mmc
+#' }
 #' @export
 MakeSpiculated<-function (N = 42, w = 0.01, d = -0.35, r = 1, rz = 1)
-{
-  data(SS)
+{ get_data_ZENODO(L="SS.rda",local=TRUE)
+  load_MemRBC("data/SS.rda")->SS
   g = SS$grd
   b = SS$bas
   if (r <= 0)
@@ -226,19 +217,20 @@ MakeSpiculated<-function (N = 42, w = 0.01, d = -0.35, r = 1, rz = 1)
 #' @param r (=1.045) radius to tune resulting volume
 #' @examples
 #' # example code for invaginated sphere ivs
+#' if(exists("E_SCM_cxx")) { # catch problems in cran tests
 #' MakeInvaginated() -> ivs
 #' ivs
 #' ivs$bas$Target
-#'
 #' rgl::open3d()
 #' plot(ivs)
-#' M.C0 <- -6.5
+#' MemRBC_env$M.C0 <- -6.5
 #' MMC(ivs,100000,plt=TRUE,pltfreq=100,LAfreq=1000,C0=-6.5) -> ivs_mmc
+#' }
 #' @export
 MakeInvaginated <- function (w = 0.38, d = 1.4, r = 1.045, f = 0.75, uv = c(0, 0),
           plt = FALSE)
-{
-  data(SS)
+{ get_data_ZENODO(L="SS.rda",local=TRUE)
+  load_MemRBC("data/SS.rda")->SS
   g = SS$grd
   b = SS$bas
   if (r <= 0)
@@ -290,7 +282,6 @@ if (plt)  {rgl::open3d();rgl::plot3d(X,aspect=FALSE)}
   return(X)
 }
 
-
 #' @export
 MakeGrid_Fourier<-function(n=30,r=1,R=2.5,check_plt=FALSE)
 {
@@ -320,7 +311,7 @@ MakeGrid_Fourier<-function(n=30,r=1,R=2.5,check_plt=FALSE)
     q[ ,k]=c(l,l+nx+1,l+nx)
   }
   q=q[,1:(k)]
-  print(k)
+#  print(k)
   x=cos(grd$v)*(R+r*cos(grd$u));
   y=sin(grd$v)*(R+r*cos(grd$u));
   z=r*sin(grd$u)
@@ -351,7 +342,11 @@ MakeGrid_Fourier<-function(n=30,r=1,R=2.5,check_plt=FALSE)
 #' @param detlau (=0.15) cap-cutting parameter
 #' @param L (=17) spectral order
 #' @examples
-#' M.C0=0;M.Ka=M.mu=0
+#' 
+#' if(exists("L_Ylm")) { # catch problems in cran tests
+#' MemRBC_env$M.C0=0
+#' MemRBC_env$M.Ka=0
+#' MemRBC_env$M.mu=0
 #' M <- MakeKleinBottle(L=12,deltau=0.1)
 #' #plot(M)
 #' Quantities(M)
@@ -360,6 +355,7 @@ MakeGrid_Fourier<-function(n=30,r=1,R=2.5,check_plt=FALSE)
 #' M
 #' update(M,"Obj") -> M
 #' imag.obj.colorbar(M$grd$Obj,M$grd$v,pal=topo.colors,alpha=0.65)
+#' }
 #' @export
 MakeKleinBottle<-function(L=17,n=L*4,b=2,h=6,deltau=0.15,plt=FALSE,SEN=FALSE)
 {
@@ -376,8 +372,8 @@ if(plt)  rgl::shade3d(O,col="red",alpha=0.5)
   MakeMemRBC(LM2A(A,B),G,B) -> res
   unlist(Quantities(M))->q
   res$bas$Nc=2
-  res$bas=SetConstraints(B,Cons = c("gradA","gradV"), QCons = c("Area","Volume"), Target = q[1:2],TNorm = c(1,1,1))
-if (SEN)  MakeRef(res,A) -> res$Ref
+  res$bas=SetConstraints(B,Cons = c("gradA","gradV"), QCons = c("Area","Volume"), Target = q[1:2])
+if (SEN) MakeRef(res,A) -> res$Ref
 if(plt) plot(res,color="white")
  return(res)
 }
@@ -398,7 +394,7 @@ MakeTorus<-function(L=5,plt=FALSE)
   MakeMemRBC(A,G,B)->M
   A=MakeSphere(G,B)
   (q<-unlist(Quantities(M)))
-  M$bas<-SetConstraints(M$bas,Cons = c("gradA","gradV"), QCons = c("Area","Volume"), Target = q[1:2],TNorm = c(1,1,1))
+  M$bas<-SetConstraints(M$bas,Cons = c("gradA","gradV"), QCons = c("Area","Volume"), Target = q[1:2])
   plot(M)
   return(M)
 }

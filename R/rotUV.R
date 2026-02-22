@@ -31,9 +31,9 @@
 #' @param transpose (=FALSE) for backward rotation, not verified
 #' @return membrane object with coefficients after rotation, but original SEN reference
 #' @examples
-#' data_MemRBC("M_stomatocyte_L12")
-#' plot(M_stomatocyte_L12)
-#' rotUV(M_stomatocyte_L12,pi/2,3*pi/4)->M
+#' data("M4",package = "MemRBC")
+#' plot(M4)
+#' rotUV(M4,pi/2,3*pi/4)->M
 #' plot(M)
 #' @export
 rotUV<-function(Min,du,dv,plt=FALSE,transpose=FALSE)

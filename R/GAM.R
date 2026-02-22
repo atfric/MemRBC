@@ -22,11 +22,11 @@
 #' @return A: last coefficients
 #' @return history: history of App-calls that created the result
 #' @examples
-#' M <- MakeStandardRBC(L=5)
+#' if(exists("L_Ylm")) { # in cran tests this sometimes would fail
+#' data(M4,package = "MemRBC")
+#' M <- GAM(M4,nsteps=3)
 #' plot(M)
-#' M <- GAM(M,nsteps=3)
-#' plot(M)
-#' M
+#' M }
 #' @export
 GAM<-function(M,nsteps=1,maxiter=50)
 {

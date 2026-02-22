@@ -37,16 +37,18 @@
 #' @return PNEMiter; total PNEM step counter, incl. previous calls
 #' @return history: history of App-calls that created the result
 #' @examples
-#' data(L5_stomatocyte_equilib)
-#' M<-L5_stomatocyte_equilib
+#' \dontrun{
+#' data(M4)
+#' M<-M4
 #' plot(M)
-#' M.Rcpp=TRUE
-#' M.Rcpp_ncores=4
-#' M <- PNEMVM(M, nsteps=10000, del=1e-6)
+#' MemRBC_env$M.Rcpp=TRUE
+#' MemRBC_env$M.Rcpp_ncores=4
+#' M <- PNEMVM(M, nsteps=10000, dt=1e-6)
 #' plot(M)
 #' M
 #' # further data stored as attributes to coefficients A in LA
 #' attributes(last(M$LA))
+#' }
 #' @export
 PNEMVM <- function (M, nsteps = 100, dt = 5e-04, LAfreq = 50, plt = TRUE,
                     filter_delta = ID, rho = 1, sd0 = 0.001, pltfreq = 25, ncores = 4,
@@ -57,10 +59,10 @@ PNEMVM <- function (M, nsteps = 100, dt = 5e-04, LAfreq = 50, plt = TRUE,
   if (is.null(M$proc_time))
     M$proc_time <- 0
   run_id = rlang::hash(M)
-  if (!exists("M.Rcpp"))
+  if (is.null(MemRBC_env$M.Rcpp))
     stop("Cannot process - probably load_param_MemRBC has not been called.")
-  M.Rcpp <<- TRUE
-  M.Rcpp_ncores <<- ncores
+  MemRBC_env$M.Rcpp <- TRUE
+  MemRBC_env$M.Rcpp_ncores <- ncores
   cl = match.call()
   E0 = 1000
   E_total = rep(0, nsteps)
@@ -137,17 +139,17 @@ PNEMVM <- function (M, nsteps = 100, dt = 5e-04, LAfreq = 50, plt = TRUE,
     E_kin[iter] <- Ekin
     C_PNEM[iter] <- E$Curv
     cat("|dAv|:", pracma::Norm(Aa * dt), ":  |dA|:", pracma::Norm(Av *
-                                                                    dt), ":  Ekin:", Ekin/M.Es, ": Ekin_X:", Ekin_X/M.Es,
-        ":Ekin/Ekin_X:", Ekin/Ekin_X, ":Etot:", Etot/M.Es,
+                                                                    dt), ":  Ekin:", Ekin/MemRBC_env$M.Es, ": Ekin_X:", Ekin_X/MemRBC_env$M.Es,
+        ":Ekin/Ekin_X:", Ekin/Ekin_X, ":Etot:", Etot/MemRBC_env$M.Es,
         "\n")
-    cat("PNEM", iter, "E", E$E/M.Es, "Wb", E$Wb/M.Es, "Ws",
-        E$Ws/M.Es, "C0", M.C0, "C", E$Curv, "A", E$Area,
+    cat("PNEM", iter, "E", E$E/MemRBC_env$M.Es, "Wb", E$Wb/MemRBC_env$M.Es, "Ws",
+        E$Ws/MemRBC_env$M.Es, "C0", MemRBC_env$M.C0, "C", E$Curv, "A", E$Area,
         "V", E$Volume, "dt", dt, "v_f", visc_fac, "\n", sep = ":")
     if (plt & iter%%pltfreq == 0) {
       two_draw3d(A, M, title = paste("PNEM", iter))
     }
     attr(A, "method") <- "PNEM"
-    attr(A, "C0") <- M.C0
+    attr(A, "C0") <- MemRBC_env$M.C0
     attr(A, "Target") <- bas$Target
     attr(A, "iter") <- iter
     attr(A, "E") <- E$E
@@ -158,7 +160,7 @@ PNEMVM <- function (M, nsteps = 100, dt = 5e-04, LAfreq = 50, plt = TRUE,
     attr(A, "visc_fac") <- visc_fac
     attr(A, "Etot") <- Etot
     attr(A, "rho_mass") <- rho
-    attr(A, "M.rho") <- M.rho
+    attr(A, "M.rho") <- MemRBC_env$M.rho
     attr(A, "run_id") <- run_id
     E0 <- E$E
     if (iter == 1) {

@@ -10,3 +10,9 @@ Makefile
 doc/.*[.](bib|bst|sty)$
 ^.*\.Rproj$
 ^\.Rproj\.user$
+^LICENSE\.md$
+^data/ss42denovo*
+^data/U17*
+^data/L*
+vignettes/data/*
+vignettes/data

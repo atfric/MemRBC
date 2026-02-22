@@ -1,7 +1,7 @@
 Package: MemRBC
 Type: Package
 Title: Red Blood Cell Shape Modelling Code Laboratory
-Version: 0.3.8
+Version: 0.4.0
 Authors@R: c(
     person(
       "Stephan", "Frickenhaus",
@@ -14,17 +14,18 @@ Authors@R: c(
   )
 URL: https://doi.org/10.5281/zenodo.13627757
 Description: This R-package MemRBC is for experiments in numerical modeling of the stomatocyte-discocyte-echinocyte-transformation of Red Blood Cell shape in a spectral model using spherical harmonics. It has a number of foundational implementations for energy, gradient and Hessian computation. The numerical algorithm applications for modeling tasks are offered as high-level functions ("Apps") for energy minimization as well as dynamics. Methods are Steepeds descend, Constrained Newton, Newton equation of motion, Genetic algorithm, Metropolis-Monte-Carlo, Augmented Lagrangian and variants for fixed curvature. An object-oriented approach is followed for these apps, in which metadata of previous modeling steps are kept in the MemRBC history data. By this design, modularity of the modeling workflow, reproducibility and re-use is facilitated. Users are encouraged to modify the Apps or invent new ones. Therefore, no code is hidden when using it in R (except C++ code).
-License: GPL-3
+License: file LICENSE
 Encoding: UTF-8
-LazyData: true
+LazyData: false
 RoxygenNote: 7.3.3
 VignetteBuilder: knitr
 Depends: R (>= 3.5)
-Imports: crayon, fields, igraph, Matrix, pracma, Rcpp, rgl,
-        RSpectra, Rvcg, tictoc, nloptr, GA, qs2, RANN, rlang, Carlson
+Imports: crayon, fields, igraph, Matrix, pracma, Rcpp, rgl, methods,
+        RSpectra, Rvcg, tictoc, nloptr, GA, qs2, RANN, rlang, 
+        Carlson, RcppEigen
+LinkingTo: cpp11, Rcpp, RcppEigen
 Suggests: knitr, rmarkdown, testthat (>= 3.0.0)
 Config/testthat/edition: 3
-LinkingTo: cpp11, RcppEigen
 NeedsCompilation: yes
 Packaged: 2026-02-09 15:38:14 UTC; sfricken
 Author: Stephan Frickenhaus [aut, cre, cph] (ORCID=0000-0002-0356-9791),

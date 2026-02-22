@@ -11,8 +11,8 @@
 #
 
 
-#' Augmented Lagrangian Minimizer
-#'
+#' Augmented Lagrangian Minimization
+#' @description
 #' run ALM on an existing membrane object to adjust shape to target curvature, minimizing the residual norm RN.
 #' @param M The input membrane with initial data and reference
 #' @param curv target curvature
@@ -27,11 +27,15 @@
 #' @return M.lam: last lambda vector
 #' @return history: history of App-calls that created the result
 #' @examples
-#' M <- MakeStandardRBC(L=5)
-#' plot(M)
-#' M <- ALM(M,curv=86,20,plt=TRUE)
-#' plot(M)
+#'  if(exists("L_Ylm")) # in --as-cran example tests L_Ylm sometimes vanishes
+#'  { 
+#' MemRBC_env$M.C0<-0
+#' M <- MakeStandardRBC(L=3,C0=0)
+#' plot(M,alpha=0.6)
+#'  M <- ALM(M,curv=Curv(M)+2,10,ncores=2)
+#' plot(M,alpha=0.6,col="red")
 #' M
+#' } else cat(crayon::blue("ALM examples not tested\n"))
 #' @export
 ALM<-function(M, curv, nsteps=10,plt=TRUE,method="SLSQP",maxiter_solver=100,ncores=4,LAfreq=15)
 {
@@ -45,13 +49,13 @@ ALM<-function(M, curv, nsteps=10,plt=TRUE,method="SLSQP",maxiter_solver=100,ncor
   S<-SEN(A,grd,bas,Ref1,h2)
   SE<-E_SEN(A,grd,bas,S,Ref1)
   E_glob <<- h2$Wb + SE
-  EAL_glob <<- h2$Wb + SE + M.muk/2 * sum(R^2) + sum(M.lam*R)
+  EAL_glob <<- h2$Wb + SE + MemRBC_env$M.muk/2 * sum(R^2) + sum(MemRBC_env$M.lam*R)
   g2<-Grad_SCM(h2,grd,bas,C)
   GS<-Grad_SEN(A,grd,bas,g2,S,Ref1)
   G <- c(g2$grad_SCM + GS$grad_SEN)
   cat(".")
   return( list("objective" = EAL_glob ,
-               "gradient" = G + c( (M.lam + M.muk*R) %*% rbind(c(g2$gradA),
+               "gradient" = G + c( (MemRBC_env$M.lam + MemRBC_env$M.muk*R) %*% rbind(c(g2$gradA),
                                                                c(g2$gradV),
                                                                c(g2$gradC)))) )
 }
@@ -78,7 +82,7 @@ AugLag_Step=function(A,tau=1.8,eta=1e-3,prec=1e-4,method="SLSQP",curv,maxiter_so
   RN=pracma::Norm(R)
   cat("\nALM: Cons:",R,":RN:",RN,"\n")
   # here is the central augmented lagrangian update of lambda and mu
-  if ( (RN)<eta ) M.lam<<-M.lam + M.muk*R else M.muk<<-M.muk*tau
+  if ( (RN)<eta ) MemRBC_env$M.lam<-M.lam + MemRBC_env$M.muk*R else MemRBC_env$M.muk<-M.muk*tau
 
   cat("\nChange Norm:",pracma::Norm(res_opt$x0-res_opt$solution),":|R|:",crayon::red(RN),":I:",crayon::red(res_opt$iterations),":S:", res_opt$status,":M:",res_opt$message,"\n")
 
@@ -88,13 +92,12 @@ AugLag_Step=function(A,tau=1.8,eta=1e-3,prec=1e-4,method="SLSQP",curv,maxiter_so
 
 # actual ALM code starts here
 if(!exists("M.Rcpp")) stop("Cannot process - probably load_param_MemRBC has not been called.")
-M.Rcpp<<-TRUE # for faster SCM energy
-M.Rcpp_ncores<<-ncores # and parallel SCM gradient
+if(ncores>1){
+  MemRBC_env$M.Rcpp<-TRUE # for faster SCM energy
+  MemRBC_env$M.Rcpp_ncores<-ncores} # and parallel SCM gradient
 bas<-SetConstraints(M$bas,Cons=c("gradA","gradV","gradC"),
                     QCons = c("Area","Volume","Curv"),
-                    Target=c(M$bas$Target[1:2],curv),
-                    TNorm=c(M$bas$Target[1:2],curv)
-)
+                    Target=c(M$bas$Target[1:2],curv))
 t0=proc.time()
 if(is.null(M$proc_time)) M$proc_time<-0
 if (is.null(M$LA)) LA=list(M$A) else LA=M$LA # MMC records
@@ -112,16 +115,16 @@ if(plt) {rgl::clear3d();plot3b(C$X,grd)}# two_draw3d(A,M)
 ll.a=0
 
 if (is.null(M$ALM_RN)) RN0=1000 else  RN0<-M$ALM_RN; # allow first step
-if (is.null(M$ALM_mu)) M.muk<<-50 #else  M.muk<<-M$ALM_mu;
-if (is.null(M$ALM_lambda)) M.lam<<-c(1,1,1) #else  M.lam<<-M$ALM_lambda;
+if (is.null(M$ALM_mu)) MemRBC_env$M.muk<-50 #else  M.muk<-M$ALM_mu;
+if (is.null(M$ALM_lambda)) MemRBC_env$M.lam<-c(1,1,1) #else  M.lam<-M$ALM_lambda;
 
 eta=0.6
 prec=1e-4
 
 iter_count=0
 
-if(!is.null(M$M.muk)) M.muk<<-M$M.muk
-if(!is.null(M$M.lam)) M.lam<<-M$M.lam
+if(!is.null(M$M.muk)) MemRBC_env$M.muk<-M$M.muk
+if(!is.null(M$M.lam)) MemRBC_env$M.lam<-M$M.lam
 tictoc::tic()
 for (iter in 1:nsteps) { # usually 10 cycles
   if (iter==1) tictoc::tic()
@@ -143,20 +146,20 @@ for (iter in 1:nsteps) { # usually 10 cycles
 #  GS<-Grad_SEN(A,grd,bas,g2,S,M$Ref)
 
   E <- h2$Wb + SE
-  cat("ALM:",iter,":E_AL:",EAL_glob/M.Es,":E:",E/M.Es,crayon::green(":mu:"),M.muk,crayon::green(":lam:"),M.lam,"\n")
-  cat("ALM:",iter,":E:",E/M.Es,":Ct:",bas$Target[3],":C0:",M.C0,":C:",h2$Curv,"\n")
+  cat("ALM:",iter,":E_AL:",EAL_glob/MemRBC_env$M.Es,":E:",E/MemRBC_env$M.Es,crayon::green(":mu:"),MemRBC_env$M.muk,crayon::green(":lam:"),MemRBC_env$M.lam,"\n")
+  cat("ALM:",iter,":E:",E/MemRBC_env$M.Es,":Ct:",bas$Target[3],":C0:",MemRBC_env$M.C0,":C:",h2$Curv,"\n")
 
 #  h2<-E_SCM(A,grd,bas,C) no update needed
 #  S<-SEN(A,grd,bas,M$Ref,h2)
 
   if (plt) {rgl::clear3d();plot3b(C$X,grd);
     rgl::title3d(paste("C=",round(h2$Curv,3),"Ct=",
-                       bas$Target["Curv"],"C0=",M.C0,"L=",bas$L_max))}# ,round(lambdaG[3],3)))
+                       bas$Target["Curv"],"C0=",MemRBC_env$M.C0,"L=",bas$L_max))}# ,round(lambdaG[3],3)))
   #      attr(A,"Lambda")=lambdaG
   attr(A,"E")=E
   attr(A,"Target")=bas$Target
   attr(A,"C")=h2$Curv
-  attr(A,"C0")=M.C0
+  attr(A,"C0")=MemRBC_env$M.C0
   attr(A,"ALM_RN0")<-RN0
   attr(A,"iter")<-iter
   if (iter==1) {cat("ALM full cycle took ");tictoc::toc()}
@@ -167,7 +170,6 @@ for (iter in 1:nsteps) { # usually 10 cycles
 
   LA[[length(LA)+1]]<-A;
 
-
 }
 
 cat("full ALM took "); tictoc::toc()
@@ -175,8 +177,8 @@ M$A=A
 M$LA=LA;
 if (is.null(M$ALMiter)) M$ALMiter=iter else M$ALMiter=M$ALMiter+iter
 if (is.null(M$ALMiter_solve)) M$ALMiter_solve=iter_count else M$ALMiter_solve=M$ALMiter_solve+iter_count
-M$ALM_lambda<-M.lam
-M$ALM_mu<-M.muk
+M$ALM_lambda<-MemRBC_env$M.lam
+M$ALM_mu<-MemRBC_env$M.muk
 M$ALN_RN0=RN0
 M$last_App_called="ALM"
 
