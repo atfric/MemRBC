@@ -20,13 +20,13 @@
 #' @param curv the constraint curvature (default is current curvature of M)
 #' @param nsteps number of MMC steps to be run
 #' @param plt (boolean) for plotting
-#' @param plofreq for plotting shape every plotfreq number of accepted steps
+#' @param pltfreq for plotting shape every plotfreq number of accepted steps
 #' @param LAfreq for storing shape coefficients every LAfreq accepted steps
 #' @param sd standard deviation parameter to control steps
 #' @param kT Boltzmann-constant * temperature energy scale
-#' @param nm (boolen) normal motion filter
 #' @param kTfac cooling factor
 #' @param kTfreq frequency for cooling factor applied on kT in units of accepted steps
+#' @param pertA (=pertA_Unif) perturbation scheme 
 #' @return membrane object with updates from MMC with data:
 #' @return LA: list of recorded coefficients A
 #' @return A: final coefficients
@@ -34,15 +34,14 @@
 #' @return MMCCacceptanceRate: acceptance rate of the call
 #' @return MMCCiter: total MMCC steps, incl. MMCC from previous calls
 #' @return history: history of App-calls that created the result
-#' @examples
-#' if(exists("E_SCM_cxx")) { # catch problems in cran tests
+#' @examplesIf exists("L_Ylm")
 #' data(M4)
 #' M<-M4
 #' plot(M)
 #' #  annealing simulation (decrease kT by kTfac every Ktfreq accepted steps)
 #' M <- MMCC(M, curv=Curv(M)+0.25, nsteps=10000, kT=0.00411, kTfac=0.99, kTfreq=100)
 #' plot(M)
-#' M }
+#' M 
 #' @export
 MMCC<-function (M, curv = Curv(M), nsteps = 1000, plt = FALSE, pltfreq = 5,
                 LAfreq = 200, sd = 0.004, kT = 0.00411,  pertA = pertA_Unif,

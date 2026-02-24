@@ -14,8 +14,8 @@ image(M4,M4$SEN$beta)
 print(M4)
 image(M4)
 
-M.Rcpp
-M.Rcpp_ncores=3
+MemRBC_env$M.Rcpp
+MemRBC_env$M.Rcpp_ncores=3
 MemStab(M4,serial=TRUE)->M4a
 
 PlotStabGallery(M4a)
@@ -29,7 +29,7 @@ Energy(M4)
 
 two_screens3d()
 two_draw3d(M4$A,M4)
-data("M4",package = "MemRBC")
+load("M4.rda")
 M4$bas$mask = double_uv_ind(M4$bas$uv[,1],M4$bas$uv[,2])
 M4$history
 M4pca<-MemPCA(M4)
@@ -68,7 +68,7 @@ MemRBC_env$M.C0<<- -2
 # no test for CRAN here:
 #ALM(M4g,Curv(M4)+0.2,5,ncores=2)->M4h
 
-data("SF4lr",package = "MemRBC")
+load("SF4lr.rda")
 SF4mr<-rgl::subdivision3d(SF4lr,1)
 rgl::plot3d(SF4mr,aspect=FALSE,col="white")
 

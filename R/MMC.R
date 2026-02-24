@@ -18,13 +18,17 @@
 #' @param nsteps number of MMC steps to be run
 #' @param plt (=FALSE) for plotting
 #' @param prn (=TRUE) for extensive printing
-#' @param plfreq (=5) for plotting shape every plotfreq number of accepted steps
+#' @param pltfreq (=5) for plotting shape every plotfreq number of accepted steps
 #' @param LAfreq (=200) for storing shape coefficients every LAfreq accepted steps
 #' @param sd (=0.004) standard deviation parameter to control steps
 #' @param kT (=0.00411) Boltzmann-constant * temperature energy scale
-#' @param nm (=FALSE) normal motion filter
 #' @param kTfac (=1.0) cooling factor (0<kTfac<1) or heating factor (kTfac>1)
-#' @param filter (=ID) no other filter implemented, do it yourself
+#' @param kTfreq (=100) cooling/heating frequency
+#' @param pertA (=pertA_Unif) perturbation scheme
+#' @param record_dA (=FALSE) record perturbations
+#' @param timing (=FALSE)
+#' @param C0 (=M$C0) to verify wanted C0 against MemRBC_env$M.C0
+#' @param ... further plot parameters
 #' @return membrane object with updates from MMC with data:
 #' @return LA: list of recorded coefficients A
 #' @return A: final coefficients
@@ -32,14 +36,14 @@
 #' @return MMCacceptanceRate: acceptance rate of the call
 #' @return MMCiter: total MMC steps, incl. MMC from previous calls
 #' @return history: history of App-calls that created the result
-#' @examples
-#' if(exists("E_SCM_cxx")) { # catch problems in cran tests
+#' @examplesIf exists("L_Ylm")
 #' data(M4,package = "MemRBC"); M<-M4
 #' plot(M)
 #' #  annealing simulation (decrease kT by kTfac every Ktfreq accepted steps)
 #' M1 <- MMC(M,nsteps=100000, kT=0.00411, kTfac=0.99, kTfreq=100, C0=-2)
 #' plot(M1)
-#' M1}
+#' M1
+#' 
 #' @export
 MMC<-function (M, nsteps = 1000, plt = TRUE, pltfreq = 10, prn = TRUE,
                LAfreq = 200, sd = 0.004, kT = 0.00411, kTfac = 1, kTfreq = 100,
@@ -56,7 +60,7 @@ MMC<-function (M, nsteps = 1000, plt = TRUE, pltfreq = 10, prn = TRUE,
     stop("Cannot process - probably load_param_MemRBC has not been called.")
   MemRBC_env$M.Rcpp <- TRUE
   cl = match.call()
-  if (identical(pertA, pertA_complex) & !exists("M.nn"))
+  if (identical(pertA, pertA_complex) & !exists("M.nn",envir = .GlobalEnv))
     M.nn <<- NNuv(M$grd$UV, 13)
   FM <- E_SCM(M$A, M$grd, M$bas, updateX(M$A, M$grd, M$bas))
   Cnt = rep(0L, nsteps)
@@ -198,6 +202,11 @@ MMC<-function (M, nsteps = 1000, plt = TRUE, pltfreq = 10, prn = TRUE,
 
 
 # A must not be matrix
+#' perturb coeffs
+#' @param A,bas coeffs and basis
+#' @param sd standard dev. of gaussian
+#' @param flt (=FALSE) to filter for only 3 entries in l=1 
+#' @param n not used
 #' @export
 pertA_Gauss<-function (A, bas, sd, flt = FALSE, n)
 {
@@ -213,7 +222,13 @@ pertA_Gauss<-function (A, bas, sd, flt = FALSE, n)
   return(A)
 }
 
-
+#' perturb coeffs A by dA from uniform distribution, as needed in GAM and MMC
+#' Perturbation dA is scaled down by `sqrt(bas$G.tk)`
+#' @param A,bas coefficients and basis
+#' @param sd width of perturbation
+#' @param flt (=FALSE) not used
+#' @param n normal vectors, e.g.from `E_SCM()`
+#' @return changed coeffs A+dA
 #' @export
 pertA_Unif<-function (A, bas, sd, flt = FALSE, n)
 {
@@ -229,9 +244,14 @@ pertA_Unif<-function (A, bas, sd, flt = FALSE, n)
 #' @description
 #'  Perturb with gaussian along spatial normals.
 #'  BEFORE USE:
-#' a) Normals of neighbours require to fill global M.nn=Nuv(bas$uv)
-#' b) the basis mus contain a matrix IM for least squares inversion in FitFast();
+#' a) Normals of neighbours require to fill the global M.nn=Nuv(bas$uv)
+#' b) the basis must contain a matrix IM for least squares inversion in FitFast();
 #' Use bas<-MakeIM(bas,WX=sin(grd$U)) to create IM.
+#' @param A,bas coefficients and basis
+#' @param sd standard deviation, not needed here
+#' @param n normal vectors
+#' @param nn (=12) number of nearest neighbours to construct displacements from
+#' @return modified coefficients A+dA
 #' @export
 pertA_complex<-function (A, bas, sd, n, nn = 12)
 {
@@ -252,11 +272,15 @@ pertA_complex<-function (A, bas, sd, n, nn = 12)
 #' @description
 #'  compute nearest neighbors for pertA_complex
 #'  store in global M.nn
+#'  ATTENTION: returned distances $nn.dists are weighted sin(u), because in pole vicinity points get denser
+#' @param uv (n x 2) matrix of (u,v) spherical angles
+#' @param n (=13) number of nearest neighbours to compute
+#' @return result from RANN::nn2: $nn.idx and $nn.dists
 #' @export
 NNuv <- function (uv, n = 13)
 {
   nn <- RANN::nn2(uv, uv, n + 1)
-  nn$nn.dist = nn$nn.dist * sin(uv[, 1])
+  nn$nn.dists = nn$nn.dists * sin(uv[, 1])
   return(nn)
 }
 
@@ -266,6 +290,11 @@ NNuv <- function (uv, n = 13)
 #'  BEFORE USE:
 #' the basis mus contain a matrix IM for least squares inversion in FitFast();
 #' Use bas<-MakeIM(bas,WX=sin(grd$U)) to create IM.
+#' @param A,bas coeffs and basis
+#' @param n not used
+#' @param sd standard dev
+#' @param sample_fraction (=0.65) fraction of points to be displaced
+#' @return changed coeffs A+dA
 #' @export
 pertA_rndX<-function (A, bas, sd,n,sample_fraction=0.65)
 {

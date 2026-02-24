@@ -23,9 +23,12 @@
 #' @param new_Av set velocity according to sd0 random numbers
 #' @param sd0 standard deviation of Gaussian velocity initialization
 #' @param LAfreq storage frequency into list of coefficients LA
+#' @param pltfreq (=25) plot frequency
+#' @param mass_update_freq (=50) update frequency of mass matrix
+#' @param ncores number of parallel cores in SCM energy and gradient
 #' @param visc_fac viscosity scaling factor for damping oscillations to zero
-#' @param visc_matrix viscosity matrix of size $bas$Ai_max x $bas$Ai_max
-#' @param diag_visc (boolean) viscosity tensor diagonal, and not ~ mass-matrix
+#' @param visc_matrix (=diag(sqrt(M$bas$G.tk[1]/M$bas$G.tk)) ) viscosity matrix of size $bas$Ai_max x $bas$Ai_max
+#' @param filter_delta (=ID) name a function to modify for delta(A), eg damping; the filter gives back coeffs A, and it has (A,bas) as input parameters
 #' @return membrane object with updates from MMC with data:
 #' @return LA: list of recorded coefficients A
 #' @return A: last coefficients
@@ -36,8 +39,7 @@
 #' @return E_total_PNEM: total energy of all previous PNEMs
 #' @return PNEMiter; total PNEM step counter, incl. previous calls
 #' @return history: history of App-calls that created the result
-#' @examples
-#' \dontrun{
+#' @examplesIf exists("L_Ylm")
 #' data(M4)
 #' M<-M4
 #' plot(M)
@@ -48,12 +50,12 @@
 #' M
 #' # further data stored as attributes to coefficients A in LA
 #' attributes(last(M$LA))
-#' }
+#' 
 #' @export
 PNEMVM <- function (M, nsteps = 100, dt = 5e-04, LAfreq = 50, plt = TRUE,
                     filter_delta = ID, rho = 1, sd0 = 0.001, pltfreq = 25, ncores = 4,
                     new_Av = FALSE, visc_fac = 1, visc_matrix = diag(sqrt(M$bas$G.tk[1]/M$bas$G.tk)),
-                    zero_Av = FALSE, mass_update_freq = 100)
+                    zero_Av = FALSE, mass_update_freq = 50)
 {
   t0 = proc.time()
   if (is.null(M$proc_time))

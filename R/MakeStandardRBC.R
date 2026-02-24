@@ -15,33 +15,34 @@
 #'
 #' run MakeStandardRBC() to create a membrane object
 #' @param L spectral order l<=L
+#' @param C0 spontaneous curvature
+#' @param del_cons (=0.1) constraint iterator step size
 #' @param A0 to be constraint area
 #' @param V0 to be constraint volume
 #' @param V0_Ref volume of reference shape (148 ~ v_0=0.95)
 #' @param n ~sqrt(spatial grid points)
 #' @param prn boolean, print infos on constraint iteration
-#' @param del delta>0 for iterations; decrease if convergence fails
-#' @return membrane object with updates from MMC with data:
+#' @param plt (=FALSE) for control plot 
+#' @return membrane object with updates from MMC with:
 #' @return LA: list of recorded coefficients A
 #' @return A: last coefficients
 #' @return bas: basis functions
 #' @return grd: Gauss-Legendre-Simpson-spatial grid
 #' @return Ref: Cauchy-Riemann tensor data for reference shape
-#' @return ARef:  coefficients of reference shape
+#' @return ARef: coefficients of reference shape
 #' @return history: history of App-calls that created the result
-#' @examples
+#' @examplesIf exists("L_Ylm")
 #' MemRBC_env$M.C0 <- 0
 #' # for fast experiments take a low-order L=5:
-#' if(exists("E_SCM_cxx")) { # catch problems in cran tests
 #' M <- MakeStandardRBC(L=5,prn=TRUE)
 #' plot(M)
 #' PSD(M,plt=TRUE)
 #' M
-#' }
+#' 
 #' @export
-MakeStandardRBC <- function(A0=140, V0=100, V0_Ref=148, L=9,C0=-1,
-                                n=(L+1) * 5 + 2, prn=FALSE,
-                                del_cons=0.1,del=2e-7,dt=1e-5,plt=FALSE)
+MakeStandardRBC <- function(A0=140, V0=100, V0_Ref=148, L=9,
+                            C0=-1,n=(L+1) * 5 + 2, prn=FALSE,
+                            del_cons=0.1, plt=FALSE)
 { t0=proc.time()
   data("Mempty",package="MemRBC",envir = environment())
   if (MemRBC_env$M.C0!=C0) warning("MemRBC_env$M.C0 not equal demanded C0")
@@ -110,7 +111,7 @@ MakeStandardRBC <- function(A0=140, V0=100, V0_Ref=148, L=9,C0=-1,
 #' @export
 MakeDiscocyteRBC<-function(L)
 {
-  data(M4, package = "MemRBC")
+  data("M4", package = "MemRBC",envir = environment())
   update(M4,what=c("Grid","Basis","Ref"),n=(L+1)*5+2,L=L)->M
   transplant(M4,M)->M
   M$proc_time=M4$proc_time
@@ -118,7 +119,12 @@ MakeDiscocyteRBC<-function(L)
   return(M)
 }
 
-
+#' make invaginated shape MemRBC object
+#' at the north pole by adding a gaussian displacement along Z
+#' @param X spatial3d- coordinates
+#' @param width (=0.1) width in micrometer
+#' @param depth (=0.1) depth in micrometer
+#' @return modified spatial 3d coordinates 
 #' @export
 invag_N<-function (X, width = 0.1, depth = 0.1)
 {
@@ -130,18 +136,19 @@ invag_N<-function (X, width = 0.1, depth = 0.1)
 }
 
 #
-#' Create a spiculated cell from a sphere
-#' via invag_N() with negative depth. The basic object started from is a L=16 standard sphere. The resulting shape is rescaled to obtain the target area specified in data(SS) (usually 140). You may also set a different volume target (see example code).
+#' Create a spiculated cell from a L=16 sphere.
+#' via invag_N() with negative depth. The basic object started from is a L=16 
+#' standard sphere. The resulting shape is rescaled to obtain the target area specified in data(SS) (usually 140). You may also set a different volume target (see example code).
 #'  WARNING: the reference is taken from unscaled sphere - may need updates!
+#' data "SS.rda" is loaded from ZENODO to a local folder ./data/.
 #' NOTE: spatial points are weighted by sin(u) for the fit
-#' @param N (=20) (6,8,12,20,32,42) number of regularly arranged spikes
+#' @param N (=20) from (6,8,12,20,32,42) number of regularly arranged spikes
 #' @param w (=0.01) width of spikes; 0.01 is good for N=42
 #' @param d (=-0.35) negative elevation of spikes; 0.35 is good for N=42
 #' @param r (=1) radius of initial sphere. Helps to control initial volume.
 #' @param rz (=1) helps to scale z, rz<1 : oblate, rz>1 : prolate shape
-#' @examples
-#' # example code for spiculated sphere ss
-#' if(exists("E_SCM_cxx")) { # catch problems in cran tests
+#' @return MemRBC object with spiculi, derived from published data "SS.rda"
+#' @examplesIf exists("L_Ylm")
 #' MakeSpiculated(N=12,w=0.06,d=-0.6,r=0.65) -> ss
 #' ss
 #' ss$bas$Target
@@ -151,7 +158,7 @@ invag_N<-function (X, width = 0.1, depth = 0.1)
 #' plot(ss)
 #' MemRBC_env$M.C0 <- 20
 #' MMC(ss,100000,plt=TRUE,pltfreq=100,LAfreq=1000,C0=20) -> ss_mmc
-#' }
+#' 
 #' @export
 MakeSpiculated<-function (N = 42, w = 0.01, d = -0.35, r = 1, rz = 1)
 { get_data_ZENODO(L="SS.rda",local=TRUE)
@@ -215,17 +222,19 @@ MakeSpiculated<-function (N = 42, w = 0.01, d = -0.35, r = 1, rz = 1)
 #' @param w (=0.38) width of grove
 #' @param d (=1.4) depth of grove
 #' @param r (=1.045) radius to tune resulting volume
-#' @examples
-#' # example code for invaginated sphere ivs
-#' if(exists("E_SCM_cxx")) { # catch problems in cran tests
+#' @param f (=0.75) factor for coeff A[2,3]
+#' @param uv (=c(0,0)) rotation before invagination
+#' @param plt (=FALSE) for control plot
+#' @return MemRBC object with invagination coded in the coefficients $A
+#' @examplesIf exists("L_Ylm")
 #' MakeInvaginated() -> ivs
 #' ivs
 #' ivs$bas$Target
 #' rgl::open3d()
 #' plot(ivs)
-#' MemRBC_env$M.C0 <- -6.5
-#' MMC(ivs,100000,plt=TRUE,pltfreq=100,LAfreq=1000,C0=-6.5) -> ivs_mmc
-#' }
+#' MemRBC_env$M.C0 <- -6
+#' MMC(ivs,100000,plt=TRUE,pltfreq=100,LAfreq=1000,C0=-6) -> ivs_mmc
+#' 
 #' @export
 MakeInvaginated <- function (w = 0.38, d = 1.4, r = 1.045, f = 0.75, uv = c(0, 0),
           plt = FALSE)
@@ -269,7 +278,11 @@ MakeInvaginated <- function (w = 0.38, d = 1.4, r = 1.045, f = 0.75, uv = c(0, 0
   return(SS)
 }
 
-
+#' Kleins bottle parameterization
+#' @param uv n x 2 matrix of spherical angles (u,v) (u is internally scaled *2). uv can be created from `MakeBasis_UV()`
+#' @param b (=2) width
+#' @param h (=6) approx. height
+#' @param plt (=FALSE) if 3d-plot is wanted
 #' @export
 KleinB <- function(uv,b=2,h=6,plt=FALSE){
   u=2*uv[,1];v=uv[,2]
@@ -282,80 +295,28 @@ if (plt)  {rgl::open3d();rgl::plot3d(X,aspect=FALSE)}
   return(X)
 }
 
-#' @export
-MakeGrid_Fourier<-function(n=30,r=1,R=2.5,check_plt=FALSE)
-{
-  grd=list(kind="Fourier",ua=0,ub=2*pi,va=0,vb=2*pi) # to be filled further and returned
-  nu=n+1; nv=n+1 # we double the first u,v data point (u,v=0) at u,v=2pi
-  x <- pracma::linspace(0,2*pi,n=nu)
-  wx <- rep(2*pi/n,nu)
-  y <- pracma::linspace(0,2*pi,n=nv)
-  wy <- wx
-  grd$xg <- x
-  grd$yg <- y
-  mesh=pracma::meshgrid(x, y)
-  grd$u=t(mesh$X) # 2D # for [nu,nv] adressing
-  grd$v=t(mesh$Y) # 2D
-  (dm=dim(grd$u))
-  grd$ndof=prod(dm)
-  grd$U=as.vector(grd$u)
-  grd$V=as.vector(grd$v)
-  grd$wx=wx;  grd$wy=wy # for general integration scheme
-  grd$UV=cbind(grd$U,grd$V)
-  nx=nu;ny=nv;
-  q=matrix(NA,3,nx*ny*2);k=0
-  for (i in 1:(nx-1))  for (j in 1:(ny-1)){
-    k=k+1;l=(j-1)*nx+i
-    q[,k]=c(l,l+1,l+1+nx)
-    k=k+1
-    q[ ,k]=c(l,l+nx+1,l+nx)
-  }
-  q=q[,1:(k)]
-#  print(k)
-  x=cos(grd$v)*(R+r*cos(grd$u));
-  y=sin(grd$v)*(R+r*cos(grd$u));
-  z=r*sin(grd$u)
-  rgl::mesh3d(x,y,z,triangles=q, normals = list(x=x,y=y,z=z) ) -> M
-  #  clear3d();
-  grd$Obj<-M
-  grd$comment<-comment
-  grd$type="FOURIER"
-  grd$n=n;grd$nu=nu;grd$nv=nv
-  #  M=grd$Obj
-  if(check_plt){
-    rgl::clear3d()
-    imag.obj.colorbar.simple(M,grd$v)
-    rgl::contourLines3d(M,grd$v)
-    rgl::title3d("looks correct for v")
-    rgl::open3d()
-    imag.obj.colorbar.simple(M,grd$u)
-    rgl::contourLines3d(M,grd$u)
-    rgl::title3d("colors in imag.obj for u")
-  }
-  Obj2ObjQ(grd$Obj,grd)->grd$ObjQ
-  Rvcg::vcgUpdateNormals(grd$Obj)->grd$Obj
-  return(grd)
-}
-
 #' Make a Klein bottle that is a bit open at the neck
 #' the integratiön domain is not deltau...pi-deltau, i.e. caps of the spectral fit are suppressed
-#' @param detlau (=0.15) cap-cutting parameter
+#' @param deltau (=0.15) cap-cutting parameter
 #' @param L (=17) spectral order
-#' @examples
-#' 
-#' if(exists("L_Ylm")) { # catch problems in cran tests
+#' @param n (=L*4) grid points per 2d-dimension
+#' @param b,h approx. width and height of bottle
+#' @param plt (=FALSE) TRUE for 3d plot
+#' @param SEN (=FALSE) TRUE to compute reference parameters for SEN in $Ref and SEN-parameters in $SEN
+#' @return MemRBC object with Klein Bottle data
+#' @examplesIf exists("L_Ylm")
 #' MemRBC_env$M.C0=0
 #' MemRBC_env$M.Ka=0
 #' MemRBC_env$M.mu=0
 #' M <- MakeKleinBottle(L=12,deltau=0.1)
-#' #plot(M)
+#' plot(M)
 #' Quantities(M)
 #' StoreParams(M)->M
 #' M$bas$Target
 #' M
 #' update(M,"Obj") -> M
 #' imag.obj.colorbar(M$grd$Obj,M$grd$v,pal=topo.colors,alpha=0.65)
-#' }
+#' 
 #' @export
 MakeKleinBottle<-function(L=17,n=L*4,b=2,h=6,deltau=0.15,plt=FALSE,SEN=FALSE)
 {
@@ -370,16 +331,16 @@ if(plt)  rgl::shade3d(O,col="red",alpha=0.5)
   B$mask=mask=1
   lm(X[  ,] ~ B$Ylm[  ,])$coefficients[-1,] -> A
   MakeMemRBC(LM2A(A,B),G,B) -> res
-  unlist(Quantities(M))->q
+  unlist(Quantities(res))->q
   res$bas$Nc=2
   res$bas=SetConstraints(B,Cons = c("gradA","gradV"), QCons = c("Area","Volume"), Target = q[1:2])
-if (SEN) MakeRef(res,A) -> res$Ref
+if (SEN) {MakeRef(res,A) -> res$Ref; update(res,"SEN")}
 if(plt) plot(res,color="white")
  return(res)
 }
 
 # Make torus membrane, i.e. genus 1
-# but something is wrong here...
+# ATTENTION: not working yet, so no export
 ## @export
 MakeTorus<-function(L=5,plt=FALSE)
 {

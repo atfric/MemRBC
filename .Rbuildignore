@@ -11,8 +11,7 @@ doc/.*[.](bib|bst|sty)$
 ^.*\.Rproj$
 ^\.Rproj\.user$
 ^LICENSE\.md$
-^data/ss42denovo*
-^data/U17*
-^data/L*
-vignettes/data/*
-vignettes/data
+^data/ss42denovo\.rda$
+^data/ss42denovo_pnem\.rda$
+^data/M_stomatocyte_L12\.rda$
+^vignettes/data$

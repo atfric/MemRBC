@@ -18,9 +18,11 @@
 #' @param M The input membrane with initial data and reference
 #' @param nsteps (=100) number of PSDC steps to be performed
 #' @param del (=1e-6) step-size
+#' @param filter_strength (=0) to scale down higher-l gradient components by `Filter = (1 + filter_strength * 1/sqrt(M$bas$G.tk))`
 #' @param plt (=FALSE) for plotting
 #' @param pltfreq (=10) for plotting every pltfreq step
 #' @param LAfreq (=100) storage frequency into list of coefficients $LA
+#' @param ncores (=4) parallel threads in SCM energy and gradient
 #' @return membrane object with updates from MMC with data:
 #' @return LA: list of recorded coefficients A
 #' @return A: last coefficients
@@ -29,8 +31,7 @@
 #' @return E_PSD: all recorded total energies
 #' @return PSDiter; total PSD steps, incl. previous calls
 #' @return history: history of App-calls that created the result
-#' @examples
-#' if(exists("E_SCM_cxx")) { # catch problems in cran tests
+#' @examplesIf exists("L_Ylm")
 #' data("M4",package = "MemRBC")
 #' M<-M4
 #' plot(M,alpha=0.65)
@@ -38,10 +39,10 @@
 #' plot(M,add=TRUE,col="red")
 #' M
 #' attributes(last(M$LA))
-#' }
+#' 
 #' @export
 PSD <- function (M, nsteps = 100, del = 1e-06, plt = FALSE, pltfreq = 10,
-                 LAfreq = 100, ncores = 5, filter_strength = 0)
+                 LAfreq = 100, ncores = 4, filter_strength = 0)
 {
   cl = match.call()
   run_id = rlang::hash(M)

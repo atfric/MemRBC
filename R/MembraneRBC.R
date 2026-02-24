@@ -10,27 +10,69 @@
 # Frickenhaus S. (2024). MembraneR3 - A spectral model of membrane shape based on Helfrich spontaneous curvature in R. Zenodo. https://doi.org/10.5281/zenodo.13627757 ")}
 #
 
-#
-#  global standard model parameters
-#' @export
-load_param_RBC<-function()
-{  data(M.mu,M.C0,M.mu,M.Ka,M.K_b,M.K_ADE,M.Es,M.rho,M.a2,M.a3,M.a4,M.b0,M.b1,M.b2,M.rho,M.Rcpp,M.Rcpp_ncores,M.scr1,M.scr2,M.muk,M.lam,M.cl,package = "MemRBC",envir = MemRBC_env) 
+#' @import stats
+#' @import utils
+#' @import graphics
+#' @import grDevices
+#' @import rgl
+#' @import crayon
+NULL
+
+.Last<-function(){
+cat("MemRBC::Final notice:\nerase the cache-dir ",MemRBC_env$cache," now.\n")
+  if (length(grep("sourceCpp",list.files(MemRBC_env$cache)))>0) unlink(MemRBC_env$cache,recursive = TRUE)
 }
 
+#' set parameters to MemRBC environment
+#' @export
+load_param_RBC <- function()
+{ MemRBC_env$M.C0=0
+  MemRBC_env$M.mu=2.5
+  MemRBC_env$M.Ka=5
+  MemRBC_env$M.K_ADE=0.2
+  MemRBC_env$M.a3=-2
+  MemRBC_env$M.a2=1
+  MemRBC_env$M.b0=1
+  MemRBC_env$M.a4=8
+  MemRBC_env$M.b1=0.7
+  MemRBC_env$M.b2=0.75
+  MemRBC_env$M.cl=NULL
+  MemRBC_env$M.Es=112
+  MemRBC_env$M.K_b=0.2
+  MemRBC_env$M.rho=50
+  
+  MemRBC_env$M.lam=c(1,1,1)
+  MemRBC_env$M.muk=10
+  MemRBC_env$M.scr1=-1
+  MemRBC_env$M.scr2=-1
+  MemRBC_env$M.Rcpp=TRUE
+  MemRBC_env$M.Rcpp_ncores=4L
+  MemRBC_env$ll.a=0
+  
+}
+
+utils::globalVariables(c("M.nn","E_glob","EAL_glob","M.bas","M.Ref","M.grd","Alm","M4","Mempty"))
+
+#' print current parameters from envir MemRBC_env
+#' @return -
 #' @export
 print_param_RBC<-function()
-{ sapply(names(MemRBC_env),function(x) {cat(x,MemRBC_env[[x]],"\n");return(NULL)}) ; return()}
+{ print( sapply(names(MemRBC_env), function(x) MemRBC_env[[x]])) ;
+  return()
+}
 
-#
-# MemRBC_env$M.xxx parameters to be modified in main program
-#
-
+#' print package citation 
+#' @return -
 #' @export
 citation.MemRBC<-function() {cat("when using this software for publications you must cite it as:\n Frickenhaus, S. (2025). MemRBC - a numerical modeling laboratory for the stomatocyte-discocyte-echinocyte-transformation of Red Blood Cell shape, ZENODO, DOI: https://doi.org/10.5281/zenodo.13908340 \n")}
 
+E_glob=EAL_glob=M.nn=NA
 
+#' package environment
+#' to keep central parameters of models
 #' @export
 MemRBC_env <- new.env(parent = emptyenv())
+
 MemRBC_env$M.C0=0
 MemRBC_env$M.mu=2.5
 MemRBC_env$M.Ka=5
@@ -51,19 +93,21 @@ MemRBC_env$M.muk=10
 MemRBC_env$M.scr1=-1
 MemRBC_env$M.scr2=-1
 MemRBC_env$M.Rcpp=TRUE
-MemRBC_env$M.Rcpp_ncores=4
-MemRBC_env$M.
+MemRBC_env$M.Rcpp_ncores=4L
+MemRBC_env$ll.a=0
 
+
+msg="MemRBC, the red blood cell shape modeling R package... \n... with compiled SCM energy, gradient and Hessian by Rcpp.\n Needs time for compiling...\n use get_data_ZENODO() to load datasets, eg. for data(ss42denovo)\nWhen using this software for publications you must cite it as:\n\n
+ Frickenhaus, S. (2025). MemRBC - a numerical modeling laboratory for the stomatocyte-discocyte-echinocyte-transformation of Red Blood Cell shape, ZENODO,\nDOI: https://doi.org/10.5281/zenodo.13908340\n"
+
+if(!interactive()) {
+  msg[1] <- paste(msg,"Package 'MemRBC'")
+}
+
+packageStartupMessage(msg)
 
 .onLoad <- function(libname, pkgname) {
   # startup message
-  msg="MemRBC, the red blood cell shape modeling R package... \n... with compiled SCM energy, gradient and Hessian by Rcpp.\n Needs time for compiling...\n use get_data_ZENODO() to load datasets, eg. for data(ss42denovo)\n"
-
-  if(!interactive()) {
-    msg[1] <- paste("Package 'MemRBC'")
-  }
-
-  packageStartupMessage(msg)
   # to have cached objects available on parallel cluster, 
   # place it in tempdir/../cachedir, not in tempdir, which may differ in seperate cluster R.
   { 
@@ -1043,9 +1087,10 @@ return( Ret );
   } # sourceCPP
   
   
-citation.MemRBC();
+# citation.MemRBC();
 
-utils::data(M.mu,M.C0,M.mu,M.Ka,M.K_b,M.K_ADE,M.Es,M.rho,M.a2,M.a3,M.a4,M.b0,M.b1,M.b2,M.rho,M.Rcpp,M.Rcpp_ncores,M.cl,M.muk,M.lam,M.scr1,M.scr2,cache,package = "MemRBC",envir = MemRBC_env)
+#utils::data(M.mu,M.C0,M.mu,M.Ka,M.K_b,M.K_ADE,M.Es,M.rho,M.a2,M.a3,M.a4,M.b0,M.b1,M.b2,M.rho,M.Rcpp,M.Rcpp_ncores,M.cl,M.muk,M.lam,M.scr1,M.scr2,cache,package = "MemRBC",envir = MemRBC_env)
+
 }
 
 
@@ -1056,17 +1101,15 @@ M.TEST=FALSE
 # main code must define M.TEST before sourcing
 
 # for tests: show severe deviation from zero as error
-#' severe
+#' severe for testing
 #' @description
-#' test two quantities for equality using test_that
-#' 
+#' test two quantities for equality using `testthat::test_that()`
+#' @param q1,q2 quantities to test for equality
+#' @param what id for test_that call
+#' @param tol (=1e-12) absolute tolerance for equality
 #' @export
 severe<-function(q1,q2, what="some test", tol=1e-12)
 { testthat::test_that(what,{testthat::expect_equal(q1,q2,tolerance=tol)})}
-#{cat(q,":");if (all(abs(q)>tol)) {stop("severe imprecision, STOP")} else
-#  cat(crayon::green("OK:",what,"\n"))
-#}
-
 
 # @useDynLib MemRBC, .registration = TRUE
 # @importFrom Rcpp sourceCpp
@@ -1076,9 +1119,9 @@ severe<-function(q1,q2, what="some test", tol=1e-12)
 # not working when Rcpp-code is loaded
 #cleanCache<-function(){cat("clean up ",MemRBC_env$cache,"\n");file.remove(MemRBC_env$cache)}
 
-
 #
 # Functionals
+#
 
 # Spontaneous Curvature Model SCM
 #  Bending Energy
@@ -1094,7 +1137,7 @@ severe<-function(q1,q2, what="some test", tol=1e-12)
 #
 
 #
-#   no curvature-constraint, instead:
+#   no curvature-constraint per default, instead:
 #  -- Helfrich spontaneous curvature with parameter H_0 in global variable C0
 #     (note:   C0 = 2*H0_Surface_Evolver )
 #
@@ -1109,13 +1152,14 @@ severe<-function(q1,q2, what="some test", tol=1e-12)
 #  and H = c1 + c2 = 2 * H_mean ; H_mean in the usual sense like in Rvcg
 #
 
-#' E_SCM
-#' Bending energy , returns list with "Wb" as bending energy
+#' Bending energy 
 #' @description
 #' compute bending energy
 #' @param A,grd,bas,C : coefficients, grid, basis and coordinates
 #' @param plt (=FALSE) for plotting 3d
+#' @param dbg (=FALSE) for debug output
 #' @param clp (=FALSE) for plotting with a central clipping-plane
+#' @return list with "Wb" as bending energy and further data
 #' @export
 E_SCM <- function (A, grd, bas, C, plt = FALSE, dbg = FALSE, clp = FALSE)
 {
@@ -1131,18 +1175,18 @@ E_SCM <- function (A, grd, bas, C, plt = FALSE, dbg = FALSE, clp = FALSE)
 }
 
 
-#' Bending energy in R code, returns list with "Wb" as bending energy
+#' Bending energy in R code
 #' @description
-#' compute bending energy, no C-Code
+#' compute bending energy, returns list with "Wb" as bending energy
 #' @param A,grd,bas,C : coefficients, grid, basis and coordinates
 #' @param plt (=FALSE) for plotting 3d
 #' @param clp (=FALSE) for plotting with a central clipping-plane
+#' @param dbg (=FALSE) for debug messages
 #' @export
 E_SCM_R <- function(A,grd,bas,C,plt=FALSE,dbg=FALSE,clp=FALSE) # dbg=TRUE means no stop on NA
 { # returns some quantities and fundamentals in a list
   # reference values for unit sphere
   int2d_s=int2d_scalar_GLS
-
   Nuv<-grd$ndof # number of gridpoints for integrands
   # copy for easier coding - updateX()->C must have been called before
   Xu<-C$X_u[,1]; Yu<-C$X_u[,2]; Zu<-C$X_u[,3];
@@ -1238,8 +1282,7 @@ Grad_SCM <- function(h2,grd,bas,C,int2d_m=.IntegM)
 #' compute bending energy gradient in R (slow)
 #' @param Wb : result from E_SCM
 #' @param grd,bas,C :  grid, basis and coordinates
-#' @param plt (=FALSE) for plotting 3d
-#' @param clp (=FALSE) for plotting with a central clipping-plabe
+#' @param int2d_m (=int2d_matrix) integration method
 #' @export
 Grad_SCM_R <- function(Wb, grd, bas,C,int2d_m=int2d_matrix)
 { # flag=1 # was for ddA factors from chain rule with metric dA, relevant for H2 and Curv
@@ -1345,53 +1388,6 @@ Grad_SCM_R <- function(Wb, grd, bas,C,int2d_m=int2d_matrix)
               dW_BC=dcurv_sq,dE=dE,dF=dF,dG=dG)) # these e.g. for debugging
 } # adding gradients of shear terms outside, by giving dE,dF,dG,ddA etc back
 
-#
-# only area and volume gradients
-#
-#' gradient of area and volume terms for constraint Jacobian
-#' @description
-#' compute area and volume gradient in R (slow)
-#' @param Wb : result from E_SCM
-#' @param grd,bas,C :  grid, basis and coordinates
-#' @export
-Grad_SCM_av <- function(Wb,grd,bas,C,int2d_m=.IntegM)
-{ Nuv<-grd$ndof
-Ai_max<-bas$Ai_max
-H2<-Wb
-#  copies for easier programming
-Xu<-C$X_u[,1]; Yu<-C$X_u[,2]; Zu<-C$X_u[,3];
-Xv<-C$X_v[,1]; Yv<-C$X_v[,2]; Zv<-C$X_v[,3];
-Xuu<-C$X_uu[,1]; Yuu<-C$X_uu[,2]; Zuu<-C$X_uu[,3];
-Xuv<-C$X_uv[,1]; Yuv<-C$X_uv[,2]; Zuv<-C$X_uv[,3];
-Xvv<-C$X_vv[,1]; Yvv<-C$X_vv[,2]; Zvv<-C$X_vv[,3];
-dNaz<-dNay<-dNax<-array(0.0,c(Nuv,Ai_max,3))
-for (i in 1:Nuv) {
-  dNay[i,,1] <- bas$Ylm_u[i,]*Zv[i] - bas$Ylm_v[i,]*Zu[i] #(e1)
-  dNaz[i,,1] <- bas$Ylm_v[i,]*Yu[i] - bas$Ylm_u[i,]*Yv[i] #(e1)
-  
-  dNax[i,,2] <- bas$Ylm_v[i,]*Zu[i] - bas$Ylm_u[i,]*Zv[i] #(e2)
-  dNaz[i,,2] <- bas$Ylm_u[i,]*Xv[i] - bas$Ylm_v[i,]*Xu[i] #(e2)
-  
-  dNax[i,,3] <- bas$Ylm_u[i,]*Yv[i] - bas$Ylm_v[i,]*Yu[i] # (e3)
-  dNay[i,,3] <- bas$Ylm_v[i,]*Xu[i] - bas$Ylm_u[i,]*Xv[i] # (e3)
-}
-ddV<-array(0.0,c(Nuv,Ai_max,3)) # dV=1/3.0*(X[,1]*n[,1]+X[,2]*n[,2]+X[,3]*n[,3])*dA
-for(k in 1:3) for (i in 1:Nuv) ddV[i,,k] <- (H2$normal[i,k]*bas$Ylm[i,]) # normal = n*dA
-dE<-dF<-dG<-array(0.0,c(Nuv,Ai_max,3))
-for (k in 1:3)
-  for (i in 1:Nuv){
-    dE[i,,k] <- 2 * C$X_u[i,k] * bas$Ylm_u[i,]
-    dF[i,,k] <-     C$X_u[i,k] * bas$Ylm_v[i,] + C$X_v[i,k] * bas$Ylm_u[i,]
-    dG[i,,k] <- 2 * C$X_v[i,k] * bas$Ylm_v[i,]
-  }
-ddA<-array(0.0,c(Nuv,Ai_max,3))
-for(k in 1:3)  # dA = sqrt( E G - F^2 ) == 1/inn => dA= 1/sqrt()*0.5*(dE...dF) = 0.5*inn*(dE...dF)
-  for (i in 1:Nuv)  ddA[i,,k] <- 0.5*( dE[i,,k]*H2$G[i] + H2$E[i]*dG[i,,k] - 2*H2$FF[i]*dF[i,,k] ) * H2$inn[i]
-return(list(gradV =int2d_m(ddV,grd.bas),
-            gradA =int2d_m(ddA,grd,bas),
-            ddV=ddV,ddA=ddA)) # these e.g. for debugging
-} # support adding gradients of shear terms outside, by giving dE,dF,dG back
-
 
 #
 #' from SCM energy compute principal curvatures
@@ -1459,27 +1455,28 @@ Vec2Spat<-function(V,grd)
 
 #' MakeRef
 #' @description
-#' Build reference from input coefficients Aref and store in M.
+#' Build reference from input coefficients ARef and store in M.
 #' If missing and demanded, M$Ref and M$SEN are computed here.
 #' This helps plotting SEN colors like in PNEM and other Apps.
-#' usually Aref comes from an slightly oblate shape of 90-95% of the target volume 100.
+#' usually ARef comes from an slightly oblate shape of 90-95% of the target volume 100.
 #' @param M MemRBC input object
-#' @param Aref Reference shape coefficients for SEN
+#' @param ARef Reference shape coefficients for SEN
 #' @return MemRBC object with Ref and SEN set.
 #' @export
-MakeRef<-function(M,Aref){
-  M$Ref=Ref4CauchyGreen(Aref,M$grd,M$bas)
-  h2=E_SCM(Aref,M$grd,M$bas,updateX(Aref,M$grd,M$bas))
-  M$SEN=SEN(Aref,M$grd,M$bas,M$Ref,h2)
+MakeRef<-function(M, ARef){
+  M$Ref=Ref4CauchyGreen(ARef,M$grd,M$bas)
+  h2=E_SCM(ARef,M$grd,M$bas,updateX(ARef,M$grd,M$bas))
+  M$SEN=SEN(ARef,M$grd,M$bas,M$Ref,h2)
+  M$ARef=ARef
+  return(M)
 }
 
 #' Ref4CauchyGreen
-#' @description
 #' compute lists of reference tensors for fast SEN computation
-#' @param A, grd, bas: coefficients, grid and basis
-#' @return Reference object containing pieaces of Cauchy-Green-tensors
+#' @param A,grd,bas : coefficients, grid and basis as from MemRBC object
+#' @return Reference object containing pieces of Cauchy-Green-tensors
 #' @export
-Ref4CauchyGreen <- function(A,grd,bas,loop=FALSE)
+Ref4CauchyGreen <- function(A,grd,bas)
 { ndof=grd$ndof;Ai_max=bas$Ai_max
 # compute reference fields and gradients
 updateX(A,grd,bas)->C
@@ -1518,7 +1515,7 @@ return(structure(class="MemRef",list( tgi=tgi, giPrep=giPrep, h2ref=h2ref, v=h2r
 #' Needed before E_SEN is called.
 #' @param A,grd,bas,Ref Coefficients, grid, basis and reference objects
 #' @param Wb_cur : current E_SCM() result
-#' @return SEN object with alpha, beta and mean trace of right Cauchy-Green
+#' @return SEN object with alpha, beta and mean trace m of right Cauchy-Green
 #' @export 
 SEN<-function (A, grd, bas, Ref, Wb_cur)
 {
@@ -1537,8 +1534,7 @@ SEN<-function (A, grd, bas, Ref, Wb_cur)
 #' energy of Shear-Elastic Network (SEN)
 #' @description
 #' Compute the SEN energy
-#' @param A,grd,bas,S, Ref Coefficients, grid, basis, SEN and reference objects
-#' @param Wb_cur : current E_SCM() result
+#' @param A,grd,bas,S,Ref Coefficients, grid, basis, SEN and reference objects
 #' @return list with alpha and beta as well as trace m of right Cauchy-Green
 #' @export
 E_SEN<-function(A,grd,bas,S,Ref)
@@ -1552,9 +1548,10 @@ E_SEN<-function(A,grd,bas,S,Ref)
 #' @description
 #' Compute gradients of SEN energy
 #' @param A,grd,bas Coefficients, grid, basis 
-#' @param h2cur_grad current SCM gradient (Grad_SCM())
-#' @param S : current SEN() result
+#' @param h2cur_grad current SCM gradient (´Grad_SCM()´)
+#' @param S : current ´SEN()´ result
 #' @param Ref : static reference of SEN
+#' @param int2d_m (.IntegM) matrix integrator function
 #' @return gradS for SEN energy gradient, gradAlpha, gradBeta, dm for gradients of stretches and shear.
 #' @export
 Grad_SEN<-function(A, grd, bas, h2cur_grad, S, Ref, int2d_m = .IntegM){
@@ -1586,12 +1583,9 @@ Grad_SEN<-function(A, grd, bas, h2cur_grad, S, Ref, int2d_m = .IntegM){
 }
 
 
-#
-# utilities
-#
-
-
 #' annotates A with L-M-strings as rownames, + some attributes
+#' sets rownames to coefficient matrix A
+#' @param A,bas : coefficient matrix and matching basis, i,e, `bas$A` has the same sahape as `A`
 #' @export
 LM2A<-function(A,bas)
 {
@@ -1608,21 +1602,6 @@ attr(A,"Target")<-bas$Target
 return(A)
 }
 
-#' save A as object named Alm with additional attributes
-#' @export
-saveAlm<-function(A,bas,file)
-{
-  Alm=LM2A(A,bas)
-  save(Alm,file=file) # name is Alm
-}
-
-# return A from Alm-file
-#' @export
-loadAlm<-function(file,bas)
-{
-  load(file)->n
-  return(get(n))
-}
 
 #
 # Total energy from SCM and SEN
@@ -1651,21 +1630,28 @@ int2d_matrix_3<-function (field_m,grd,bas=NULL)
 }
 
 
-# plot coeffs
+#' plot coeffs from coeffs object
+#' - instead you may use plotA(M) on a MemRBC object M
+#' @param A coeffs to plot
+#' @param ... further params to matplot()
+#' @return -
 #' @export
-plotA<-function(A,...){matplot(A,type="l",lty=1,xlab=expression((l+1)^2-l+m),...)}
+plot_A<-function(A,...){matplot(A,type="l",lty=1,xlab=expression((l+1)^2-l+m),...)}
 
 #' plotA_l
-#' plot coeffs
-#'   and l-values as color bar on x-axis
+#' plot coeffs and l-value ranges as colored bars on the x-axis
 #' @param A,bas : standard coefficient amd basis functions objects
+#' @param bar (=FALSE)
+#' @param xlab (=...) for standard formula index(l,m)
+#' @param scale_up (=FALSE) to scale up by sqrt(bas$G.Tk)
+#' @param ... parameters for matplot, e.g. ylab
+#' @return -
 #' @export
 plotA_l<-function(A,bas,bar=FALSE,xlab=ifelse(all(diff(bas$Lset)==1),
                                           expression((l+1)^2-l+m),"k"),
                                     scale_up=FALSE,...){
   A1=A
   if(scale_up) for (k in 1:3) A1[,k]=A[,k]*sqrt(bas$G.tk)
-
   matplot(A1,type="h",lty=1,xlab=xlab,...)
   if(bar)
   {
@@ -1676,7 +1662,7 @@ plotA_l<-function(A,bas,bar=FALSE,xlab=ifelse(all(diff(bas$Lset)==1),
     text((x0+x1)/2,rep(0,length(x0)),labels=bas$Lset,cex=2,pos=1,col=1:length(bas$Lset))
 
   }
-  matplot(A1,type="l",lty=1,add = TRUE)
+  matplot(A1,type="l",lty=1,add=TRUE)
 }
 
 
@@ -1687,12 +1673,16 @@ plotA_l<-function(A,bas,bar=FALSE,xlab=ifelse(all(diff(bas$Lset)==1),
 #
 
 #' helper routines for 3d graphics objects
+#' @param O mesh3d object
+#' @return 3d-coordinates
 #' @export
 Obj2X<-function(O) # extract vertex coordinates
 { return(t(O$vb[1:3,]))
 }
 
 #' make coordinates from centered object
+#' @param O mesh3d object
+#' @return centered 3d-coordinates
 #' @export
 Obj2X_centre<-function(O)
 { X=t(O$vb[1:3,]) # extract vertex coordinates and centre
@@ -1701,6 +1691,9 @@ return(X)
 }
 
 #' make coordinates from object
+#' @param O mesh3d object to insert data
+#' @param X coordinates to store
+#' @return mesh3d object
 #' @export
 X2Obj<-function(O,X)
 { O$vb=rbind(t(X),1) # ingest coordinates in 3d-graphics object
@@ -1708,7 +1701,13 @@ return(Rvcg::vcgClean(Rvcg::vcgUpdateNormals(O),silent=TRUE))
 # clean helps smooth color at zero meridian
 }
 
-#'  build vertex areas from triangle areas using Rvcg
+#' build vertex areas from triangle areas using Rvcg
+#' ATTENTION: if O contains double points, the resulting area vector needs
+#' masking, i.r. `av<-av[-bas$mask]` 
+#' Furthermore it may be neccessary to close the object O at the v=0|2pi parameter line 
+#' favour of correct area evaluations via Rvcg
+#' @param O mesh3d object
+#' @return vector of areas per vertex
 #' @export
 VertexAreasOBJ<-function(O)
 {
@@ -1716,11 +1715,14 @@ VertexAreasOBJ<-function(O)
   FA=Rvcg::vcgArea(O,perface = TRUE)
   a=FA$pertriangle
   a_v=sapply(VF,function(x) 2*mean(a[x]))
-  print(sum(a_v)-FA$area/2)
+  cat(crayon::blue("Area (difference)Rvcg):",FA$area,"\n"))
+  cat(crayon::blue("Area difference:",sum(a_v)-FA$area/2,"\n"))
   return(a_v)
 }
 
 #' synthesize X coordinates by matrix-matrix-product
+#' @param Y basis function value matrix, e.g. bas$Ylm
+#' @param A coefficient matrix object
 #' @export
 synthX<-function(Y,A) # Y are precomputed spherical harmonics
 { return(Y%*%A)
@@ -1730,10 +1732,16 @@ synthX<-function(Y,A) # Y are precomputed spherical harmonics
 #
 
 #' plot on 3D object surface a field f as color code
+#' @param obj mesh3d object
+#' @param f scalar quantity (spatial vector)
+#' @param clr (=TRUE) clear3d() before plot
+#' @param pal (=rainbow) color palette
+#' @param ... further parameters to shade3d()
+#' @return -
 #' @export
-imag.obj.colorbar.simple<-function(obj,f,clr=TRUE,...) {
+imag.obj.colorbar.simple<-function(obj,f,clr=TRUE,pal=rainbow,...) {
   if(clr) rgl::clear3d()
-  cols=rainbow(100);
+  cols=pal(100);
   rgl::shade3d(obj,meshcolor="vertices",color=cols[(f-min(f))/diff(range(f))*99+1],...)
   rgl::bgplot3d(own.imagePlot(legend.only = TRUE, zlim = range(f), col = cols) )
 }
@@ -1741,6 +1749,16 @@ imag.obj.colorbar.simple<-function(obj,f,clr=TRUE,...) {
 
 #' imag.obj.colorbar
 #' allow for limits to suppress outliers (color black)
+#' 
+#' @param obj mesh3d object
+#' @param f scalar quantity (spatial vector)
+#' @param limits (=range(f)) limit displayed f
+#' @param clr (=TRUE) clear3d() before plot
+#' @param pal (=heat.colors) color palette
+#' @param width,height window geometry
+#' @param par (=FALSE) for par3d to take effect
+#' @param ... further parameters to shade3d()
+#' @return -
 #' @export
 imag.obj.colorbar<-function(obj,f,limits=range(f),clr=FALSE,pal=heat.colors,width=550,height=480,par=FALSE,...) {
   # if(is.matrix(f)) f<-t(f)
@@ -1758,13 +1776,80 @@ imag.obj.colorbar<-function(obj,f,limits=range(f),clr=FALSE,pal=heat.colors,widt
   rgl::bgplot3d(own.imagePlot(legend.only = TRUE,add=TRUE,zlim = limits, col = cols) )
 }
 
+
+#' Fourier grid for genus 1 shapes
+#' (not yet operative)
+#' @param n (=30) number of grid points in one direction
+#' @param r (=1) for smaller radius of torus
+#' @param R (=2.5) for larger radius of torus
+#' @param check_plt (=FALSE) TRUE for verification 3d plot
+#' @return Grid object with (u,v) in $U, $V to compute basis from.
+#' @export
+MakeGrid_Fourier<-function(n=30,r=1,R=2.5,check_plt=FALSE)
+{
+  grd=list(kind="Fourier",ua=0,ub=2*pi,va=0,vb=2*pi) # to be filled further and returned
+  nu=n+1; nv=n+1 # we double the first u,v data point (u,v=0) at u,v=2pi
+  x <- pracma::linspace(0,2*pi,n=nu)
+  wx <- rep(2*pi/n,nu)
+  y <- pracma::linspace(0,2*pi,n=nv)
+  wy <- wx
+  grd$xg <- x
+  grd$yg <- y
+  mesh=pracma::meshgrid(x, y)
+  grd$u=t(mesh$X) # 2D # for [nu,nv] adressing
+  grd$v=t(mesh$Y) # 2D
+  (dm=dim(grd$u))
+  grd$ndof=prod(dm)
+  grd$U=as.vector(grd$u)
+  grd$V=as.vector(grd$v)
+  grd$wx=wx;  grd$wy=wy # for general integration scheme
+  grd$UV=cbind(grd$U,grd$V)
+  nx=nu;ny=nv;
+  q=matrix(NA,3,nx*ny*2);k=0
+  for (i in 1:(nx-1))  for (j in 1:(ny-1)){
+    k=k+1;l=(j-1)*nx+i
+    q[,k]=c(l,l+1,l+1+nx)
+    k=k+1
+    q[ ,k]=c(l,l+nx+1,l+nx)
+  }
+  q=q[,1:(k)]
+  #  print(k)
+  y=cos(grd$v)*(R+r*cos(grd$u));
+  x=sin(grd$v)*(R+r*cos(grd$u));
+  z=r*sin(grd$u)
+  rgl::mesh3d(x,y,z,triangles=q, normals = list(x=x,y=y,z=z) ) -> M
+  #  clear3d();
+  grd$Obj<-M
+  grd$comment<-comment
+  grd$type="FOURIER"
+  grd$n=n;grd$nu=nu;grd$nv=nv
+  #  M=grd$Obj
+  if(check_plt){
+    rgl::clear3d()
+    imag.obj.colorbar.simple(M,grd$v)
+    rgl::contourLines3d(M,grd$v)
+    rgl::title3d("looks correct for v")
+    rgl::open3d()
+    imag.obj.colorbar.simple(M,grd$u)
+    rgl::contourLines3d(M,grd$u)
+    rgl::title3d("colors in imag.obj for u")
+  }
+  Obj2ObjQ(grd$Obj,grd)->grd$ObjQ
+  Rvcg::vcgUpdateNormals(grd$Obj)->grd$Obj
+  return(grd)
+}
+
+
 #' MakeGrid_GaussLegendre
 #' this has more dense points next to 0 meridian
 #'  alternative with regular v-spacing is GaussLegendreSimpson
 #' @param n : number of points along each dimension
 #' @param uv_fac (=1) : for experiemnts with half periods in v set uv_fac=0.5
+#' @param comment (="spherical ...") 
+#' @param check_plt (=FALSE) for plotting
+#' @return 2D Gauss-Legendre grid object
 #' @export
-MakeGrid_GaussLegendre<-function(n=25,uv_fac=1,comment="spherical coordinates Gauss-Legendre grid, type GL",check_plt=FALSE) # assume spherical coordinates
+MakeGrid_GaussLegendre<-function(n=25,uv_fac=1,comment="spherical coordinates Gauss-Legendre grid, type GL",check_plt=FALSE) 
 {
   grd=list(ua=0,ub=pi,va=0,vb=2*pi,n=n,
            nu=n,nv=round(n*uv_fac,0)) # to be filled further before return
@@ -1841,6 +1926,10 @@ MakeGrid_GaussLegendre<-function(n=25,uv_fac=1,comment="spherical coordinates Ga
 
 
 #' display f data on object obj
+#' @param obj mesh3d object 
+#' @param f scalar (spatial vecotr) to plot in color
+#' @param pal (=rainbow) color palette to use
+#' @return -
 #' @export
 imag.obj<-function(obj,f,pal=rainbow) {
   cols=pal(100); rgl::shade3d(obj,meshcolor="vertices",col=cols[as.integer(1+99*(f-min(f))/diff(range(f)))]) }
@@ -1851,6 +1940,8 @@ imag.obj<-function(obj,f,pal=rainbow) {
 #' @param field scalar spatial field
 #' @param grd the grid of (u,v) on which the scalar is defined
 #' @param nx,ny dimension of output matrix plot
+#' @param ... additional parameters to `quilt.plot()`
+#' @return -
 #' @export
 imag<-function (field, grd, nx = grd$nv, ny = grd$nu/2, ...)
 {
@@ -1865,11 +1956,13 @@ imag<-function (field, grd, nx = grd$nv, ny = grd$nu/2, ...)
 #' for example for fitting coefficients to a 3d-object, in which (u,v)-values
 #' may be given as texture coordinates texccords.
 #'
-#'  @param L_max (=4) spectral order of basis
-#'  @param u,v vectors of spehrical angles u (in 0..pi) and v (in 0..2*pi).
-#'  @param only_Ylm (=FALSE) for excluding derivative computation.
-#'  @return basis, to be stored as $bas in membrane object or for other use.
-#'  The basis also contains standard constraints for area and volume, which may be modified with SetConstraints()
+#' @param L_max (=4) spectral order of basis
+#' @param u,v vectors of spehrical angles u (in 0..pi) and v (in 0..2*pi).
+#' @param Pointsymmetry (=FALSE) for basis without even l terms.
+#' @param only_Ylm (=FALSE) for excluding derivative computation.
+#' @param kind (="Ylm") or "Fourier"
+#' @param KleinBottle (=FALSE) for half-periods in u
+#' @return basis, to be stored as $bas in membrane object or for other use. The basis also contains standard constraints for area and volume, which may be modified with SetConstraints()
 #' @export
 MakeBasis_UV<-function (L_max = 4, u, v, Pointsymmetry = FALSE,
                         only_Ylm=FALSE, kind="Ylm", KleinBottle=FALSE)
@@ -1942,13 +2035,11 @@ MakeBasis_UV<-function (L_max = 4, u, v, Pointsymmetry = FALSE,
     k=2
     for (i in uspace)
      for (j in 1:L_max){
-      Ylm_[,k]  = sin(i*u)*sin(j*v)
+      Ylm_[,k] = sin(i*u)*sin(j*v)
     Ylm_[,k+1] = sin(i*u)*cos(j*v)
     Ylm_[,k+2] = cos(i*u)*cos(j*v)
     Ylm_[,k+3] = cos(i*u)*sin(j*v)
-
     if (!only_Ylm) {
-
     Ylm_u_[,k]  =  i*cos(i*u)*sin(j*v)
     Ylm_u_[,k+1]=  i*cos(i*u)*cos(j*v)
     Ylm_u_[,k+2]= -i*sin(i*u)*cos(j*v)
@@ -1974,12 +2065,9 @@ MakeBasis_UV<-function (L_max = 4, u, v, Pointsymmetry = FALSE,
     Ylm_uv_[,k+2]= -i*j*sin(i*u)*sin(j*v)
     Ylm_uv_[,k+3]= -i*j*sin(i*u)*cos(j*v)
     }
-     LM[k:(k+3),]=c(i,j)
-
+     LM[k:(k+3),]= c(i,j)
      k=k+4
-
      }
-
     l=LM[,1]
     m=LM[,2]
   w=1:Ai_max # no symmetries
@@ -1993,7 +2081,6 @@ MakeBasis_UV<-function (L_max = 4, u, v, Pointsymmetry = FALSE,
   if (!only_Ylm) {bas$Ylm_u=Ylm_u_[,w];bas$Ylm_v=Ylm_v_[,w];
                   bas$Ylm_uu=Ylm_uu_[,w];bas$Ylm_uv=Ylm_uv_[,w];
                   bas$Ylm_vv=Ylm_vv_[,w]}
-
   bas$LM=LM
   bas$uv=cbind(c(u),c(v))
   bas$mask <- ifelse(is.numeric(mask) == 0, mask, 1)
@@ -2080,12 +2167,22 @@ return(Q[,])
 #' plot coordinates C$X (after updateX)
 #' @param X Coordiates, e.g. in C$X from updateX()
 #' @param grd grid with a basic rgl-object grd$Obj
-#' @examples
+#' @param pnts (=FALSE) for grid points to plot
+#' @param clip (=FALSE) for clipplane (0.5,0.5,0)
+#' @param col (="black")
+#' @param cont (=TRUE) for contours of X,Y,Z levels
+#' @param cont.grid (=FALSE) for u,v grid lines
+#' @param fill (=TRUE) to fill contours
+#' @param fn (="z") parameter of filled contours 
+#' @param fn_data (="z") for data as filled contour parameter
+#' @param ... parameters to filledContour3d()
+#' @examplesIf exists("L_Ylm")
 #' data("M4",package = "MemRBC")  # take required data from M5
 #' plot3a(updateX(M4$A,M4$grd,M4$bas)$X,M4$grd)
 #' @export
 plot3a<-function (X, grd, pnts = FALSE, clip = FALSE, col = "black",
-                  alpha = 1, cont = TRUE, cont.grid = FALSE, fill = TRUE, fn = "z",
+                 cont = TRUE, cont.grid = FALSE, 
+                 fill = TRUE, fn = "z",
                   fn_data = "z", ...)
 {
   O <- X2Obj(grd$Obj, X)
@@ -2102,8 +2199,8 @@ plot3a<-function (X, grd, pnts = FALSE, clip = FALSE, col = "black",
   }
   if (fill) {
     if (fn == "z")
-      id <- rgl::filledContour3d(O, fn = X[, 3], alpha = alpha)
-    else id <- rgl::filledContour3d(O, fn = fn_data, alpha = alpha,
+      id <- rgl::filledContour3d(O, fn = X[, 3], ...)
+    else id <- rgl::filledContour3d(O, fn = fn_data, 
                                     ...)
   }
   if (pnts)
@@ -2111,27 +2208,29 @@ plot3a<-function (X, grd, pnts = FALSE, clip = FALSE, col = "black",
                         cex = 2)
   if (clip)
     rgl::clipplanes3d(c(0.5, 0.5, 0))
-  invisible()
+  invisible(X)
 }
-
 
 #' plot3q
 #'
 #' plot coordinates C$X (after updateX) with wireframe of quadrilaterals
 #' @param X Coordiates, e.g. in C$X from updateX()
 #' @param grd grid with a basic rgl-object grd$Obj
+#' @param col (="black") wireframe color
+#' @param ... further parameters to plot3b()
+#' @return -
 #' @examples
 #' data("M4",package = "MemRBC")  # take required data from M4
 #' plot3q(updateX(M4$A,M4$grd,M4$bas)$X,M4$grd)
 #' @export
-plot3q<-function (X, grd, col = "black", alpha = 1, ...)
+plot3q<-function (X, grd, col = "black", ...)
 {
   plot3b(X, grd, wire = FALSE, ...)
   if (is.null(grd$ObjQ))
     Q <- Obj2ObjQ(grd$Obj, grd)
   else Q = grd$ObjQ
   Q <- X2ObjQ(Q, X)
-  rgl::wire3d(Q, col = "black", specular = "black")
+  rgl::wire3d(Q, col = col, specular = "black")
 }
 
 #' plot3qs
@@ -2141,17 +2240,18 @@ plot3q<-function (X, grd, col = "black", alpha = 1, ...)
 #' @param X Coordiates, e.g. in C$X from updateX()
 #' @param grd grid with a basic rgl-object grd$Obj
 #' @param s scalar to plot as color code on shape
-#' @param pal (=heat.colors) color palette to use 
-#' @examples
-#' \dontrun{
+#' @param pal (=heat.colors) color palette to use
+#' @param  specular (="black") material reflectance
+#' @param ... further params to shade3d(), e.g. alpha=0.5 for transparency
+#' @returns -
+#' @examplesIf exists("L_Ylm")
 #' data("M4",package = "MemRBC"); 
 #' SetParams(M4)
 #'  update(M4,"dA")->M4
 #'  #plot area sizes as color code
 #' plot3qs(updateX(M4$A,M4$grd,M4$bas)$X,M4$grd,M4$dA)
-#' }
 #' @export
-plot3qs<-function (X, grd, s, alpha = 1, specular = "black", pal=heat.colors, ...)
+plot3qs<-function (X, grd, s, specular = "black", pal=heat.colors, ...)
 {
   O <- X2Obj(grd$Obj, X)
   O <- Rvcg::vcgUpdateNormals(O)
@@ -2169,9 +2269,12 @@ plot3qs<-function (X, grd, s, alpha = 1, specular = "black", pal=heat.colors, ..
 #' @description
 #' plot a 3d shape from coordinates C$X
 #' @param X,grd : 3d coordinates and 2d grid object
+#' @param col,specular : (="white", ="black") graphics colors
+#' @param wire (=TRUE) to plot wireframe on surface
 #' @param ... : further plotting options, e.g. alpha=0.5 for semi-transparency
 #' @export
-plot3b<-function (X, grd, col = "white", specular = "black", wire = TRUE,                  ...)
+plot3b<-function (X, grd, col = "white", specular = "black", 
+                  wire = TRUE, ...)
 {
   O <- X2Obj(grd$Obj, X)
   O <- Rvcg::vcgUpdateNormals(O)
@@ -2189,6 +2292,8 @@ plot3b<-function (X, grd, col = "white", specular = "black", wire = TRUE,       
 #' @param  ua,ub : usually 0,pi for u-interval
 #' @param  va,vb : usually 0,2*pi for v-interval
 #' @param comment : give your own comment (as.character)
+#' @param check_plt (=FALSE)
+#' @return list class MemGRD with grid parameters 
 #' @export
 MakeGrid_GaussLegendreSimpson<-function(n=20,ua=0,ub=pi,va=0,vb=2*pi, comment="spherical coordinates Gauss-Legendre-Simpson grid, type GLS",check_plt=FALSE) # assume spherical coordinates
 {
@@ -2252,6 +2357,9 @@ MakeGrid_GaussLegendreSimpson<-function(n=20,ua=0,ub=pi,va=0,vb=2*pi, comment="s
 }
 
 #'last -  return last n elements from v; v may be list
+#' @param v vector or list
+#' @param n (=1) number of trailing elements to return
+#' @return elements from v
 #' @export
 last<-function(v,n=1)
 { n=min(n,length(v))
@@ -2273,6 +2381,10 @@ return(res)
 }
 
 #  used within c++
+#' 2d integration in C++
+#' @param field_m matrix of spatial points to be integrated
+#' @param grd,bas grid and basis containing relevant data for integration
+#' @return scalar value of integral of field_m
 #' @export
 int2d_matrix_cxx <- function (field_m,grd,bas) # needed for C++-code of gradients
 { F2<-array(field_m, c( grd$ndof,bas$Ai_max,3))
@@ -2281,10 +2393,15 @@ int2d_matrix_cxx <- function (field_m,grd,bas) # needed for C++-code of gradient
  return(res)
 }
 
-# needed in c++
+#' needed in c++
+#' @param x,Aimax build a Aimax x 3 matrix from values x
+#' @return resulting matrix
 #' @export
 vectomat_cxx<-function(x,Aimax)  return(matrix(x,Aimax,3))
 
+#' needed in c++
+#' @param x,ndof,Aimax build a ndof x Aimax x 3 array from values x
+#' @return resulting array
 #' @export
 vectoarr_cxx<-function(x,ndof,Aimax)  return(array(x,c(ndof,Aimax,3)))
 
@@ -2300,7 +2417,12 @@ FitAlm <- function (X, bas, WX = rep(1, nrow(X)))
 }
 
 
-#' Weighted SPHARM fit
+#' Weighted SPHARM fit as from https://www.researchgate.net/publication/228570513_Weighted_spherical_harmonic_representation_and_its_application_to_cortical_analysis
+#' Chung, Moo & Shen, Li & Dalton, Kim & Kelley, Daniel & Robbins, Steven & Evans, Alan & Davidson, Richard. (2006). Weighted spherical harmonic representation and its application to cortical analysis. 
+#' @param X,bas spatial coords and basis
+#' @param sigma (=0.001) sigma paraleter of weight decrease with spectral l
+#' @param CL (=0.95) confidence level to test for significant terms
+#' @return fitted coefficients
 #' @export
 Weighted_FitAlm <- function (X, bas, sigma = 0.001, CL = 0.95)
 {
@@ -2373,6 +2495,12 @@ Weighted_FitAlm <- function (X, bas, sigma = 0.001, CL = 0.95)
 #' fit with regularization and weights:
 #' filtering high frequencies in least squares
 #'   lambda should be tested systematically by L curve discussion
+#' @param X,bas spatial coords and basis
+#' @param lambda (=0) regularization parameter
+#' @param WX (=1) spatial weights, take e.g. sin(u)
+#' @param keepIM (=FALSE) give back inversion matrix IM as attribute
+#' @param newIM (=FALSE) if input basis has IM, it is preserved
+#' @return fitted coefficients object
 #' @export
 FitAlm_Tikhonov<-function (X, bas, lambda = 0,
                            WX = rep(1, nrow(X)), keepIM = FALSE,
@@ -2405,12 +2533,14 @@ FitAlm_Tikhonov<-function (X, bas, lambda = 0,
  # attr(A, "Fit spatial weights") = WX
   if (keepIM)
     attr(A, "IM") <- IM
-  return(A)
+  return(structure(class="MemA",A))
 }
 
 #' inv_sph
 #' @description
 #' give angles  (u,v) from spherical or star-like shape 3D point X
+#' @param X 3d-coordinate
+#' @return uv vector of spherical angles c(u,v)
 #' @export
 inv_sph<-function(X)
 { r=sqrt(sum(X^2)) # see https://mathworld.wolfram.com/SphericalCoordinates.html
@@ -2419,6 +2549,8 @@ return(c(acos(X[3]/r),atan2(X[2],X[1]))) # atan2 takes care of octants
 
 #' radial_uv
 #' give angles u,v from a starlike 3d-object, to be centred
+#' @param starlike_obj a mesh3d object where all points can be reached uniquely by a straight line from center of mass 
+#' @return uv (u,v) matrix as derived from coordinates of starlike_obj
 #' @export
 radial_uv<-function(starlike_obj)
 {
@@ -2426,47 +2558,22 @@ radial_uv<-function(starlike_obj)
  # str(starlike_obj)
   rgl::wire3d(starlike_obj)
   uv=apply(starlike_obj$vb[1:3,],2,inv_sph)
-  uv[,2]=uv[,2]+pi
-  print(dim(uv))
+  uv[,2]=uv[,2]+pi # else gives -pi...pi
   plot(t(uv),pch=".")
   return(t(uv))
 }
 
 #' synth
-#' synthesize, but only for one spatial component in coefficients  A==A[,k] !!!
+#' DEPRECATE (same as synthX)
+#' synthesize, but only for one spatial component in coefficients  A=A[,k] 
 #'   for dim in 1..3: see synthX
+#' @param Y,A basis function values matrix Y and a column of coefficient matrix A
+#' @return spatial coordinates
 #' @export
 synth<-function(Y,A) { return(Y%*%A)}
 
 # partial synthesis
 synth_s<-function(Y,A,mx) { return(Y[,1:mx]%*%A[1:mx])}
-
-#' synth12
-#' a helper for faster finite differences, not yet used
-#' @export
-synth12<-function (A, C, i, j, k, del)
-{
-  cat(sum(C$X_u), "-> \t")
-  n = dim(A)[1]
-  if (i > 0) {
-    C$X[, k] = C$X[, k] - bas$Ylm[, i] * del
-    C$X_u[, k] = C$X_u[, k] - bas$Ylm_u[, i] * del
-    C$X_v[, k] = C$X_v[, k] - bas$Ylm_v[, i] * del
-    C$X_uu[, k] = C$X_uu[, k] - bas$Ylm_uu[, i] * del
-    C$X_uv[, k] = C$X_uv[, k] - bas$Ylm_uv[, i] * del
-    C$X_vv[, k] = C$X_vv[, k] - bas$Ylm_vv[, i] * del
-  }
-  if (j <= n) {
-    C$X[, k] = C$X[, k] + bas$Ylm[, j] * del
-    C$X_u[, k] = C$X_u[, k] + bas$Ylm_u[, j] * del
-    C$X_v[, k] = C$X_v[, k] + bas$Ylm_v[, j] * del
-    C$X_uu[, k] = C$X_uu[, k] + bas$Ylm_uu[, j] * del
-    C$X_uv[, k] = C$X_uv[, k] + bas$Ylm_uv[, j] * del
-    C$X_vv[, k] = C$X_vv[, k] + bas$Ylm_vv[, j] * del
-  }
-  cat(sum(C$X_u), "\n")
-  return(C)
-}
 
 #' synth_update
 #' @description
@@ -2474,9 +2581,11 @@ synth12<-function (A, C, i, j, k, del)
 #' use this in Hessian computation by finite difference: 
 #'     fwd: C=synth_update...(C,bas,i,k, +1e-6)
 #'   reset: C=synth_update...(C,bas,i,k, -1e-6)
-#' @param   k: spatial dim.
-#' @param   i: spectral order as from (l,m)
-#' @param del (=1e-6) : steplength of update
+#' @param C,bas coordinate and basis object
+#' @param k  spatial dim.
+#' @param i  spectral order as from (l,m)
+#' @param del (=1e-6) : step length of update for forward difference
+#' @return changed entries in input coordinate object C 
 #' @export
 synth_update<-function (C, bas, i, k,  del=1e-6)
 {
@@ -2489,14 +2598,13 @@ synth_update<-function (C, bas, i, k,  del=1e-6)
   return(C)
 }
 
-#' synth_update_inplace
-#' experimental, not faster
-#' k: spatial dim.
-#' i: spectral order (l,m)
-#' use: fwd: C=synth_update...(A,C,bas,i,k, +1e-6)
-#'      reset: C=synth_update...(A,C,bas,i,k, -1e-6)
-#' not faster than returning full changed C
-#' @export
+# synth_update_inplace
+# experimental, not faster
+# k: spatial dim.
+# i: spectral order (l,m)
+# use: fwd: C=synth_update...(A,C,bas,i,k, +1e-6)
+#      reset: C=synth_update...(A,C,bas,i,k, -1e-6)
+# not faster than returning full changed C
 synth_update_inplace<-function (C, bas, i, k, del=1e-6)
 {  assign(deparse(substitute(C)), {
 
@@ -2512,8 +2620,7 @@ synth_update_inplace<-function (C, bas, i, k, del=1e-6)
 }
 
 # experimental, not faster
-#' scale_inplace
-#' @export
+# scale_inplace
 scale_inplace<-function (m, s)
 {
   assign(deparse(substitute(m)), {
@@ -2532,39 +2639,51 @@ scale_inplace<-function (m, s)
 deltaX_norm<-function(C1,C2)
 { return(apply(C2$X-C1$X,2,pracma::Norm))
 }
+
 #' saveA
 #' save a set of coefficients A to file
+#' @param A,file coefficient object and filename
 #' @export
 saveA<-function(A,file)
 {  save(A,file=file) }
 
-# load a set of coeffs, make it compatible for the current basis bas.
+#' load a set of coeffs, make it compatible for use with the basis bas
+#' @param file,bas filename of coefficient file (binary .rdat) and basis of target object
+#' @return coefficient object (matrix)
 #' @export
 loadA<-function(file, bas) # loads amplitudes and stores according to basis bas
 {   # if bas is larger, empty amplitudes are kept zero
   load(file)->n # was saved from A
   A2<-get(n)
-  A<-array(0,c(bas$Ai_max,3));
+  A<-bas$A;
   L=min(dim(A)[1],dim(A2)[1])
-  for (k in 1:3) A[1:L,k]<-A2[1:L,k] # copy only first coefficients
+  A[1:L,]<-A2[1:L,] # copy only first coefficients
   class(A)<-"MemA"
   return(A)
 }
 
 #' loadAlm
+#' loads coefficients and stores according to basis bas
+#' @param file filename of saved coefficients (binary .rdat)
+#' @param bas basis, need not be compatible to saved coeffs
+#' @return coeffcicient matrix object from file
 #' @export
-loadAlm<-function(file,bas) # loads amplitudes and stores according to basis bas
+loadAlm<-function(file,bas) 
 {   # if bas is larger, empty amplitudes are kept zero
   load(file) # was saved from A
   A2<-Alm
-  A<-array(0,c(bas$Ai_max,3));
+  A<-bas$A;
   L=min(dim(A)[1],dim(A2)[1])
-  for (k in 1:3) A[1:L,k]<-A2[1:L,k] # copy only first coefficients
+  A[1:L,]<-A2[1:L,] # copy only first coefficients
   return(A)
 }
 
 #' rotateX
 #' rotation first around x by px, then y then z-axis
+#' @param X input coordinates matrix (n x 3)
+#' @param px,py,pz rotation angles
+#' @param transpose (=FALSE) if transposed matrices are wanted (for reverse rotation)
+#' @return rotated X
 #' @export
 rotateX<-function (X, px = pi, py = 0, pz = 0, transpose = FALSE)
 {
@@ -2592,7 +2711,11 @@ rotateXbyM<-function(X,M)
 #' rotate coefficients by rotating coordinates
 #'  gives back a rotation error (new from fit vs. rotated coord)
 #'  rotation order is by X,Y,Z-axis
-#'
+#'  a much more precise rotation would apply Wigner D-matrices
+#' @param A,bas,grd : coeffs, basis, grid
+#' @param px,py,pz . rotation angles
+#' @param plt (=FALSE) for 3d platting resulting shape
+#' @return List with $A coefficient matrix, $C coordinate object (C$X for points) 
 #' @export
 rotateA <-function (A, bas, grd, px = pi/2, py = -pi/2, pz = pi/2, plt = FALSE)
 { C <- updateX(A, grd, bas)
@@ -2606,14 +2729,14 @@ rotateA <-function (A, bas, grd, px = pi/2, py = -pi/2, pz = pi/2, plt = FALSE)
                   cos(py)), 3, 3)
   R <- R.mz %*% R.my %*% R.mx
   X1 = C$X
-  for (i in 1:dim(X1)[1]) X1[i, ] = R %*% C$X[i, ]
+  for (i in 1:dim(X1)[1]) X1[i, ] <- R %*% C$X[i, ]
   A1 <- A
-  if (!is.matrix(bas$IM))
-  A1[, k] <- FitFast(bas,X1)
+  if (!is.matrix(bas$IM)) bas$IM<-MakeIM(bas,lambda=1e-7)
+  if (is.matrix(bas$IM)) A1[,] <- FitFast(bas,X1)
   C1 <- updateX(A1, grd, bas)
   if (plt) {
     rgl::open3d()
-    id2 <- rgl::plot3b(C1$X, grd)
+    id2 <- plot3b(C1$X, grd)
   }
   return(list(A = A1, C = C1,
               rot_err = pracma::Norm(C1$X-X1)))
@@ -2672,7 +2795,7 @@ plotLseries<-function (nr = 4, nc = 5, A, C, grd, bas,
     matplot(M2, type = "l", lty = 1, lwd = 2, ylab = expression(Delta *
                                                                   Q), pch = 20)
     matpoints(M2, pch = 20)
-    legend("topright", col = 1:6, lty = 1, lwd = 2, leg = c("A",
+    legend("topright", col = 1:6, lty = 1, lwd = 2, legend = c("A",
                                                             "V", "C", "H2", "H2_BC", "Nrm"), pch = 20)
     rownames(M) = paste("l=",as.character(bas$Lset))
     colnames(M) = c("A", "V", "C", "H2", "H2_BC", "E","||A_l||")
@@ -2686,8 +2809,14 @@ plotLseries<-function (nr = 4, nc = 5, A, C, grd, bas,
 #
 # fill e.g. grd$Obj  with new coords
 #  and return 3D object, plot if wanted
+
 #' MakeOBJ
-#' make a rgl-object from standard objects A,grd,bas,C
+#' make a rgl-object from MemRBC data
+#' @param A,grd,bas,C coeffs, grid, basis and coordinates object
+#' @param col_wire (="white") color of wireframe
+#' @param col (="black") color of factes
+#' @param plot (=FALSE) to show resulting shape in 3d
+#' @return mesh3d object, sometimes found in `C$Obj`
 #' @export
 MakeOBJ <- function(A,grd,bas,C,col_wire="white",col="black",plot=FALSE)
 {
@@ -2700,7 +2829,9 @@ MakeOBJ <- function(A,grd,bas,C,col_wire="white",col="black",plot=FALSE)
 }
 
 #' Membrane_LaplacianOBJ
-#'  Laplacian matrix from graph
+#' Laplacian matrix from graph
+#' @param X input 3d mesh object
+#' @return sparse Laplacian matrix
 #' @export
 Membrane_LaplacianOBJ <- function(X)
 {
@@ -2714,7 +2845,9 @@ Membrane_LaplacianOBJ <- function(X)
 }
 
 #' Membrane_LaplaciansOBJ
-#' from 3D-object X compute mesh Laplacian L, normalized Ln, Diagonal D
+#' from 3D-object X compute mesh Laplacian L and more
+#' @param X input 3d mesh object
+#' @return List with L sparse Laplacian matrix, Ln normalized L, D =L with diagonal set to zero
 #' @export
 Membrane_LaplaciansOBJ <- function(X)
 {
@@ -2724,12 +2857,15 @@ Membrane_LaplaciansOBJ <- function(X)
   ig <- igraph::graph.adjacency(TN,mode="undirected",diag = FALSE)
   # recompute  u directly from Laplacian
   L=igraph::laplacian_matrix(ig,normalization = "unnormalized",sparse = TRUE)/2
-  D=L;diag(D)<-0
+  D=L; diag(D)<-0
   return(list(L=L,Ln=igraph::laplacian_matrix(ig,normalized = TRUE,sparse = TRUE),D=D))
 }
 
 #' Membrane_Laplacian_cotan
 #' slow implementation in R
+#' @param x : mesh3d object
+#' @param M : sparse matrix from Membrane_LaplacianOBJ, to fill with cotan values
+#' @return sparse cotan-Laplacian matrix 
 #' @export
 Membrane_Laplacian_cotan <- function(x,M) # input object x, M input matrix to fill
 { # todo: better directly go through matrix M in sparse format,  then point back to mesh for cotan
@@ -2759,7 +2895,10 @@ Membrane_Laplacian_cotan <- function(x,M) # input object x, M input matrix to fi
 }
 
 #' GEMINI_cotan_Laplacian_II
-#' GEMINI created cotan Laplacian from rgl-mesh object
+#' GEMINI created code:
+#' from 3D-object mesh compute cotan-Laplacian
+#' @param mesh input 3d mesh object
+#' @return sparse cotan-Laplacian matrix
 #' @export
 GEMINI_cotan_Laplacian_II <- function(mesh) {
   verts <- t(mesh$vb[1:3, ])
@@ -2803,7 +2942,10 @@ GEMINI_cotan_Laplacian_II <- function(mesh) {
 }
 
 #' Gemini_cotan_Laplacian_I
-#' alternative version
+#' GEMINI created code:
+#' from 3D-object mesh compute cotan-Laplacian
+#' @param mesh input 3d mesh object
+#' @return sparse cotan-Laplacian matrix
 #' @export
 Gemini_cotan_Laplacian_I <- function(mesh) {
   V <- t(mesh$vb[1:3, ])
@@ -2842,9 +2984,9 @@ Gemini_cotan_Laplacian_I <- function(mesh) {
 #' Membrane_Eig
 #' @description
 #' get Eigensystem for mesh Laplacian (created from an rgl object -> Membrane_LaplacianOBJ())
-#' @param L: mesh Laplacian
-#' @param which (=1:4) : which values to return
-#' @param kind (=SM) : e.g. for smallest magnitude order 
+#' @param L mesh Laplacian
+#' @param which (=1:4) : range of values to return, first 4 is default
+#' @param kind (="SM") : e.g. for ordering starting from smallest magnitude 
 #' @return matrix of demanded eigenvectors (columns); eigenvalues given as attribute "values"
 #' @export
 Membrane_Eig<-function(L,which=1:4,kind="SM")
@@ -2863,6 +3005,7 @@ Membrane_Eig<-function(L,which=1:4,kind="SM")
 #' @param A1,A2 coefficients for the shapes
 #' @param grd2,bas2 grid and basis of second shape A2
 #' @param O1 3d object for A1
+#' @return -
 #' @export
 imag.delta.arrowws.pca <- function(A1,A2,grd2,bas2,O1)
 {
@@ -2881,16 +3024,16 @@ imag.delta.arrowws.pca <- function(A1,A2,grd2,bas2,O1)
 }
 
 
-#' imag.delta.aligned
+#' plot svd-aligned objects
 #' @description
 #' svd alignment of shape coefficients into 3d-objects, see
 #' https://www.cse.wustl.edu/~taoju/cse554/lectures/lect07_Alignment.pdf
 #' and plotting of spatial difference vectors
-#'
 #' @param A1,A2 input coefficients
 #' @param grd2,bas2 grid and basis of A2
-#' @returns obj1,obj2 aligned 3d-objects
-#' @examples
+#' @param shade2 (=FALSE) to draw shade3d of second shape
+#' @return List with obj1, and obj2 aligned 3d-objects and coordinate objects C1, C2
+#' @examplesIf exists("L_Ylm")
 #' data("M4",package = "MemRBC")
 #' M4p=M4
 #' M4p$A=M4$A+rnorm(M4$bas$Ai_max*3,sd=0.4)
@@ -2948,19 +3091,21 @@ imag.delta.aligned <- function(A1,A2,grd2,bas2,shade2=FALSE)
 #' Read data from surface evolver dump file.
 #' The vertices are renumbered here, taking
 #' more computing time.
+#' @param f.in,f.out : names of input SE dump /output .obj file
+#' @param comment (="o") how Evolver input file encodes comments
+#' @return 3d mesh object
 #' @export
-SE_2_OBJ <- function(f.in,f.out,comment="o")
+SE_2_OBJ <- function(f.in,f.out, comment="o")
 {
-
   r<-readLines(f.in)
   r
   f=grep("^vertices",r)
   f1=r[f[1]]
 
   (nv=as.numeric(substr( f1,20,nchar(f1))))
-  #read.table(f.in,header=FALSE,skip=f[2],nrows=nv-1,comment=comment)[1:10,]
+  #read.table(f.in,header=FALSE,skip=f[2],nrows=nv-1,comment.char=comment)[1:10,]
 
-  X=read.table(f.in,header=FALSE,skip=f[2],nrows=nv-1,comment=comment)
+  X=read.table(f.in,header=FALSE,skip=f[2],nrows=nv-1,comment.char=comment)
   tail(X)
   dim(X)
   summary(X)
@@ -2975,7 +3120,7 @@ SE_2_OBJ <- function(f.in,f.out,comment="o")
   b-f
   nf
 
-  F=read.table(f.in,skip=f,nrows = nf-1,header=FALSE,comment=comment)
+  F=read.table(f.in,skip=f,nrows = nf-1,header=FALSE,comment.char=comment)
   tail(F)
   head(F)
   rownames(F)=F[,1]
@@ -2984,7 +3129,7 @@ SE_2_OBJ <- function(f.in,f.out,comment="o")
 
   (f=grep("^edges",r))
   (ne=as.numeric(substr( r[f[1]],20,nchar(r[f[1]]))))
-  E=read.table(f.in,skip=f[2],nrows =ne-1,fill=TRUE,comment=c("o"))
+  E=read.table(f.in,skip=f[2],nrows =ne-1,fill=TRUE,comment.char=c("o"))
   tail(E)
   rownames(E)=E$V1
   E=E[,2:3]
@@ -3041,9 +3186,11 @@ SE_2_OBJ <- function(f.in,f.out,comment="o")
 }
 
 #' SErenumbered_2_OBJ
-#' @description
 #' Read data from surface evolver dump file
-#'  special case: faster if SE renumbered all before the dump
+#'  special case: faster version, but surface evolver has renumbered all before the dump
+#' @param f.in,f.out : names of input SE dump /output .obj file
+#' @param comment (="o") how Evolver input file encodes comments
+#' @return 3d mesh object
 #' @export
 SErenumbered_2_OBJ <- function(f.in,f.out,comment="o")
 {
@@ -3052,8 +3199,8 @@ SErenumbered_2_OBJ <- function(f.in,f.out,comment="o")
   f=grep("^vertices",r)
   f1=r[f[1]]
   (nv=as.numeric(substr( f1,20,nchar(f1))))
-  #read.table(f.in,header=FALSE,skip=f[2],nrows=nv-1,comment=comment)[1:10,]
-  X=read.table(f.in,header=FALSE,skip=f[2],nrows=nv-1,comment=comment)
+  #read.table(f.in,header=FALSE,skip=f[2],nrows=nv-1,comment.char=comment)[1:10,]
+  X=read.table(f.in,header=FALSE,skip=f[2],nrows=nv-1,comment.char=comment)
   tail(X)
   dim(X)
   summary(X)
@@ -3068,7 +3215,7 @@ SErenumbered_2_OBJ <- function(f.in,f.out,comment="o")
   b-f
   nf
 
-  F=read.table(f.in,skip=f,nrows = nf-1,header=FALSE,comment=comment)
+  F=read.table(f.in,skip=f,nrows = nf-1,header=FALSE,comment.char=comment)
   tail(F)
   head(F)
   rownames(F)=F[,1]
@@ -3077,7 +3224,7 @@ SErenumbered_2_OBJ <- function(f.in,f.out,comment="o")
 
   (f=grep("^edges",r))
   (ne=as.numeric(substr( r[f[1]],20,nchar(r[f[1]]))))
-  E=read.table(f.in,skip=f[2],nrows =ne-1,fill=TRUE,comment=c("o"))
+  E=read.table(f.in,skip=f[2],nrows =ne-1,fill=TRUE,comment.char=c("o"))
   tail(E)
   rownames(E)=E$V1
   E=E[,2:3]
@@ -3129,9 +3276,10 @@ SErenumbered_2_OBJ <- function(f.in,f.out,comment="o")
 #' Map a 3D Mesh to a 2D Unit Circle (Disk Conformal Map)
 #'
 #' @param mesh An Rvcg mesh3d object (must be an open mesh, not a closed sphere)
-#' @param L The Cotangent Laplacian matrix. If NULL, it is computed.
-#' @param spherical (=TRUE) for giving not uv on a disk but spherical coordinates (u,v)
-#' @return A list containing the 2D coordinates and the flattened mesh.
+#' @param L The mesh Laplacian matrix. If NULL, it is computed.
+#' @param plt (=FALSE) to plot
+#' @param spherical (=TRUE) for giving not u,v on a disk but spherical coordinates (u,v)
+#' @return List containing the 2D coordinates uv and the flattened 3d mesh mesh_flat.
 #' @export
 GEMINI_disk_conformal_map <- function(mesh, L = NULL,plt=FALSE,spherical=TRUE) {
   num_verts <- ncol(mesh$vb)
@@ -3211,7 +3359,7 @@ GEMINI_disk_conformal_map <- function(mesh, L = NULL,plt=FALSE,spherical=TRUE) {
 #' @param mesh An Rvcg mesh3d object.
 #' @param path A vector of integer vertex indices representing the cut path.
 #'             Must be a connected sequence of edges.
-#' @return A new mesh3d object with the cut applied (more vertices, updated faces).
+#' @return new mesh3d object with the cut applied (more vertices, updated faces).
 #' @export
 GEMINI_cut_mesh_along_path <- function(mesh, path) {
   path=as.integer(path)
@@ -3300,14 +3448,15 @@ GEMINI_cut_mesh_along_path <- function(mesh, path) {
 #' @param w (=1) : <15, integer, pre-selecting which proposed path to take 
 #' @return NS=c(N,S), North and South vertex indices
 #' @return Path: list of index vectors connecting N and S by k-shortest path
-#' @examples
-#' data("SF4lr",package = "MemRBC")
+#' @examplesIf exists("L_Ylm")
+#' data(SF4lr)
 #' SF4lr->O
 #' NorthSouth(O,13)->P # take 13th path
 #' P$Paths # candidate paths of vertices for cutting
 #' P$LVPath # 13th lowest var(z) path
 #' PlotPaths(O,P)
 #' O1 <- GEMINI_cut_mesh_along_path(O,P$LVPath)
+#' 
 #' @export
 NorthSouth<-function(O,w=1){
  Y=princomp(Obj2X(O))$scores
@@ -3328,6 +3477,10 @@ NorthSouth<-function(O,w=1){
 #' PlotPaths
 #' @description
 #'   draw some paths P on object O
+#' @param O 3d-mesh object
+#' @param P Path computed on O, like from `NorthSouth()`
+#' @param LVPath (=TRUE) to plot P$LVPath 
+#' @return -
 #' @export
 PlotPaths<-function(O,P,LVPath=TRUE)
 {
@@ -3345,9 +3498,19 @@ PlotPaths<-function(O,P,LVPath=TRUE)
 #' but spherical areas are not iterated for refinement.
 #' The resulting (u,v) may not be optimal for fitting.
 #' A better result comes from algorithm GEMINI_disk_conformal_map()
+#' @param X1 input 3d mesh object
+#' @param Fit_order (=12) spectral order to fit, if InitFit=TRUE
+#' @param InitFit (=FALSE) 
+#' @param poles.axis (=2) take North/Southpole on from this principal component (1...3); chose 4 for interactive picking by mouse
+#' @param mat.mode : one from c("cotan.lapl", "cotan.chi", "euclid")
+#' @param file.out (="Brechbuehler-init-uv-2.obj")
+#' @param rxy (=0.01) tolerance parameter
+#' @return List containing uv (angles) and 3d mesh object O
 #' @export
-Brechbuehler.Init.uv.2<-function (X1, Fit_order = 12, InitFit = FALSE, poles.axis = 2,
-                                  mat.mode = c("cotan.lapl", "cotan.chi", "euclid"), file.out = "Brechbuehler-init-uv-2.obj",
+Brechbuehler.Init.uv.2<-function (X1, Fit_order = 12, InitFit = FALSE, 
+                                  poles.axis = 2,
+                                  mat.mode = c("cotan.lapl", "cotan.chi", "euclid"), 
+                                  file.out = "Brechbuehler-init-uv-2.obj",
                                   rxy = 0.01)
 {
   X = X1
@@ -3613,6 +3776,8 @@ Brechbuehler.Init.uv.2<-function (X1, Fit_order = 12, InitFit = FALSE, poles.axi
 #' Obj2ObjQ
 #' @description
 #' makes a 3d-object of quads from a 3d-object of triangles (requires regular grid grd)
+#' @param O,grd 3d mesh object O and grid grd  
+#' @return 3d object with quads
 #' @export
 Obj2ObjQ<-function (O, grd)
 {
@@ -3636,6 +3801,9 @@ Obj2ObjQ<-function (O, grd)
 #' X2ObjQ
 #' @description
 #' puts coordinates X into object O, which may be of quads
+#' @param O 3d mesh object
+#' @param X  3d-coordinates, like from a coord object in `C$X`
+#' @return 3d object with quads
 #' @export
 X2ObjQ<-function(O,X)
 { O$vb=rbind(t(X),1) # ingest coordinates in 3d-graphics object
@@ -3644,8 +3812,8 @@ return(O)  # quads dont allow for vcgUpdatenormals for unknown reason
 
 #' MakeMemRBC
 #' @description
-#' Make a MemRBC object from coefficients, grid and basis
-#' @param A,grd,bas coeffs, grid and dasis data for MemRBC object
+#' Build a MemRBC object from coefficients, grid and basis
+#' @param A,G,B coeffs, grid and basis objects for MemRBC object
 #' @return MemRBC object
 #' @export
 MakeMemRBC <- function(A,G,B)
@@ -3654,8 +3822,9 @@ MakeMemRBC <- function(A,G,B)
 #' CenterX
 #' @description
 #' gives back centered coordinates X
-#'  but not center of mass, if X contains doubles
-#'  
+#' ATTENTION: not center of mass, if X contains doubles!
+#' @param X input 3d coords
+#' @return centered coords
 #' @export
 CenterX<-function(X)
 {  return(apply(X,2,function(x) x-mean(x))) }
@@ -3664,7 +3833,14 @@ CenterX<-function(X)
 #' @description
 #' create an Unduloid 3d object for a fraction or multiple periods.
 #' Unduloids may be interesting shapes to fit, see example.
-#' @examples
+#' @param a,c standard Unduloid parameters
+#' @param periods (=1) how many periods wanted?
+#' @param nx,ny (=40) mesh points
+#' @param shade (=TRUE) shaded plot
+#' @param wire (=FALSE) wireframe plot
+#' @param clean (=TRUE) clean window before plot
+#' @return 3d mesh object of triangulated Unduloid, containing uv as spherical coordinates
+#' @examplesIf exists("L_Ylm")
 #' # a special grid is made with hole at north and south pole,
 #' # ie, u starts not at zero
 #' open=0.4 # also higher work, but objects boundary is never fitted
@@ -3760,8 +3936,11 @@ TriMesh_Unduloid<-function(a=1,c=2,periods=1.0,nx=40,ny=40,shade=TRUE,wire=FALSE
 }
 
 #
-# use polynomials of degree 12 to fit to lowess fits with other data
-#
+#' use polynomials of degree 12 to fit to lowess fits with other data.
+#' usefull for plotting mean axisymmetric data along an axis
+#' @param x coordinate to sample curvatures against (e.g. z-coords for Z-axisymmetric)
+#' @param O 3d mesh object 
+#' @return List with x,y,k with x,y coordinates and k mean curvature, sorted by curvature
 #' @export
 Lowess_vcg_meanvbOBJ<-function(x,O) # return mean curvature
 {
@@ -3801,12 +3980,13 @@ Lowess_vcg_meanvbOBJ<-function(x,O) # return mean curvature
 #
 # dense regions in u,v can be stretched by this
 #  - coserves triangulation quality
-#   needed for postprocessing Brechbühler
+#   good for postprocessing Brechbühler
 #
 #' spreadout.uv
 #' @description Brechbuhler initial uv may be redistributed
 #' Sparse regions are contracted.
 #' @param uv : n x 2 matrix of (u,v), like $uv returned from Brechbuhler
+#' @return spreadout uv
 #' @export
 spreadout.uv<-function(uv)
 {
@@ -3858,9 +4038,17 @@ spreadout.uv<-function(uv)
 #' Iterates coefficients to fulfill constraints.
 #' Needed in Rosen Projection methods.
 #' only SCM gradient is computed for constraint Jacobian
+#' @param A,grd,bas,C MemRBC parameters coeff, grid, basis and coords
+#' @param g2 result of `E_SCM()`
+#' @param Ctol (=1e-3) constraint tolerance
+#' @param nsteps (=20) maximum interation count
+#' @param prn (=FALSE) no printing of iterations
+#' @param del_cons (=0.3) delta parameter of fixed-point iteration
+#' @param do_one (=TRUE) at least perform first iteration
+#' @return list with iterated coefficients A, h2 for E_SCM, g2 for Grad_SCM
 #' @export
 ConsIter<-function(A,grd,bas,C,g2, Ctol=1e-3, nsteps=20,
-                   prn=FALSE,del_cons=0.3,nm=FALSE,do_one=TRUE)
+                   prn=FALSE,del_cons=0.3,do_one=TRUE)
 {
   l=0; Nc=bas$Nc
   updateX(A,grd,bas)->C
@@ -3915,8 +4103,9 @@ ConsIter<-function(A,grd,bas,C,g2, Ctol=1e-3, nsteps=20,
 #' computes the full model Hessian of the energy, as used in CNM.
 #' It is based on finite differences of gradients
 #' with a symmetrization; includes full Lagrangian.
-#' @param A, grd, bas, Ref : standard objects of a MemRBC
+#' @param A,grd,bas,Ref : standard objects of a MemRBC
 #' @param del (=1e-6) finite difference delta for coefficients
+#' @param Ctol (=0.001) constraint tolerance
 #' @returns Full Hessian matrix, ie also constraints, but not bordered
 #' @export
 FullModelHessian<-function (A, grd, bas, Ref, del = 1e-06, Ctol = 0.001)
@@ -3967,6 +4156,8 @@ FullModelHessian<-function (A, grd, bas, Ref, del = 1e-06, Ctol = 0.001)
 #' @description a template filter for modification of
 #' coefficients.
 #' Such a filter can be used in only a few apps, like MMC.
+#' @param A,bas coefficients, basis
+#' @return non-filtered coefficients
 #' @export
 ID<-function(A,bas)
 { return(A)
@@ -3974,9 +4165,15 @@ ID<-function(A,bas)
 
 #' FullModelHessian_Par
 #' @description parallel computed Hessian including constraint gradients; serial gradients but a list-parallel approach to assemble H
-#' @param cl : parallel cluster-ID from previous result (H$cl in CNM)
+#' @param A,grd,bas,Ref : usual membrane data coeffs, grid, basis, SEN-reference
+#' @param del : forward difference length parameter
+#' @param Mem_mc.cores (=4) for parallel cluster size
+#' @param timing (=TRUE) output some timing information
+#' @param stopdown (=TRUE) if cluster should be stopped before exit.
+#' @param cl (=NULL) : parallel cluster-ID from previous result (`H$cl` in `CNM()`)
+#' @returns Full Hessian matrix, ie also constraints, but not bordered
 #' @export
-FullModelHessian_Par <- function(A, grd, bas, Ref, del = 5e-06, 
+FullModelHessian_Par <- function(A, grd, bas, Ref, del = 1e-06, 
                                  Mem_mc.cores = 4, timing = TRUE, 
                                  stopdown = TRUE, cl=NULL)
 { pt0 = proc.time()
@@ -4043,12 +4240,12 @@ FullModelHessian_Par <- function(A, grd, bas, Ref, del = 5e-06,
     M.Ref=Ref
     M.bas=bas
     M.grd=grd
-    a=pi
+    
 #    parallel::clusterEvalQ(cl,{print("Node lives")})
 #    parallel:::checkCluster(cl)
 #    print("Cluster checked")
     parallel::clusterExport(cl, varlist=
-                          c("a","M.bas", "M.grd","M.Ref",
+                          c("M.bas", "M.grd","M.Ref",
                             "M.C0", "M.K_ADE",
                             "M.K_b", "M.mu", "M.Ka", 
                             "M.a3", "M.a4", "M.b1",
@@ -4093,12 +4290,15 @@ FullModelHessian_Par <- function(A, grd, bas, Ref, del = 5e-06,
 # export - but internal to FullHessian_Par
 #' FullHessian_Client
 #' @description
-#' code exported for your inspection/replacement
+#' Code exported for your inspection/modification.
+#' Look into tmp_cluster.txt for its debug outputs from cluster nodes.
+#' @param L List of settings to compute Hessian row from
+#' @return List of results, including gradient G for Hessian by finite difference for Hessian row index
 #' @export
-FullHessian_Client<-function(L,DBG=FALSE) # Lmax=13 takes 4 seconds per call/core
+FullHessian_Client<-function(L) # Lmax=13 takes 4 seconds per call/core
 { pt=proc.time()
   cat("CLIENT C0 before ENV",MemRBC_env$M.C0,"\t",L$M.C0,"\n")
-  
+  try(rm(".Last"))
   MemRBC_env$M.Rcpp<-L$M.Rcpp;
   MemRBC_env$M.Rcpp_ncores<-L$M.Rcpp_ncores
   MemRBC_env$M.C0<-L$M.C0
@@ -4137,21 +4337,29 @@ FullHessian_Client<-function(L,DBG=FALSE) # Lmax=13 takes 4 seconds per call/cor
   return(list(G=Gj,Lj=Lj,time=proc.time()-pt,index=L$index))
 }
 
-# unlockBinding("M.C0", env = MemRBC_env)
-
-#'mat2vec
+#' mat2vec
+#' helper routine for C code, making vector from matrix
+#' @param m matrix
+#' @return vector from matrix data
 #' @export
 mat2vec<-function(m) return(c(m))
+
+#' helper routine for C code
+#' gives back matrix difference as vector
+#' @param m1,m2 matrices
+#' @return m1-m2 as vector
 #' @export
 matdiff2vec<-function(m1,m2)
 {return(c(m1-m2))}
 
-#'symmetrize
-#' @export
 symmetrize<-function(m)
 {return((m+t(m))/2.0)}
 
-#'matadd2vec
+#' matadd2vec
+#' helper routine for C code
+#' gives back matrix sum as vector
+#' @param m1,m2 matrices
+#' @return m1+m2 as vector
 #' @export
 matadd2vec<-function(m1,m2)
 {return(c(m1+m2))}
@@ -4160,34 +4368,32 @@ matadd2vec<-function(m1,m2)
 #' @description
 #' set the constraint target values and store information in basis.
 #' Without parameters Cons, ..., the standard area and volume constraints are set with values (140, 100).
-#' If you set a third constraint, for CNM you have to give M$Lambda a third component.
+#' If you set a third constraint, for `CNM()` you have to give M$Lambda a third component.
 #' Default constraints are 140 area, 100 volume
-#' @param bas basis to modify constraints, e.g. M$bas (M MemRBC object)
-#' @param Cons vector of character of constraint gradients, from "gradA","gradV" and "gradC"
-#' @param QCons vector of constraint names, from "Area","Volume","Curv", same order as Cons
-#' @param Target vector of constraint values, like c(140,100,88) for Area, Volume and Curv
-#' @examples
+#' @param bas basis to modify constraints, e.g. `M$bas` (M MemRBC object)
+#' @param Cons (=c("gradA","gradV")) vector of character of constraint gradients, from "gradA","gradV" and "gradC"
+#' @param QCons (=c("Area","Volume")) vector of constraint names, from "Area","Volume","Curv", same order as Cons
+#' @param Target (=c(140,100))vector of constraint values, like c(140,100,88) for Area, Volume and Curv
+#' @param bas either basis like M$bas or MemRBC-object M
+#' @return MemRBC object, if input bas is a MemRBC-object, or updated basis; bas$Nc is length(Cons) 
+#' @examplesIf exists("L_Ylm")
 #' data("M4",package = "MemRBC"); SetParams(M4)
-#'
 #' # add curvature constraint:
 #' SetConstraints(M4$bas, Cons=c("gradA","gradV","gradC"),
 #'   QCons=c("Area","Volume","Curv"),
 #'   Target=c(140,100,121) ) -> M4$bas  # store modified basis back into membranes D5 basis
 #'
 #' # minimize with steepest descend under Rosen Constraint Projection
-#' \donttest{
 #' SDRC(M4,100)->M4sdrc
 #' # pair-plots of target quantities and energy E
 #' plot(M4sdrc$SDRC_Sample[c("E","A","V","C")])
-#' }
-#'@param bas: either basis like M$bas or MemRBC-object M
-#'@return MemRBC, if bas is a MemRBC-object, or updated basis 
+#' 
 #' @export
-SetConstraints<-function(bas,Cons=c("gradA","gradV"),
-                         QCons=c("Area","Volume"),
-                         Target=c(140, 100)) # any further (implemented) gradients allowed
+SetConstraints<-function(bas, Cons=c("gradA","gradV"),
+                             QCons=c("Area","Volume"),
+                            Target=c(140, 100)) # any further (implemented) gradients allowed
 {
-  if(is(bas,"MemRBC")) {M=bas;bas=M$bas;toMemRBC=TRUE} else toMemRBC=FALSE
+  if(inherits(bas,"MemRBC")) {M=bas;bas=M$bas;toMemRBC=TRUE} else toMemRBC=FALSE
   bas$Cons=Cons
   bas$Nc=length(Cons)
   bas$Target=Target
@@ -4203,9 +4409,13 @@ SetConstraints<-function(bas,Cons=c("gradA","gradV"),
 
 #' ConstraintHessian
 #' @description 
-#' constraint (=bordered) Hessian for CNM() Newton minimizer
+#' constraint (=bordered) Hessian for `CNM()` Newton minimizer
+#' @param H hessian matrix
+#' @param bas basis function data like M$bas
+#' @param Lambda Lgrangian multipliers, to check number of constraints
+#' @return bordered Hessian (Hessian with Jacobian blocks) 
 #' @export
-ConstraintHessian<-function(H,bas,Lambda,filter=ID)
+ConstraintHessian<-function(H,bas,Lambda)
 {
  dH=dim(H$H)[1] # should be equal Ai_max*3
  Nc=bas$Nc
@@ -4213,12 +4423,15 @@ ConstraintHessian<-function(H,bas,Lambda,filter=ID)
  if(length(Lambda)!=Nc) stop("wrong number of Lagrangian lambdas vs. registered constraints bas$Nc")
  M=matrix(0,dH+Nc,dH+Nc)
  M[1:dH,1:dH]=H$H # main block
- for (i in 1:bas$Nc)  M[dH+i,1:dH]=M[1:dH,dH+i]=filter(H[[ bas$Cons[i] ]],bas)
+ for (i in 1:bas$Nc)  M[dH+i,1:dH]=M[1:dH,dH+i]=H[[ bas$Cons[i] ]]
  return(M)
 }
 
 #' ConsJacobian
 #' @description constraint Jacobian for Rosen projection
+#' @param g2 energy E_SCM, containing gradients of constraints
+#' @param bas basis functions like from M$bas
+#' @return Jacobian matrix made of row vectors from g2
 #' @export
 ConsJacobian<-function(g2,bas)
 {
@@ -4233,6 +4446,7 @@ ConsJacobian<-function(g2,bas)
 #' @param G input gradient
 #' @param g2 current energy
 #' @param bas basis
+#' @return list with `Gprime` as the projected gradient, and `Eigs` for eigenvalues of inverted solver matrix
 #' @export
 RosenProjection<-function(G,g2,bas) # output the projected energy gradient G; g2 contains needed gradients of constraint functions
 {
@@ -4250,9 +4464,9 @@ RosenProjection<-function(G,g2,bas) # output the projected energy gradient G; g2
 #' ConsRHS
 #' @description
 #' Returns constraint violation values, e.g. for rhs of Rosen solver
-#' @param h2 current energy from E_SCM
+#' @param h2 current energy from `E_SCM`
 #' @param bas basis
-#' @returns a named vector of constrained violations
+#' @returns a named vector of constrained violations, i.e. g_i(x)
 #' @export
 ConsRHS<-function(h2,bas)
 {  Cons_RHS <- rep(0,bas$Nc);names(Cons_RHS)=bas$QCons
@@ -4265,21 +4479,18 @@ return(Cons_RHS)
 if(!exists(".dot2")) .dot2=function(x,y) sum(x*y)
 
 
-#' Cons_filter_delta
+#' Rosen_filter_delta
 #' @description remove constraint-violating components from coefficient step delta
-#' @param H2 current E_SCM
-#' @returns projected delta as nx3 matrix
+#' the delta is always scaled down `1/(1+MemRBC_env$ll.a*sqrt(bas$G.tk)`
+#' @param delta the step vector to filter for constraint violation
+#' @param grd,bas grid and basis, like from `M$grd`, `M$bas`
+#' @param H2 current `E_SCM()`
+#' @param nm (=TRUE) for normal motion filter
+#' @returns projected delta as n x 3 matrix
 #' @export
-Cons_filter_delta<-function(delta,grd,bas,H2,nm=TRUE)
-  {
-    if (nm)  delta=make_delta_normal_to_surface(delta,grd,bas,H2$n)
-    delta=delta/(1+ll.a*sqrt(bas$G.tk))
-    return(matrix(delta,bas$Ai_max,3))
-  }
-
   Rosen_filter_delta<-function(delta,grd,bas,H2,nm=TRUE)
   { if(nm)  delta=make_delta_normal_to_surface(delta,grd,bas,H2$n)
-  delta=delta/(1+ll.a*sqrt(bas$G.tk))
+  delta=delta/(1+MemRBC_env$ll.a*sqrt(bas$G.tk))
   return(matrix(delta,bas$Ai_max,3))
   }
 
@@ -4289,7 +4500,7 @@ Cons_filter_delta<-function(delta,grd,bas,H2,nm=TRUE)
 #' (contributed by C Woelper, 2024, University Bremen)
 #' @param delta step in coefficients to project
 #' @param grd,bas grid and basis
-#' @param n current spatial normals, e.g. returned as $n in E_SCM
+#' @param n current spatial normals, e.g. returned as `$n` in `E_SCM()`
 #' @export
   make_delta_normal_to_surface <- function(delta, grd, bas, n){
     result <- matrix(0,bas$Ai_max,3)
@@ -4306,54 +4517,37 @@ Cons_filter_delta<-function(delta,grd,bas,H2,nm=TRUE)
     return(result[])
   }
 
-#' E_FullModel_Penalty_AV
-#' @description
-#' Area-Volume-constraint energy computation
-#'  works also without SEN (Ref=NULL)
+#' unified gradient computation with penalties
+#'  @description
+#'  $bas$Nc and $bas$Cons are used to address active constraints
+#' @param A,grd,bas,Ref standard parameters from MemRBC object
+#' @param S from SEN()
+#' @return Gradient of full penalized energy in coefficient space, vector
 #' @export
-  E_FullModel_Penalty_AV<-function (A, grd, bas, Ref)
-  {
-    C <- updateX(A, grd, bas)
-    h2 <- E_SCM(A, grd, bas, C)
-    if (!is.null(Ref)) {
-      S <- SEN(A, grd, bas, Ref, h2)
-      e <- E_SEN(A, grd, bas, S, Ref)
-    }
-    else {
-      e = 0
-      S = NULL
-    }
-    E <- h2$Wb + e + MemRBC_env$M.rho * ((h2$Volume - bas$Target["Volume"])^2 +
-                                (h2$Area - bas$Target["Area"])^2)
-    names(E) = NULL
-    return(list(E = E, Wb = h2$Wb, Ws = e, E_uncons = h2$Wb +
-                  e, dA = h2$dA, S = S, Area = h2$Area, Volume = h2$Volume,
-                Curv = h2$Curv, n = h2$n))
-  }
-#' Grad_FullModel_Penalty_AV
-#' @export
-Grad_FullModel_Penalty_AV<-
-  function (A, grd, bas, Ref, S)
+  Grad_FullModel_Penalty <- function (A, grd, bas, Ref, S)
   {
     C <- updateX(A, grd, bas)
     h2 <- E_SCM(A, grd, bas, C)
     G_SCM <- Grad_SCM(h2, grd, bas, C)
     if (!is.null(Ref)) {
       G_SEN <- Grad_SEN(A, grd, bas, G_SCM, S, Ref)
-      G <- G_SCM$grad_SCM + G_SEN$grad_SEN + 2 * MemRBC_env$M.rho * (G_SCM$gradV *
-                                                            (h2$Volume - bas$Target["Volume"]) + +G_SCM$gradA *
-                                                            (h2$Area - bas$Target["Area"]))
+      G <- G_SCM$grad_SCM + G_SEN$grad_SEN
     }
-    else G <- G_SCM$grad_SCM + 2 * MemRBC_env$M.rho * (G_SCM$gradV * (h2$Volume -
-                                                             bas$Target["Volume"]) + +G_SCM$gradA * (h2$Area - bas$Target["Area"]))
+    else G <- G_SCM$grad_SCM
+    for (i in 1:bas$Nc) {
+      G <- G + 2 * MemRBC_env$M.rho * G_SCM[[bas$Cons[i]]] * (h2[[bas$QCons[i]]] -
+                                                                bas$Target[[bas$QCons[i]]])
+    }
     return(G)
   }
-
-#' E_FullModel_Penalty_AVC
-#' @description
-#' Area-Volume-Curvature-constraint energy computation
-#' @export
-E_FullModel_Penalty_AVC<-function (A, grd, bas, Ref)
+  
+  #' unified model energy with penalties
+  #'  @description
+  #'  $bas$Nc and $bas$Cons are used to address active constraints
+  #' @param A,grd,bas,Ref standard parameters from MemRBC object
+  #' @return full penalized energy
+  #' @export
+  E_FullModel_Penalty <- function (A, grd, bas, Ref)
   {
     C <- updateX(A, grd, bas)
     h2 <- E_SCM(A, grd, bas, C)
@@ -4365,49 +4559,30 @@ E_FullModel_Penalty_AVC<-function (A, grd, bas, Ref)
       e = 0
       S = NULL
     }
-    E <- h2$Wb + e + MemRBC_env$M.rho * ((h2$Volume - bas$Target["Volume"])^2 +
-                                (h2$Area - bas$Target["Area"])^2 + (h2$Curv - bas$Target["Curv"])^2)
+    E <- h2$Wb + e
+    for (i in bas$QCons[1:bas$Nc]) E <- E + MemRBC_env$M.rho * (h2[[i]] -
+                                                                  bas$Target[i])^2
     names(E) = NULL
-    return(list(E = E, Wb = h2$Wb, Ws = e, E_uncons = h2$Wb +
+    return(list(E = E, Wb = h2$Wb, Ws = e, Wuncons = h2$Wb +
                   e, dA = h2$dA, S = S, Area = h2$Area, Volume = h2$Volume,
-                Curv = h2$Curv,n=h2$n))
+                Curv = h2$Curv, n = h2$n))
   }
-
-
-#' Grad_FullModel_Penalty_AVC
-#' @export
-Grad_FullModel_Penalty_AVC<-function (A, grd, bas, Ref, S)
-{
-  C <- updateX(A, grd, bas)
-  h2 <- E_SCM(A, grd, bas, C)
-  G_SCM <- Grad_SCM(h2, grd, bas, C)
-  if (!is.null(Ref)) {
-    G_SEN <- Grad_SEN(A, grd, bas, G_SCM, S, Ref)
-    G <- G_SCM$grad_SCM + G_SEN$grad_SEN + 2 * MemRBC_env$M.rho * (G_SCM$gradV *
-                                                          (h2$Volume - bas$Target["Volume"]) + +G_SCM$gradA *
-                                                          (h2$Area - bas$Target["Area"]) + +G_SCM$gradC * (h2$Curv -
-                                                                                                             bas$Target["Curv"]))
-  }
-  else G <- G_SCM$grad_SCM + 2 * MemRBC_env$M.rho * (G_SCM$gradV * (h2$Volume -
-                                                           bas$Target["Volume"]) + +G_SCM$gradA * (h2$Area - bas$Target["Area"]) +
-                                            +G_SCM$gradC * (h2$Curv - bas$Target["Curv"]))
-  return(G)
-}
-
-
+  
+#' locate Minima from quantity
+#' @param Q spatial quantity, e.g. alpha from `SEN`, or energy density
+#' @param grd grid as from a membrane objects `M$grd`
+#' @param sgn (=+1) sign to test
+#' @return List of results, E for values, p for spatial positions
 #' @export
 Spicules_as_Minima<-function(Q,grd,sgn=1)
 { iy=function(x){if (x<1) return(x+grd$nu) else return(x)}
 jy=function(x){if (x>grd$nu) return(x-grd$nu) else return(x)}
-
 ix=function(x){if (x<1) return(x+grd$nv) else return(x)}
 jx=function(x){if (x>grd$nv) return(x-grd$nv) else return(x)}
-
 idxx=function(p,grd){
   return(apply(p,1,function(x) x[1]+grd$nv*(x[2]-1)))
 }
 idx=function(x,grd){  return( x[1]+ grd$nv*(x[2]-1)) }
-
 E=t(matrix(sgn*Q,grd$nu,grd$nv))
 image(E)
 p=matrix(0,grd$ndof,2);k=1
@@ -4427,18 +4602,15 @@ for (x in 1:(grd$nv))
   }
 image(M)
 N=matrix((M>7),ncol=ncol(M))
-
 p=p[1:(k-1),]
 L=idxx(p,grd)
 EE=E[L]
-
 locate<-function(EE,E) {w=c();for (i in seq_along(EE)) w=c(w,which(c(E)==EE[i]));return(w)  }
 EE=sort(EE)
 I=locate(EE,t(E)) # back to original (i,j) by t()
 I1=locate(EE,E)
 E[I1]=NA
 image(E)
-
 plot(sort(EE))
 image(t(E))
 o=order(EE)
@@ -4453,13 +4625,19 @@ return(list(M=M,E=E,p=p,L=L,o=o,Eo=EE[o],nspic=nspic))
 }
 
 #' history_MemRBC
+#' @param M MemRBC object
+#' @return -
 #' @export
 history_MemRBC<-function(M)
 {
   print(paste(M$history))
 }
 
-#' MakeIM
+#' make inversion matrix for fast least squares 
+#' @param bas Basis to compute inversion matrix from
+#' @param lambda (=0) for additional diagonal term
+#' @param WX (=1) for spatial weights
+#' @return modified basis, with result matrix in `$IM` 
 #' @export
 MakeIM<-function (bas, lambda = 0, WX = rep(1, dim(bas$Ylm)[1]))
 {
@@ -4474,6 +4652,11 @@ MakeIM<-function (bas, lambda = 0, WX = rep(1, dim(bas$Ylm)[1]))
 }
 
 #' double_uv_ind
+#' locate double (u,v) indices, neccessary to filter for correct centre of mass
+#' only double are allowed, i.e. tripples etc not detected 
+#' @param u,v vectors of spheiracl angular data, as from `MakeBasis_UV()`
+#' @param digits (=7) precision of comparison checks
+#' @return indices vector of doubles (second entry taken), often storted to `M$bas$mask`
 #' @export
 double_uv_ind<-function (u, v, digits = 7)
 {
@@ -4492,7 +4675,10 @@ double_uv_ind<-function (u, v, digits = 7)
 #' fits coefficients to X from least squares solver matrix IM in bas
 #' This is used for fitting e.g. displacements
 #' like in pertA_complex.
-#' @param bas,X basis with IM, 3d-coordinates to fit
+#' ATTENTION: bas$mask is needed for masking double coords.
+#' If not there or not meaningful, set to a default excludion of first spatial point by bas$mask=1
+#' @param bas,X basis with `bas$IM`, and X with 3d-coordinates to fit
+#' @return fitted coefficients 
 #' @export
 FitFast<-function (bas, X)
 {
@@ -4505,6 +4691,14 @@ FitFast<-function (bas, X)
 #' Movie
 #' @description
 #' show shapes along recorded coefficients in M$LA
+#' @param M MemRBC object
+#' @param x,y window dimensions in pixels
+#' @param from,to frames to show
+#' @param sleep (=0.025) pause between images
+#' @param phi (=pi/100) rotation angle per image
+#' @param phi1 (=phi/2) second rotation angle per image
+#' @param ... parameters to plot(M)
+#' @return -
 #' @export
 Movie<-function (M,x=400,y=400,from=1,to=length(M$LA),sleep=0.025,phi=pi/100,phi1=phi/2,...)
 {
@@ -4534,15 +4728,17 @@ Movie<-function (M,x=400,y=400,from=1,to=length(M$LA),sleep=0.025,phi=pi/100,phi
     i = rgl::ids3d()
     rgl::pop3d(id = i$id[i$type %in% c("triangles", "quads","text")])
     plot(M, wire_col = "red",...)
-
     rgl::title3d(k);k=k+1
     rgl::rgl.bringtotop() # display background
-
     Sys.sleep(sleep)
   }
 }
 
-#' MemCols
+#' Pallette color from data vector.
+#' @param pal (=rainbow) palette to use
+#' @param data data vector
+#' @param n number of different colors
+#' @return vector of colors of length of data
 #' @export
 MemCols<-function(data,pal=rainbow,n=100)
 {return(pal(n)[1+(n-1)*(data-min(data))/diff(range(data))])}
@@ -4552,7 +4748,8 @@ MemCols<-function(data,pal=rainbow,n=100)
 #' computes spatial weights WX from 8 neares neighbors.
 #' The weights may be used for subsampling or weighted fits.
 #' Background: too dense gridpoints lead to underfitting in less denser regions.
-#'
+#' @param M MemRBC object
+#' @return vector of spatial weights
 #' @export
 DistBasedWX<-function(M)
 { X=updateX_only(M$A,M$grd,M$bas)$X
@@ -4562,6 +4759,12 @@ DistBasedWX<-function(M)
   return(WX)
 }
 
+#' makes a 2d color array of size 2x2
+#' with RGB colors on the corners of a rectangle
+#' Not yet used, but could be for 2d colors encoding alpha and beta in a single color.
+#' @param col1,col2,col3,col4 rgb-vectors of corners colors, `col2=c(1,0,0)` for red.
+#' @param n (=25) number of colors per side
+#' @return array of RGB colors from bilinear interpolation
 #' @export
 color2d<-function(col1=c(0,0,0),col2=c(1,0,0),col3=c(0,0,1), col4=c(0,1,0),n=25){
   RGB=matrix("",n,n)
@@ -4574,25 +4777,21 @@ color2d<-function(col1=c(0,0,0),col2=c(1,0,0),col3=c(0,0,1), col4=c(0,1,0),n=25)
   return(RGB)
 }
 
-# remove any App-cpmputational results from a memRBC object.
-# The object is reduced to a minimum of data for further work.
-# Only grd,bas,Ref,A, Params and flag SEN are returned.
+#' remove any App-cpmputational results from a MemRBC object.
+#' The object is reduced to a minimum of data for further work/save.
+#' Only grd,bas,Ref,A, Params and flag SEN are returned.
+#' @param M MemRBC object
+#' @return data-reduced MemRBC object
 #' @export
 Empty<-function(M)
 {
-  for (i in names(M)[-which(names(M) %in% c("grd","bas","Ref","A","Params","SEN"))])
+  for (i in names(M)[-(which(names(M) %in% c("grd","bas","Ref","A","Params","SEN")))])
     M[[i]]=NULL
   return(M)
 }
 
-# rewind data and A in M by some frames from LA, and erase LA later than that
-#' @export
-Rewind<-function(M,last=2)
-{ M$A=M$LA[[length(M$LA)-2]]
-  M$LA[(length(M$LA)-last):length(M$LA)] <- NULL
-  return(M)
-}
 
+# modified from R-package fields doing some corrections to suppress warnings for par(new)
 own.imagePlot<-function (..., add = FALSE, breaks = NULL, nlevel = 64, col = NULL, 
                      horizontal = FALSE, legend.shrink = 0.9, legend.width = 1.2, 
                      legend.mar = ifelse(horizontal, 3.1, 5.1), legend.lab = NULL, 
@@ -4603,7 +4802,7 @@ own.imagePlot<-function (..., add = FALSE, breaks = NULL, nlevel = 64, col = NUL
 { pn=(rgl::cur3d()>0)
   old.par <- par(no.readonly = TRUE)
   if (is.null(col)) {
-    col <- tim.colors(nlevel)
+    col <- fields::tim.colors(nlevel)
   }
   else {
     nlevel <- length(col)
@@ -4635,7 +4834,7 @@ own.imagePlot<-function (..., add = FALSE, breaks = NULL, nlevel = 64, col = NUL
       image(..., breaks = breaks, add = add, col = col)
     }
     else {
-      poly.image(..., add = add, breaks = breaks, col = col, 
+      fields::poly.image(..., add = add, breaks = breaks, col = col, 
                  midpoint = midpoint, border = border, lwd.poly = lwd)
     }
     big.par <- par(no.readonly = TRUE)
@@ -4698,52 +4897,11 @@ own.imagePlot<-function (..., add = FALSE, breaks = NULL, nlevel = 64, col = NUL
   }
 }
 
-#' unified gradient computation with penalties
-#' @export
-Grad_FullModel_Penalty <- function (A, grd, bas, Ref, S)
-{
-  C <- updateX(A, grd, bas)
-  h2 <- E_SCM(A, grd, bas, C)
-  G_SCM <- Grad_SCM(h2, grd, bas, C)
-  if (!is.null(Ref)) {
-    G_SEN <- Grad_SEN(A, grd, bas, G_SCM, S, Ref)
-    G <- G_SCM$grad_SCM + G_SEN$grad_SEN
-  }
-  else G <- G_SCM$grad_SCM
-  for (i in 1:bas$Nc) {
-    G <- G + 2 * MemRBC_env$M.rho * G_SCM[[bas$Cons[i]]] * (h2[[bas$QCons[i]]] -
-                                                   bas$Target[[bas$QCons[i]]])
-  }
-  return(G)
-}
-
-#' standardized model gradient with penalties
-#' @export
-E_FullModel_Penalty <- function (A, grd, bas, Ref)
-{
-  C <- updateX(A, grd, bas)
-  h2 <- E_SCM(A, grd, bas, C)
-  if (!is.null(Ref)) {
-    S <- SEN(A, grd, bas, Ref, h2)
-    e <- E_SEN(A, grd, bas, S, Ref)
-  }
-  else {
-    e = 0
-    S = NULL
-  }
-  E <- h2$Wb + e
-  for (i in bas$QCons[1:bas$Nc]) E <- E + MemRBC_env$M.rho * (h2[[i]] -
-                                                     bas$Target[i])^2
-  names(E) = NULL
-  return(list(E = E, Wb = h2$Wb, Ws = e, Wuncons = h2$Wb +
-                e, dA = h2$dA, S = S, Area = h2$Area, Volume = h2$Volume,
-              Curv = h2$Curv, n = h2$n))
-}
 
 #' create data
 #' @description
 #' use this to create some data for experimenting further...
-#' 
+#' @return -
 #' @export
 create_data <- function()
 { print("this is a long-runner to create data for MemRBC")
@@ -4759,21 +4917,21 @@ create_data <- function()
   SDRC(SSsdrc,20,del_cons = 1e-1, del_min=1e-4,max_iter = 20,prn_ci = TRUE)->SSsdrc   
   plot(SSsdrc$SDRC_Sample$E,type="l")
   plot(SSsdrc$SDRC_Sample$C,type="l")
-  # the following CNM can have massive speedup with cluster=TRUE, MemRBC_env$M.Rcpp_ncores=2, 
+  # the following CNM can have massive speedup with cluster=TRUE, MemRBC_env$M.Rcpp_ncores=2L, 
   #       ncores=60, e.g. on a fat node with 120 cores and enough memory 
   # 
   CNM(SSsdrc,2,cluster = FALSE)-> SSsdrc_cnm # takes >100minutes on Ryzen 7 Pro laptop
   save_MemRBC(SSsdrc_cnm,"SSsdrc_cnm",qs2=TRUE) # fast compressed save
-
 }
 
 #' get_data_ZENODO
 #' @description
 #' get the additional data by downloading from ZENODO
-#' and moving to data-folder
-#' @param local (=FALSE) to download in current dir, not packages data
+#' and moving to data-folder. 
+#' @param local (=FALSE) to download in folder dir, no inst to packages data
 #' @param folder (="data") name of local download folder (is kept on exit)
-#' @param L (=NULL) specific files for download (vector of character)
+#' @param L (=NULL) specific files names for download (vector of character);Only published data can be requested. If NULL, all files are taken.
+#' @return character vector of all published files names.
 #' @export
 get_data_ZENODO <- function(local=FALSE,folder="data",L=NULL){
   if(!dir.exists(folder)) dir.create(folder)
@@ -4786,10 +4944,15 @@ get_data_ZENODO <- function(local=FALSE,folder="data",L=NULL){
   if (is.null(L)) L=L0 else if(! all(L %in% L0)) stop("req. data not in repo.\n")
   for (x in L){
     destfile=paste(folder,x,sep="/")
-    cat(destfile,"\r")
+    cat(destfile,"\n")
     if (!file.exists(destfile)) utils::download.file(paste(Pre,x,"?download=1",sep=""),
                   destfile=destfile,
-                  method="curl") 
+                  method="curl") else cat("File ",destfile," not overwritten\n")
+    load(file=destfile)->n
+    assign(n,update(get(n),"Class"))
+    qs2=length(grep("qs2",destfile))==1
+    if (qs2) destfile=sub(".qs2$","",destfile)
+    save_MemRBC(get(n),destfile,qs2=qs2)
   }
   if (!local){
   p=.libPaths()
@@ -4802,4 +4965,5 @@ get_data_ZENODO <- function(local=FALSE,folder="data",L=NULL){
     }
   }
   cat("data left in folder ",folder,"\n")
+  return(L0)
 }

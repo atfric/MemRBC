@@ -20,37 +20,40 @@
 #' @param M The input membrane with initial data and reference
 #' @param nsteps (=5) number of Newton steps to be performed
 #' @param del (=0.3) update factor delte (<1)
+#' @param del_control (=FALSE) TRUE for use of statoíc step length del
 #' @param plt (=TRUE) for plotting two figures with alpha/beta stress-shear parameters
 #' @param Mtol_Newton (=1e-4) stopping criterion for KKT norm and constraints norm
 #' @param LAfreq (=1) storage frequency into list of coefficients LA
 #' @param cluster (=FALSE) for parallel Hessian using a cluster with ncores processes
 #' @param ncores (=4) for parallel Hessian on ncores CPU-cores
-#' @param keepEig (=FALSE) to keep eigensystem as attributes in A (and thus LA[[]] -> high memory demands)
+#' @param keepEig2A (=FALSE) to keep eigensystem as attribute "EigsH" in $A (and thus LA[[]] -> high memory demands)
+#' @param pinv (=TRUE) use pseudo-inverse in solver 
+#' @param diag.reg (=0) diagonal regularization of to be inverted matrix
 #' @return membrane object with updated data from CNM:
-#' @return LA: list of recorded coefficients A
-#' @return A: last coefficients
-#' @return history: history of App-calls that created the result
-#' @return E_CNM: vector of nsteps energy values
-#' @return CNMiter: number of iterations, incl. previous calls
-#' @return proc_time: aggregated processing time of all Apps called before with this object
-#' @return Eig.H: eigensystem of last energy+constraints Hessian
-#' @return Grad: final energy gradient
-#' @return Jacobian: constraint Jacobian
-#' @return Hessian: energy Hessian matrix
-#' @return ConsHessians: Lagrangian Hessians from active constraints
-#' @examples
-#' if(exists("E_SCM_cxx")) { # catch problems in cran tests
+#' @return LA : list of recorded coefficients A
+#' @return A : last coefficients
+#' @return history : history of App-calls that created the result
+#' @return E_CNM : vector of nsteps energy values
+#' @return CNMiter : number of iterations, incl. previous calls
+#' @return proc_time : aggregated processing time of all Apps called before with this object
+#' @return Eig.H : eigensystem of last energy+constraints Hessian
+#' @return Grad : final energy gradient
+#' @return Jacobian : constraint Jacobian
+#' @return Hessian : full energy Hessian matrix
+#' @return ConsHessians : Lagrangian Hessians from active constraints
+#' @examplesIf exists("L_Ylm")
 #' data(M4)
-#' MemRBC_env$M.C0 <- -6
+#' MemRBC_env$M.C0 <- -4
 #' plot(M4)
-#' M4 <- CNM(M4,nsteps=10,cluster=FALSE)
+#' M4<-SDRC(M4,10,del_min=3e-6)
+#' M4 <- CNM(M4,nsteps=20,cluster=TRUE,ncores=4,del_control=TRUE)
 #' plot(M4)
 #' M
-#' }
+#' 
 #' @export
 CNM <- function (M, nsteps = 5, del = 0.3, del_control = FALSE, diag.reg = 0,
                  pinv = TRUE, LAfreq = 1, Mtol_Newton = 1e-04, ncores = 4,
-                 keepEig2A = FALSE, plt = TRUE, cluster = FALSE, use_serial_cpp = FALSE)
+                 keepEig2A = FALSE, plt = TRUE, cluster = FALSE)
 { cl=NULL # no cluster yet
   t0 = proc.time()
   if (del_control)
@@ -117,7 +120,8 @@ CNM <- function (M, nsteps = 5, del = 0.3, del_control = FALSE, diag.reg = 0,
     Cons <- ConsRHS(H$h2, bas)
     Eig.H <- eigen(Hfull)
     if (all(Eig.H$values > 0))
-      cat(crayon::white(crayon::bgGreen("all Eigs show convexity \n")))
+      cat(crayon::white(crayon::bgGreen("all eigenvalues positive \n"))) else
+        cat(sum(Eig.H$values > 0)," of ",length(Eig.H$values)," positive\n")
     if (diag.reg == 0)
       iH = mypinv(Hfull)
     else iH = pracma::inv(Hfull)

@@ -22,6 +22,7 @@
 #' @param plt (=FALSE) for plotting
 #' @param pltfreq (=10) for plotting every pltfreq step
 #' @param LAfreq (=100) storage frequency into list of coefficients $LA
+#' @param ncores (=4) parallel threads in SCM energy and gradient
 #' @return membrane object with updates from MMC with data:
 #' @return LA: list of recorded coefficients A
 #' @return A: last coefficients, with further data in it as attributes (see example)
@@ -30,15 +31,14 @@
 #' @return E_PSD: all recorded total energies, including PSDC steps
 #' @return PSDiter; total PSD steps, incl. previous calls
 #' @return history: history of App-calls that created the result
-#' @examples
+#' @examplesIf exists("L_Ylm")
 #' data("M4",package = "MemRBC")
-#' if(exists("E_SCM_cxx")) { # catch problems in cran tests
 #' M <- PSDC(M4,nsteps=10000,del=1e-6,)
 #' plot(M)
 #' M
 #' attributes(last(M$LA))
 #' attr(M$A,"method")
-#' }
+#' 
 #' @export
 PSDC <- function (M, curv = Curv(M), nsteps = 100, del = 1e-06, plt = FALSE,
                   pltfreq = 10, LAfreq = 100, ncores = 5)

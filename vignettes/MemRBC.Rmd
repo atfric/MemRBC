@@ -27,6 +27,10 @@ MemRBC provides many low-level functions to create the relevant objects and perf
 
 The energy functional and its gradient are computed in spherical harmonics space, based on differential geometry first and second fundamental, evaluated at the integration points. The Hessian of energy is computed as forward finite difference of the gradient.
 
+## Data in objects
+
+A membrane object, also named MemRBC object, is of class MemRBC. It contains a coeficient object \$A (class MemA), a grid object \$grd (class MemGrd), a basis object \$bas (class MemBas) and possibly a coordinate object \$C (class MemC). Within \$C you may find a rgl mesh3d object \$Obj.
+
 ## Numerical Methods
 
 Here we list the currently implemented numerical Apps and their features.
@@ -36,19 +40,19 @@ Apps enabling curvature constraint ("C") require the target curvature to be spec
 |  |  |  |  |  |  |
 |------------|------------|------------|------------|------------|------------|
 | **Name** | **Method** | **Constraints** | **Penalized** | **Gradient** | **Hessian** |
-| MMC | Metropolis Montecarlo | A V | yes | no | no |
-| MMCC | Metropolis Montecarlo Curvature | A V C\* | yes | no | no |
-| SDRC | Steepest Descend Rosen Constraint | A V [C]\* | no | yes | no |
-| PSD | Penalized Steepest Descend | A V | yes | yes | no |
-| PSDC | Penalized Steepest Descend Curvature | A V C\* | yes | yes | no |
-| PNEM | Penalized Newton Equation of Motion | A V | yes | yes | no |
-| CNM | Constraint Newton Minimization | A V [C]\* | no | yes | yes |
-| GAM | Genetic Algorithm Minimization | A V | yes | no | no |
-| ALM | Augmented Lagrangian Minimization | A V [C]\* | no | yes | no |
+| `MMC` | Metropolis Montecarlo | A V | yes | no | no |
+| `MMCC` | Metropolis Montecarlo Curvature | A V C\* | yes | no | no |
+| `SDRC` | Steepest Descend Rosen Constraint | A V [C]\* | no | yes | no |
+| `PSD` | Penalized Steepest Descend | A V | yes | yes | no |
+| `PSDC` | Penalized Steepest Descend Curvature | A V C\* | yes | yes | no |
+| `PNEM` | Penalized Newton Equation of Motion | A V | yes | yes | no |
+| `CNM` | Constraint Newton Minimization | A V [C]\* | no | yes | yes |
+| `GAM` | Genetic Algorithm Minimization | A V | yes | no | no |
+| `ALM` | Augmented Lagrangian Minimization | A V [C]\* | no | yes | no |
 
-: \* [C]: by `SetConstraints()` one may set as third constraint integrated curvature C into a membrane object M's basis `M$bas`, i.e. the constraint is then taken into consideration on the basis of its gradient in ALM, CNM, SDRC . The apps MMCC and PSDC, in contrast, always imply the C-constraint, but as penalty term, like they do for area and volume.
+: \* [C]: by `SetConstraints()` one may set as third constraint integrated curvature C into a membrane object M's basis `M$bas`, i.e. the constraint is then taken into consideration on the basis of its gradient in `ALM`, `CNM`, `SDRC` . The apps `MMCC` and `PSDC`, in contrast, always imply the C-constraint, but as penalty term, like they do for area and volume.
 
-## Global parameters
+## Global model parameters
 
 MemRBC has its globally defined model parameters in the packages environment `MemRBC_env` , e.g. you'd set `MemRBC$M.Ka=0` for switching off area elastic terms in SEN.
 
@@ -64,15 +68,15 @@ MemRBC has its globally defined model parameters in the packages environment `Me
 
 Other global parameters are
 
--   **`M.Rcpp`** boolean (`TRUE` or `FALSE`) to use C++-Codes, needed for multi-core parallel code
+-   **`M.Rcpp`** boolean (`TRUE` or `FALSE`) to use C++-Codes, needed for multi-core parallel codes
 
--   **`M.Rcpp_ncores`** (\>0) number of CPU cores to use in parallel gradient and Hessian.
+-   **`M.Rcpp_ncores`** (\>0) number of CPU cores to use in SCM energy and gradient. Parallel Hessian is done via a cluster, see parameter Mem_mc.cores to `FullModelHessian_Par()`.
 
 -   not to be modified by the user are **`M.muk, M.lam`,** which are Augmented Lagrangian parameter $\mu$ and $\lambda$, used in `ALM()`
 
 -   SEN parameters in the environment `MemRBC_dev` are `M.a2, M.a3, M.a4, M.b0, M.b1, M.b2.` Usually `M.a2` and `M.b0` are 1, but one may wish to change the leading order terms alone by setting other values.
 
-Users should check regularly that - besides SEN parameters - `M.C0` and constraint values in `M$bas$Target` is set correctly for their intended App usage. That's why most Apps report `C0` in their regular text output.
+Users should check regularly that - besides SEN parameters - `M.C0` and constraint values in `M$bas$Target` are set correctly for their intended App usage. That's why most Apps report `C0` in their regular text output.
 
 ## Demonstration
 
@@ -131,7 +135,7 @@ rgl::rglwidget(width=300,height=250)
 
 A set of 3 curvature constraint Metropolis-Montecarlo simulations is performed with increase of target curvature by 1 unit per cycle. in `M$LA` every 10 accepted steps, coefficients are recorded. `nsteps=100` steps is only for short testing in vignette creation.
 
-One may change the loop from 1:3 to 1:42, to drive the shape to more extreme echinocyte-like shapes with C=120. However, it is necessary to simulate with increased number of steps, e.g., nsteps=2500 or higher, and also the spectral order should be higher, say 15, or 18, like in provided data `M18_SDEx`, x=1...8.\
+One may change the loop from 1:3 to 1:42, to drive the shape to more extreme echinocyte-like shapes with C=120. However, it is necessary to simulate with increased number of steps, e.g., nsteps=2500 or higher, and also the spectral order should be higher, say 15, or 18, like in data `S18-C0-*.qs2`published on ZENODO.\
 The final result is saved to disk in the current folder. Text-output is redirected to file by the `sink()-`command.
 
 The following command allows to analyse the recorded `MMC` in terms of curvature and energy at accepted Montecarlo steps, sampled along the trajectory in a data frame `M$Sample`. As third column, `M$Sample$Cnt` records the number of Metropolis rejections + 1 at the same energy. This is useful to evaluate thermodynamic ensemble expectation values of the recorded area, curvature and energy. For example, `M$Sample` could allow for some free-energy-perturbation analysis.
@@ -173,7 +177,7 @@ rgl::rglwidget(width=300,height=300)
 
 The reference stomatocyte shape for C0=-6.5 was iterated at room temperature (kT=0.00411 aJ, a stands for atto) for 100 steps under approximately constant curvature C=70.
 
-A plot of a series of shapes is generated with PlotLSeries:
+A plot of a series of shapes is generated with `PlotLSeries` (truncation plot):
 
 ```{r LSeries, webgl=TRUE, echo=FALSE, eval = run_it}
 

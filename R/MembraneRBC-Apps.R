@@ -24,26 +24,34 @@ Apps.TEST=FALSE
 
 # some generics
 
-#' image
+#' îmage from 2d data
 #' @description
-#' 2D plot of color coded variable on the shape
-#' @param M Membrane to use for shape plot
+#' 2D plot of color coded variable defined on the shape.
+#' x and y correspond to spherical angles
+#' @param x Membrane to use for shape plot
 #' @param q a 2D field to project onto shape, eg. M$SEN$alpha
+#' @param main (=expression(alpha)) plot title
+#' @param ... parameters to imag()
+#' @return -
+#' @export image.MemRBC
 #' @export
-image.MemRBC<-function(M,q=M$SEN$alpha,main=expression(alpha),...)
-  {
-    imag(q,M$grd,main=main,...)
-    invisible()
+image.MemRBC<-function(x,q=x$SEN$alpha,main=expression(alpha),...)
+{
+  imag(q,x$grd,main=main,...)
+  return()
 }
 
 #' plot
 #' @description
 #' 3D plot of membrane shape
-#' @param M Membrane to use for shape plot
+#' @param x Membrane to use for shape plot
 #' @param wire (boolean) FALSE if  to suppress mesh quads plotted
+#' @param wire_col (="black") 
 #' @param ... further plotting options, e.g. col="green"
+#' @export plot.MemRBC
 #' @export
-plot.MemRBC <- function(R,wire=TRUE,wire_col="black",...){
+plot.MemRBC <- function(x,wire=TRUE,wire_col="black",...){
+    R<-x
     updateX_only(R$A,R$grd,R$bas)->C
   #  Rvcg::vcgUpdateNormals(C$Obj)->O
     plot3b(C$X,R$grd,wire=FALSE,...)
@@ -61,14 +69,15 @@ plot.MemRBC <- function(R,wire=TRUE,wire_col="black",...){
 #' @param On3d (=FALSE) to plot on M1 surface the |dX| in color code
 #' @param ... graphics parameters to wire3d() or imag.obj.colorbar()
 #' @return named vector of changes of Quantities()
-#' @examples
-#' # before using get:data_ZENODO, make sure the requested files really exist
+#' @examplesIf exists("L_Ylm")
+#' #' # before using get:data_ZENODO, make sure the requested files really exist
 #' get_data_ZENODO(L=c("ss42denovo_pnem.rda","ss42denovo_mmc.rda"),local=TRUE)
 #' load_MemRBC("data/ss42denovo_pnem.rda")->ss42denovo_pnem
 #' load_MemRBC("data/ss42denovo_mmc.rda")->ss42denovo_mmc
 #' dQ <- PlotDiff(ss42denovo_pnem, ss42denovo_mmc, col="red",On3d=TRUE)
 #' # PNEM removed two spicules to reduce volume, 
 #' # while mmc reduced volume in favour of shrinking globally along Z
+#' 
 #' @export
 PlotDiff<-function(M1,M2,On3d=FALSE,...)
 {  updateX(M2$A-M1$A,M1$grd,M1$bas)->C
@@ -82,54 +91,17 @@ PlotDiff<-function(M1,M2,On3d=FALSE,...)
    return( c(sapply(Quantities(M2),function(x) x)-sapply(Quantities(M1),function(x) x),apply(C$X,1,pracma::Norm)))
 }
 
-#' print
-#' @description
-#' print metadata from membrane object
-#' @param M Membrane to print data from
-#' @export
-print.MemRBC<-function(R,...){
-    cat("MembraneRBC Object:","\n")
-    cat("ndof_grid=",R$grd$ndof," [",R$grd$nu,"x",R$grd$nv,"]\n")
-    if(!is.null(R$bas$Ylm_u))
-    {cat("L=",R$bas$L_max,", coeff. rows",R$bas$Ai_max,"\n")
-     cat(R$bas$Nc," constraints target:\n");
-     print(R$bas$Target)
-     cat("Membranes recent coefficients A computed at C0=",attr(R$A,"C0"),"\n")
-     if (!rlang::is_named(R$bas$Target)) message("Object constraint $Target is unnamed!")
-     cat("quantities for current coeffs A: Area",Area(R)," Volume",Volume(R)," Curv",Curv(R),"\n")
-    } else cat(crayon::cyan("The Basis in this Membrane is reduced to X!\nUse update(M,\"Basis\") to recreate.\n"))
-    if (!is.null(R$LA)) cat("List of coeffs LA length:",length(R$LA),"\n")
-
-    if (!is.null(R$kT)) cat("MMC kT:",R$kT,"\n")
-
-    if (!is.null(R$visc)) if(length(c(R$visc))==1) cat("PNEM viscosity:",R$visc,"\n")
-                          else cat("PNEM viscosity (head of diag of matrix)",diag(R$visc)[1:6],"\n")
-    if (!is.null(R$rho)) cat("PNEM mass density:",R$rho,"\n")
-    if (!is.null(R$Sample)) cat("MMC Samples:",dim(R$Sample)[1],"\n")
-    if (!is.null(R$proc_time)) cat("Membrane has overall process time ",R$proc_time,"\n") else cat("Membrane has no process_time recorded.\n")
-    if (!is.null(R$comment)) cat("Membrane comment ",R$comment,"\n") else cat("Membrane has no comment.\n")
-    # cat(" Coordinates hash",attr(R$C,"hash"),"\n")
-    #  cat("Coefficients hash",rlang::hash(R$A),"\n")
-    #  cat("      Object hash",rlang::R$hash)
-    cat("Membrane has a history of length ",length(R$history),"\n")
-    if(is.null(R$Params)) cat(crayon::red("No Parameters - inject by StoreParams(M)->M\n")) else {
-      ul=unlist(R$Params); cat("Params:\n"); print(ul)
-    }
-}
-
-
-
 #' Plot a stability analysis visually on a 3x3 canvas of 3d-plots
 #' @description
 #' run PlotStabGallery on a membrane object with a Stab in it from MemStab()
 #' @param M The input membrane with initial data and reference
 #' @param which_n vector of Ids of eigenvalues, 1:9 is default for lowest nine
-#' @param plt_scale scale of eigenvectors
-#' @param col1 color of unperturbed shapes
-#' @param col2 color of scaled eigenvector perturbed shapes
+#' @param wire (=FALSE) to have wireframe plot on top of shade3d()
+#' @param plt_scale (=0.3) scale of eigenvectors displacement
 #' @param sharedMouse (boolean) if FALSE, each subplot can be controlled by mouse individually
+#' @param ... for further plotting parameters, like setting semi-transparency alpha=0.5; col1 and col2 can be set here (blue,red are default)
 #' @return none
-#'@examples
+#' @examplesIf exists("L_Ylm")
 #' M <- MakeStandardRBC(L=5)
 #' plot(M)
 #' M <- PSD(M,nsteps=100,del=1e-6,)
@@ -137,20 +109,20 @@ print.MemRBC<-function(R,...){
 #' MemStab(M)->M
 #' PlotStabGallery(M)
 #' @export
-PlotStabGallery <- function(M,which_n=1:9,sharedMouse=TRUE,wire=FALSE,...)
+PlotStabGallery <- function(M, which_n=1:9, plt_scale=0.3, sharedMouse=TRUE,wire=FALSE, ...)
 { if (is.null(M$Stab)) stop("No stability data in MemRBC object")
   rgl::open3d();rgl::mfrow3d(3,3,sharedMouse = sharedMouse);
-
+  cat("vectors for last eigenvalues used from =\n ")
+  print(round(M$Stab$EigH$values,6))
   for (i in which_n)
   {if (i>1) rgl::next3d();
-    plotStab(M,plt_n=i,wire=wire,...)
+    plotStab(M,plt_n=i,wire=wire,plt_scale=plt_scale,...)
     N=length(M$Stab$EigH$values)
     rgl::title3d(paste(i,"ev",round(M$Stab$EigH$values[N+1-i],6)))
   }
 }
 
-#' @export
-plotStab<-function(M,plt_n=1,plt_scale=0.5,col1="blue",col2="red",alpha1=0.5,alpha2=0.5,wire=FALSE)
+plotStab<-function(M,plt_n=1,plt_scale=0.3,col1="blue",col2="red",alpha1=0.5,alpha2=0.5,wire=FALSE)
 {
   plot(M,alpha=alpha1,col=col1,wire=wire);
   N=dim(M$Stab$EigH$vectors)[1]
@@ -166,7 +138,13 @@ plotStab<-function(M,plt_n=1,plt_scale=0.5,col1="blue",col2="red",alpha1=0.5,alp
 #' MemStab
 #' @description
 #' analyse membrane shape stability in terms of eigenvectors of Hessian
-#' @return M$Stab with eigensystem of Hessian of energy without constraints
+#' @param M MemRBC object
+#' @param mc.cores (=4) for parallel Hessian
+#' @param plt (=FALSE) control plot, if wanted (TRUE)
+#' @param plt_mode (=1) starting mode index, 1 for lowest eigenvalue
+#' @param plt_scale (=0.5) for second shapes shift in coeffs along Hessians eigenvector
+#' @param serial (=FALSE) TRUE, if serial Hessian computation is wanted.   
+#' @return MemRBC object, M$Stab has eigensystem of Hessian of energy without constraints
 #' @export
 MemStab <- function(M, mc.cores = 4, plt=FALSE, plt_mode=1, plt_scale=0.5, serial = FALSE)
   { t0=proc.time()
@@ -193,12 +171,11 @@ MemStab <- function(M, mc.cores = 4, plt=FALSE, plt_mode=1, plt_scale=0.5, seria
 #' @param M The input membrane with initial data and reference
 #' @param rho area density, default 1
 #' @return massmatrix in spectral space
-#'@examples
-#'\dontrun{
-#' data("M4",package = "MemRBC")
+#' @examplesIf exists("L_Ylm")
+#' #' data("M4",package = "MemRBC")
 #' mass <- massmatrix(M4,rho=2)
 #' image(mass)
-#' }
+#' 
 #' @export
 massmatrix <- function(M,rho=1)
 { t0=proc.time()
@@ -208,9 +185,7 @@ if (length(q)!=M$grd$ndof)   {q=E_SCM(M$A,M$grd,M$bas,updateX(M$A,M$grd,M$bas))$
 if (length(q)!=M$grd$ndof) stop("wrong size in mass matrix dA vs. grid size")
 cat("Integration of mass matrix density\n")
 tictoc::tic()
-
 mass=matrix(0,M$bas$Ai_max,M$bas$Ai_max)
-
 for (i in 1:M$bas$Ai_max) {if(i%%15==0) cat(round(i/M$bas$Ai_max*100,1),"\r")
   for (j in i:M$bas$Ai_max) {YY=M$bas$Ylm[,j]*M$bas$Ylm[,i];
     mass[j,i] <- mass[i,j] <- rho*.IntegS( q * sin(M$grd$U) * YY, M$grd)
@@ -223,11 +198,11 @@ return(mass) # could be stored as density M$rho_PNEM
 }
 
 #' Quantities
-#'@description
+#' @description
 #' report some quantities from a membrane object
 #' @param M The input membrane with initial data and reference
 #' @return quantities Area, Volume, curvature Curv and bending energy Wb as named vector
-#'@examples
+#' @examplesIf exists("L_Ylm")
 #' data("M1",package = "MemRBC")
 #' Quantities(M1)
 #' @export
@@ -240,7 +215,7 @@ Quantities<-function(M)
 
 #' Energy
 #'@description
-#' report  energy values for bending and SEN from a membrane object
+#' report  energy values for SCM and SEN from a membrane object
 #' @param M The input membrane with initial data and reference
 #' @return vector of energies Wb (bending), Es (stress-shear), E (potetntial energy), Ekin (kinetic energy, optional, if a PNEM was run)
 #' @export
@@ -267,14 +242,23 @@ Energy<-function (M)
   return(r)
 }
 
+#' compute area
+#' @param M MemRBC object
+#' @return area
 #' @export
 Area<-function(M)
   {return(E_SCM(M$A,M$grd,M$bas,updateX(M$A,M$grd,M$bas))$Area)}
 
+#' compute Volume
+#' @param M MemRBC object
+#' @return volume
 #' @export
 Volume<-function(M)
   {return(E_SCM(M$A,M$grd,M$bas,updateX(M$A,M$grd,M$bas))$Volume)}
 
+#' compute integrated curvature integ(k1+k2)
+#' @param M MemRBC object
+#' @return total curvature
 #' @export
 Curv<-function(M)
   {return(E_SCM(M$A,M$grd,M$bas,updateX(M$A,M$grd,M$bas))$Curv)}
@@ -285,12 +269,13 @@ Curv<-function(M)
 #' rotate Membrane coefficients to coordinates of principle axes of inertia.
 #' Remark: the reference SEN in $Ref remains unchanged.
 #' @param M the input membrane to be rotated
+#' @param WX (=1) spatial weights for the fit of coefficients, try sin(grd$U) to downweight pole influence
 #' @return  membrane object with new coefficients of PCA-rotated spatial coordinates.
-#'
-#' @examples
-#' data("M4",package = "MemRBC"); 
+#' @examplesIf exists("L_Ylm")
+#' data("M4",envir=environment())
 #' MemPCA(M4)->M2
 #' plot(M2)
+#' 
 #' @export
 MemPCA<-function(M,WX=rep(1,M$grd$ndof))
   { cl=match.call()
@@ -307,7 +292,7 @@ MemPCA<-function(M,WX=rep(1,M$grd$ndof))
 #'@description
 #' open two screens for 3D-plots by two_draw3d()
 #' @param x,y dimensions in pixels
-#' @return variables MemRBC_env$M.scr1 and MemRBC_env$M.scr2 are set
+#' @return variables MemRBC_env$M.scr1 and MemRBC_env$M.scr2 are set to device ids
 #' @examples
 #' two_screens3d(x=650,y=300)
 #' @export
@@ -323,10 +308,11 @@ two_screens3d<-function(x=400,y=400){
 #' @param A coefficients to use for plot
 #' @param M the input membrane with $grid and $bas matching A
 #' @param cont (=FALSE) draw gridlines u=const, v=const
-#' @param x,y dimensions in pixels#' 
+#' @param x,y dimensions in pixels'
+#' @param title title text for rgl::title3d()'
 #' @return -
-#' @examples
-#' data("M4",package = "MemRBC")
+#' @examplesIf exists("L_Ylm")
+#' data("M4",package = "MemRBC",envir=environment())
 #'  # perturb original coefficients
 #' A <- pertA_Gauss(M4$A, M4$bas, sd=0.2)
 #' two_screens(); two_draw3d(A, M4)
@@ -351,34 +337,18 @@ if(cont){    rgl::contourLines3d(O,grd$U,nlev=15,lwd=1)
   }
 }
 
-#' PlotA
-#'@description
-#' plot coefficients in matplot. 
-#' Black, red, green for X, Y, Z coefficients.
-#'
-#' @param M membrane to plot spectral coefficients M$A from
-#' @param bar (=TRUE) for L-levels to be color-plotted (bar at y=0)
-#' @param scale_up (=TRUE) plot A scaled-up by sqrt(bas$G.tk)
-#' @examples
-#' data("M4",package = "MemRBC");SetParams(M4)
-#' PlotA(M4,scale_up=FALSE)
-#' @export
-PlotA<-function(M,bar=TRUE,scale_up=TRUE,...)
-{
-  plotA_l(M$A,M$bas,bar=bar,scale_up=scale_up,ylab=yl,...)
-}
-
 #' update
 #' @description
 #' update data in membrane object
-#' @param M the input membrane to be updated
+#' @param object the input membrane to be updated
 #' @param what vector of character from "dA", "Quantities", "Basis", "Grid", "Ref", "curv", "SCM", "X", "SEN", "Mask", "Time", "Mask"
 #' @param n for what="Grid": new number of grid points
 #' @param L for what="Basis": spectral order L
+#' @param ... not used
 #' @return updated membrane object
-#' @examples
+#' @examplesIf exists("L_Ylm")
 #' get_data_ZENODO(L="M_stomatocyte_L12.rda")
-#' data("M_stomatocyte_L12",package = "MemRBC")
+#' data("M_stomatocyte_L12",package = "MemRBC",envir=environment())
 #' update(M_stomatocyte_L12,"X")->M
 #' plot3d(M$X, aspect=FALSE)
 #' # make lower spectral order membrane from M
@@ -387,19 +357,19 @@ PlotA<-function(M,bar=TRUE,scale_up=TRUE,...)
 #' rgl::open3d(); plot(L8)
 #' Quantities(L8)
 #' Energy(L8)
+#' @export update.MemRBC
 #' @export
-update.MemRBC <- function(M, what=c("dA","Quantities","X"),n=(L+1)*5+2,L=5)
-{
+update.MemRBC <- function(object, what=c("dA","Quantities","X"),n=(L+1)*5+2,L=5,...)
+{ M<-object
   if("Grid" %in% what){
     grd=MakeGrid_GaussLegendreSimpson(n*L);
     M$grd=grd;
     M$mass=NULL;M$Ref=NULL
     what=c(what,"Basis")
   }
-  
   if("curv" %in% what)
-  {q=E_SCM(M$A,M$grd,M$bas,updateX(M$A,M$grd,M$bas))$curv
-   M$curv=q;}
+   {q=E_SCM(M$A,M$grd,M$bas,updateX(M$A,M$grd,M$bas))$curv
+    M$curv=q;}
   if("curv_sq" %in% what)
   {q=E_SCM(M$A,M$grd,M$bas,updateX(M$A,M$grd,M$bas))$curv_sq
    M$curv_sq=q;}
@@ -441,14 +411,6 @@ update.MemRBC <- function(M, what=c("dA","Quantities","X"),n=(L+1)*5+2,L=5)
   if ("Obj" %in% what)
   { #  the following update
   X2Obj(M$grd$Obj,updateX_only(M$A,M$grd,M$bas)$X)->M$grd$Obj
-  # make Obj invalid for plot(M):
-  #   C=updateX(M$A,M$grd,M$bas)
-  #   M$grd$Obj=X2Obj(M$grd$Obj,C$X)
-  #  M$grd$Obj=Rvcg::vcgUpdateNormals(M$grd$Obj)
-  #   if (is.null(M$grd$ObjQ)) Obj2ObjQ(M$grd$Obj,M$grd)->Q else Q=M$grd$ObjQ
-  #   X2ObjQ(Q,C$X)->Q
-  #   Q$normals=M$grd$Obj$normals # no normals to Q; only for wire3d!
-  #   M$grd$ObjQ=Q
   }
   if("dA" %in% what) {
    if (!is.null(M$dA)) q=M$dA else
@@ -471,9 +433,9 @@ update.MemRBC <- function(M, what=c("dA","Quantities","X"),n=(L+1)*5+2,L=5)
     M$C=C;class(M$C)="MemC"
   }
   if("Class" %in% what)
-  {class(M$bas) = "MemBas"
-   class(M$A)   = "MemA"
-   class(M$grd) = "MemGrd"
+  {if (!is.null(M$Bas)) class(M$bas) = "MemBas"
+   if (!is.null(M$A))   class(M$A)   = "MemA"
+   if (!is.null(M$grd)) class(M$grd) = "MemGrd"
    if (!is.null(M$Ref)) class(M$Ref) = "MemRef"
    }
   
@@ -489,10 +451,18 @@ update.MemRBC <- function(M, what=c("dA","Quantities","X"),n=(L+1)*5+2,L=5)
 #' save_MemRBC
 #'@description
 #' save membrane object M to file
-#' erases data from basis M$bas (recomputed when loaded back)
+#' erases data from basis M$bas (some recomputed when loaded back)
+#' LA entries get class "MemA" (for older files)
 #' @param M The input membrane to be saved
-#' @examples
-#' data("M4",package = "MemRBC")
+#' @param file  (="MemRBC.rdat") the filename for saving
+#' @param reduce_basis (=TRUE) removes derivative data of basis functions
+#' @param thinLA (=TRUE) removes additional attributes in LA coeff records
+#' @param thinA (=TRUE) removes additional attributes in coeffs A
+#' @param thinbas (=TRUE) removes IM matrix from basis
+#' @param qs2 (=FALSE) for faster save in .qs2 file use this. In this case, ".qs2" is appended on filename.
+#' @return name of saved file
+#' @examplesIf exists("L_Ylm")
+#' data("M4",package = "MemRBC",envir=environment())
 #' MMC(M4,10)->M
 #' save_MemRBC(M,"Mmmc.rdat")
 #' @export
@@ -504,16 +474,28 @@ save_MemRBC<-function (M, file = "MemRBC.rdat",
   if (reduce_basis)
     M$bas$Ylm_u = M$bas$Ylm_v = M$bas$Ylm_uu = M$bas$Ylm_vv = M$bas$Ylm_uv = NULL
   if(thinLA) M$LA=thin_LA(M$LA)
+  M$LA=lapply(M$LA,function(x) class(x)="MemA")
   if(thinA) {attr(M$A,"IM")<-NULL;attr(M$A,"Fit spatial weights")<-NULL}
   if(thinbas) M$bas$IM<-NULL
   M <- StoreParams(M)
+  M <- update(M,"Class")
   cat(crayon::cyan("stored Params in saved object are:\n"))
   print(unlist(M$Params))
   if (qs2) qs2::qs_save(M, file = paste(file,"qs2",sep=".") )
   else save(M, file = file)
+  return(file)
 }
 
-#' thin_LA
+
+#' erase several attributes from coefficients
+#' Only dim and dimnames are preserved.
+#' If inversion matrix IM is attribute to M$A, it will be erased.
+#' @param M MemRBC membrane object
+#' @return MemRBC object, with fewer attributes
+#' @examples
+#' data(M4)
+#' thin_LA(M4)->M4l
+#' @export
 thin_LA<-function(M){
   M$LA<-lapply(M$LA,function(x){n=names(attributes(x));attributes(x)[!(n %in% c("dim","dimnames"))]<-NULL;x})
   attr(M$A,"IM") <- NULL
@@ -522,15 +504,17 @@ thin_LA<-function(M){
 }
 
 #' load_MemRBC
-#'@description
-#' load membrane object from file and set global data from object
+#' @description
+#' load membrane object from file and set global parameter data from object
+#' @param file filename to load data from
+#' @param qs2 TRUE if file has ending .qs2, FALSE otherwise, or set by user
 #' @return the membrane object loaded from file with $Params to set globally
-#' @examples
+#' @examplesIf exists("L_Ylm")
 #' M<-load_MemRBC("Mmmc.rdat",qs2=FALSE) # may also have saved with qs2=TRUE
 #' M
 #' @export
-load_MemRBC<-function (file = "MemRBC.rdat", qs2 = FALSE)
-{
+load_MemRBC<-function (file = "MemRBC.rdat", qs2 = length(grep("qs2$",file)==1))
+{ 
   if (file.exists(file))
     if (qs2)
       M = qs2::qs_read(file)
@@ -540,21 +524,18 @@ load_MemRBC<-function (file = "MemRBC.rdat", qs2 = FALSE)
   if (is.null(M$bas$Ylm_u))
     M <- FillBasis_MemRBC(M)
   if (!is.null(M$Sample))
-    if (!"Id" %in% names(M$Sample))
+    if (!"Id" %in% names(M$Sample)) # correct missing Id data
       M$Sample$Id <- 1
   if (is.null(M$Params)) {
     cat(crayon::red("No $Params found, now filled from environment\n"))
     M <- StoreParams(M)
-  }
-  else SetParams(M)
-  if (is.null(M$bas$Pointymmetry))
-    M$bas$Pointymmetry = FALSE
+  } else SetParams(M)
+  if (is.null(M$bas$Pointymmetry)) M$bas$Pointymmetry = FALSE # assume no point symmetry
   return(M)
 }
 
 # recompute the basis (if deleted on save_MemRBC)
 # not needed, see update(M,"Basis")
-
 FillBasis_MemRBC<-function(M)
 {  bas=M$bas; L_max=bas$L_max
     u=M$grd$u;v=M$grd$v
@@ -574,7 +555,7 @@ FillBasis_MemRBC<-function(M)
 
 #' set_A_to_Ref
 #'@description
-#' copy reference shape coefficients to current coeffs.
+#' copy reference shape coefficients $ARef to current coeffs $A.
 #' @param M membrane object to copy coefficients into
 #' @return modified M2 with new coefficients from M$ARef; spectral order remains unchanged
 #' @export
@@ -593,16 +574,17 @@ set_A_to_Ref<-function(M)
 #' copy coefficients from one membrane to another
 #' @param M1 membrane object to copy coefficients from
 #' @param M2 membrane object to copy coefficients into
+#' @param plt (=FALSE) TRUE for a 3d plot of resulting shape
 #' @return modified M2 with new coefficients
-#' @examples
-#' \dontrun{
-#' data("M4",package = "MemRBC")
-#' data("SS",package = "MemRBC")
+#' @examplesIf exists("L_Ylm")
+#' data("M4",package = "MemRBC",envir=environment())
+#' get_data_ZENODO("SS.rda")
+#' data("SS",package = "MemRBC",envir=environment())
 #' transplant(SS,M4)->SSmod
 #' SSmod
-#' }
+#' 
 #' @export
-transplant<-function(M1,M2,plt=FALSE)
+transplant <- function(M1,M2,plt=FALSE)
 { i=intersect(rownames(M1$A),rownames(M2$A))
   M2$A[]=0;
   M2$A[i,]=M1$A[i,];
@@ -619,15 +601,16 @@ transplant<-function(M1,M2,plt=FALSE)
 #'@description
 #' Store current MemRB_env membrane parameters in $Param of the object; useful for load and save
 #' @param M Membrane to store actual parameters like MemRBC_env$M.0, M.K_ADE etc. into
+#' @return MemRBC object, with Params from `MemRBC_env` 
 #' @export
 StoreParams <- function(M)
 {
-  M$Params=list(M.C0=MemRBC:::MemRBC_env$M.C0,M.K_b=MemRBC:::MemRBC_env$M.K_b,
-                M.K_ADE=MemRBC:::MemRBC_env$M.K_ADE,
-                M.mu=MemRBC:::MemRBC_env$M.mu,M.Ka=MemRBC:::MemRBC_env$M.Ka,
-                M.a2=MemRBC:::MemRBC_env$M.a2,M.a3=MemRBC:::MemRBC_env$M.a3,
-                M.a4=MemRBC:::MemRBC_env$M.a4,M.b0=MemRBC:::MemRBC_env$M.b0,
-                M.b1=MemRBC:::MemRBC_env$M.b1,M.b2=MemRBC:::MemRBC_env$M.b2)
+  M$Params=list(M.C0=MemRBC::MemRBC_env$M.C0,M.K_b=MemRBC::MemRBC_env$M.K_b,
+                M.K_ADE=MemRBC::MemRBC_env$M.K_ADE,
+                M.mu=MemRBC::MemRBC_env$M.mu,M.Ka=MemRBC::MemRBC_env$M.Ka,
+                M.a2=MemRBC::MemRBC_env$M.a2,M.a3=MemRBC::MemRBC_env$M.a3,
+                M.a4=MemRBC::MemRBC_env$M.a4,M.b0=MemRBC::MemRBC_env$M.b0,
+                M.b1=MemRBC::MemRBC_env$M.b1,M.b2=MemRBC::MemRBC_env$M.b2)
   return(M)
 }
 
@@ -636,6 +619,7 @@ StoreParams <- function(M)
 #' Set parameters from membrane object to MemRBC_env variables
 #'  since data(...) cannot load multiple global data, after data() you should call SetParams on the loaded object.
 #' @param M Object to take parameters from (stored in M$Params)
+#' @return -
 #' @export
 SetParams<-function(M)
 {
@@ -658,10 +642,12 @@ Replay<-function(M)
 #'@description
 #' plot the curvature-energy-data sampled from MMC.
 #' @param M membrane object with $Sample keeping the MMC recorded data
+#' @param last : integer, how many data from the tail should be plotted
 #' @param title title of the plot, placed in separate box
+#' @param ... further plot parameters
 #' @return -
-#' @examples
-#' data("M4",package = "MemRBC")
+#' @examplesIf exists("L_Ylm")
+#' data("M4",package = "MemRBC",envir=environment())
 #' MMC(M4,1000)->M4mmc
 #' PlotSample(M4mmc)
 #' @export
@@ -692,7 +678,6 @@ title(xlab = "C", cex.lab = 1,
 plot(0,axes=FALSE,col=0,xlab="",ylab="")
 title(title)
 par(mfrow=c(1,1),mar=c(4,3.5,1,0))
-invisible()
 }
 
 #' PlotLSeries
@@ -700,9 +685,11 @@ invisible()
 #' plot series of shapes from a single object.
 #' This visualizes truncation effects on shape and energy.
 #' @param M membrane object to plot truncation series from
-#' @param nr,nc (=4,=3) number of rows and columns on screen
-#' @examples
-#' data("M4",package = "MemRBC")
+#' @param nr,nc (=4,=3) number of rows and columns of sub-plots on screen
+#' @param ... parameters plot function 
+#' @return -
+#' @examplesIf exists("L_Ylm")
+#' data("M4",package = "MemRBC",envir=environment())
 #' M4
 #' PlotLSeries(M4,2,3)
 #' @export
@@ -724,10 +711,11 @@ PlotLSeries<-function(M,nr=4,nc=3,...)
 #'
 #' @param C0 (=-3) spontaneous curvature to create shape for (usually <0)
 #' @param A0,V0 (=140,=100) target values for constraints on area and volume
+#' @return MemRBC object
 #' @export
 FitStomatocyte_L5<- function(C0=-3,A0=140,V0=100)
 { MemRBC_env$M.C0<-C0
-  data("M4",package = "MemRBC")
+  data("M4",package = "MemRBC",envir=environment())
   S=M4
   {
   n.grd=25
@@ -796,12 +784,12 @@ for (k in 1:3) Mflat[,k]=t(M[,,k])
 #' off (mu=Ka=0).
 #' This is a long-runner over 2800 PSD steps
 #' @param C0 (=2.562) Undustick spontaneous curvature
-#' @param Vp (=85.66) Undustick volume, which is reduced volume 0.55
-#' @return mebrane object of prolate shape to be optimized further, e.g. for Undustick
+#' @param V0 (=85.66) Undustick volume, which is reduced volume 0.55
+#' @return MemRBC object of prolate shape to be optimized further, e.g. for Undustick
 #' @export
 FitProlate_Ellipsoid_L5<- function(C0=2.562,V0=85.66)
 { 
-  data("M4", package = "MemRBC")
+  data("M4", package = "MemRBC",envir=environment())
   SetParams(M4)
   MemRBC_env$M.C0<-C0
   MemRBC_env$M.K_ADE<-MemRBC_env$M.mu<-MemRBC_env$M.Ka<-0
@@ -888,15 +876,14 @@ return(S3)
 #' @param C0 (=-3) C0-value to use for initial minimization
 #' @param V0 (=100) target value of volume
 #' @param dt (=1e-3) time step in PNEM minimizer
-#' @return membrane object
-#' @examples
-#' if(exists("L_Ylm")) { # in cran tests this sometimes would fail
+#' @return MemRBC object
+#' @examplesIf exists("L_Ylm")
 #' FitStomatocyte_L(L=4,C0=0.5)->M
-#' plot(M)} 
+#' plot(M)
 #' @export
 FitStomatocyte_L<- function(L=7,C0=-3,V0=100,dt=1e-3)
 { MemRBC_env$M.C0<-C0
-  data("M4" ,package = "MemRBC")
+  data("M4" ,package = "MemRBC",envir=environment())
   M4$bas$Target["Volume"]=V0
   t0=proc.time()
   cl=match.call()
@@ -975,13 +962,15 @@ for (k in 1:3) Mflat[,k]=t(M[,,k])
 #' FitDiscocyte_L5
 #'@description
 #' Fit a discocyte from data, spectral order L=5
-#' @param C0 C0-value to use for initial minimization
-#' @return membrane object
+#' @param C0 (=0) C0-value (spontaneous curvature) to use for initial minimization
+#' @param V0 (=100) target volume to use
+#' @return MemRBC object
 #' @export
 FitDiscocyte_L5<- function(C0=0,V0=100)
 {
-  data("M4",package = "MemRBC")
+  data("M4",package = "MemRBC",envir=environment())
   SetParams(M4)
+  bas=M$bas
   MemRBC_env$M.0<-C0
   S=M4
   {
@@ -1010,7 +999,6 @@ FitDiscocyte_L5<- function(C0=0,V0=100)
     C=updateX(A,grd,bas)
     rgl::clear3d();plot3b(C$X,grd)
   }
-
   E_SCM(A,grd,bas,C,plt=TRUE) -> H2
   (area0=H2$Area) # starting area; area is free, vol0, curv0 rescaled by R0
   (R0=sqrt(area0/4/pi))
@@ -1041,6 +1029,9 @@ FitDiscocyte_L5<- function(C0=0,V0=100)
   return(S1pnem)
 }
 
+#' filter for largest coeff. per lm row
+#' @param A,bas coefficient matrix ans basis
+#' @return sparsified coefficient matrix
 #' @export
 Filter_1_per_lm<-function(A,bas)
 { # filter for largest magnitude entry per (X,Y,Z)
@@ -1062,8 +1053,8 @@ non_sparsity_cost<-function(A,bas,thresh=1e-12)
 #' For diagnosis, the energy values before and after Sparsify and other diagnostics are returned.
 #' @param M membrane object to sparsify coefficients
 #' @return membrane object, with diagnosis results in $Sparse; drop_norm reports the L2-norm of all zeroed out coefficients.
-#' @examples
-#' data("M4",package = "MemRBC")
+#' @examplesIf exists("L_Ylm")
+#' data("M4",package = "MemRBC",envir=environment())
 #' Sparsify(M4) -> M_sparse
 #' 
 #' M_sparse$Sparse
@@ -1084,15 +1075,16 @@ Sparsify<- function(M)
 }
 
 #' PlotRef
-#'@description
+#' @description
 #' plot SEN reference shape from membrane object
 #' @param M membrane object to plot SEN reference shape from
-#' @param Aref optional coefficients, eg if the objects ARef is not working
-#' @examples
-#' data("M4",package = "MemRBC")
+#' @param ARef optional coefficients, eg if the objects ARef is not working
+#' @return -
+#' @examplesIf exists("L_Ylm")
+#' data("M4",package = "MemRBC",envir=environment())
 #' PlotRef(M4)
 #' @export
-PlotRef<-function(M,ARef=M$Ref$ARef)
+PlotRef<-function(M,ARef=M$ARef)
 {
   rgl::clear3d()
   plot3b(updateX(ARef,M$grd,M$bas)$X,M$grd)
@@ -1103,8 +1095,10 @@ PlotRef<-function(M,ARef=M$Ref$ARef)
 #'@description
 #' plot recorded energies from PNEM runs
 #' @param M membrane object to plot energies from
-#' @examples
-#' data("M4",package = "MemRBC")
+#' @param from,to (=1), (=length) range of indices to plot data sets for 
+#' @return -
+#' @examplesIf exists("L_Ylm")
+#' data("M4",package = "MemRBC",envir=environment())
 #' PNEM(M4,1000)->M
 #' PNEMVM(M,1000)->M1
 #' PlotPNEM(M1)
@@ -1146,8 +1140,9 @@ PlotPNEM<-function(M,from=1,to=length(M$C_PNEM))
 #' @param M membrane object to plot PSD recorded energies from
 #' @param lastE (length M$E_PSD) number of trailing energy points to plot
 #' @param lastC (=lastE) number of trailing curvature points to plot
-#' @examples
-#' data("M4",package = "MemRBC")
+#' @return -
+#' @examplesIf exists("L_Ylm")
+#' data("M4",package = "MemRBC",envir=environment())
 #' PSD(M4,1000) -> M
 #' PSDC(M, curv=Curv(M), 1000) -> M1
 #' PlotPSD(M1, lastE=750)
@@ -1188,16 +1183,16 @@ data_MemRBC<-function(name)
   assign(name,load_MemRBC(paste(system.file(package = "MemBRC"),"data/",name,".rda",sep="")),envir = parent.env(environment()))
 }
 
-#' Rewind
-#'@description
-#' rewind coefficients in M$A by n records from the list of recorded coeffs M$LA
-#'  - practically you do the same with
-#'  M$A=M$LA[[length(M$LA)-n]]
+#' Rewind to set coefficient M$A by n records back from end of list of recorded coeffs M$LA
+#' - practically you do the same with
+#' M$A=M$LA[[length(M$LA)-n]]
+#' ATTENTION: while M$A usually holds the lasrt coefficients from an App
+#'  last entries in LA hold older coeffs, in particular if LAfreq>1 in the last App call 
 #' @param M membrane object with list $LA of recorded coefficients
 #' @param n (=1) how many records to rewind?
-#' @return membrane object with M$A set to LA[[lengh(LA)-n]]
+#' @return membrane object with M$A set to `LA[[lengh(LA)-n]]`
 #' @export
-Rewind<-function(M,n=1)
+Rewind<-function(M, n=1)
 { if (n<length(M$LA))
    M$A=M$LA[[length(M$LA)-n]] else message("no rewind; n too large\n")
   return(M)
@@ -1218,7 +1213,7 @@ Rewind<-function(M,n=1)
 #'  which drastically reduces the representable shape space.
 #' @param M membrane object to change
 #' @return modified M with reduced basis, but $Ref unchanged.
-#' @examples
+#' @examplesIf exists("L_Ylm")
 #' #download data with 
 #' if (interactive()) {
 #' get_data_ZENODO(L="U17R.rda",local=TRUE)
@@ -1250,7 +1245,7 @@ ReduceM1<-function(M)
 #' GEMINI_Obj_Obj_Intersect
 #' @description
 #' this code from GEMINI intends to locate spatial intersections of 3D-objects
-#' @param S1, S2 MemRBC objects; S2=S1 is used for self-intersections
+#' @param S1,S2 MemRBC objects; S2=S1 is used for self-intersections
 #' @return boolean, TRUE if intersection is probable
 #' @export
 GEMINI_Obj_Obj_Intersect <- function (S1, S2 = S1)
@@ -1321,37 +1316,46 @@ GEMINI_Obj_Obj_Intersect <- function (S1, S2 = S1)
 
 #' GEMINI_Intersect_Mem_Mem
 #' @description
-#' translate membrane data to 3D objects and check for intersection
+#' compute from membrane data the 3D objects and check for intersection
 #' (experimental, not checked intensively).
-#' @param M1,M2 MemRBC membrane objects
+#' @param M1,M2 (M2=M1 for self-intersection) MemRBC membrane objects
 #' @return TRUE, if M1 and M2 are intersecting; else: FALSE
 #' @export
 GEMINI_Intersect_Mem_Mem<-function(M1,M2=M1)
 {return(GEMINI_Obj_Obj_Intersect( update(M1,"Obj")$grd$Obj,update(M2,"Obj")$grd$Obj))
 }
 
+#' add coefficients
+#' @param m1,m2 MemRBC objects to add
+#' @return result MemRBC object
 #' @export
 "+.MemRBC"<-function(m1,m2)
 { rn=intersect(rownames(m1$A),rownames(m2$A))
   m1$A[rn,]=m1$A[rn,]+m2$A[rn,];
   message("added in m1 ",rn,"\n");return(m1)}
 
+#' subtract coefficients
+#' @param m1,m2 MemRBC objects for M1$A-M2$A
+#' @return result MemRBC object with coeffs difference
 #' @export
 "-.MemRBC"<-function(m1,m2)
 {rn=intersect(rownames(m1$A),rownames(m2$A))
  m1$A[rn,]=m1$A[rn,]-m2$A[rn,];
  message("subtracted from m1 ",rn,"\n");return(m1)}
 
+#' scale coefficients by a scalar
+#' @param a,b scalar and MemRBC object for a*b$A (or the other way round)
+#' @return result MemRBC object with scaled coeffs
 #' @export
 "*.MemRBC"<-function(a,b)
-{if (is(a,"MemRBC") & is.numeric(b)) {a$A=a$A*b;return(a)}
- if (is(b,"MemRBC") & is.numeric(a)) {b$A=b$A*a;return(b)}
+{if ( is.numeric(b)) {a$A=a$A*b;return(a)}
+ if ( is.numeric(a)) {b$A=b$A*a;return(b)}
  warning("not correct types - return NULL")
 return(NULL)
 }
 
-GEMINI_rvcg_kdtree_candidates <- function(meshA, meshB) {
 
+GEMINI_rvcg_kdtree_candidates <- function(meshA, meshB) {
   # 1. Calculate a safe search radius
   # A safe r is the maximum distance from a triangle centroid to its furthest vertex
   # For simplicity, we can use the average edge length or a small user-defined epsilon
@@ -1394,66 +1398,158 @@ GEMINI_rvcg_kdtree_candidates <- function(meshA, meshB) {
   return(unique(candidates))
 }
 
+
+
+#' print
+#' @description
+#' print metadata from membrane object class MemRBC
+#' @param x Membrane to print data from
+#' @param ... not used
+#' @export print.MemRBC
 #' @export
-print.MemA<-function(A,...)
-{
-   cat("MemA Coefficient object of size ",dim(A)[1],"x",dim(A)[2],"\n")
-   cat("C0",attr(A,"C0"),"\t") 
-   cat("A0",attr(A,"A0"),"\t") 
-   cat("V0",attr(A,"V0"),"\n")
-   cat("E",attr(A,"E"),"\n")
-   cat("attributes:\n",names(attributes(A)),"\n")
-}
-#' @export
-print.MemGrd<-function(G,...)
-{
-  cat("MemGrid object of ndof ",G$ndof,"\n")
-  cat(G$comment,"\n")
-  cat("Angles arrays dimension:",dim(G$u),"\n")
-  cat("range u",range(G$u)," \nrange v",range(G$v),"\n")
+print.MemRBC<-function(x,...){
+  cat("MembraneRBC Object:","\n")
+  cat("object size ",object.size(x))
+  cat("ndof_grid=",x$grd$ndof," [",x$grd$nu,"x",x$grd$nv,"]\n")
+  if(!is.null(x$bas$Ylm_u))
+  {cat("L=",x$bas$L_max,", coeff. rows",x$bas$Ai_max,"\n")
+    cat(x$bas$Nc," constraints target:\n");
+    print(x$bas$Target)
+    cat("Membranes recent coefficients A computed at C0=",attr(x$A,"C0"),"\n")
+    if (!rlang::is_named(x$bas$Target)) message("Object constraint $Target is unnamed!")
+    cat("quantities for current coeffs A: Area",Area(x)," Volume",Volume(x)," Curv",Curv(x),"\n")
+  } else cat(crayon::cyan("The Basis in this Membrane is reduced to X!\nUse update(M,\"Basis\") to recreate.\n"))
+  if (!is.null(x$LA)) cat("List of coeffs LA length:",length(x$LA),"\n")
+  
+  if (!is.null(x$kT)) cat("MMC kT:",x$kT,"\n")
+  
+  if (!is.null(x$visc)) if(length(c(x$visc))==1) cat("PNEM viscosity:",x$visc,"\n")
+  else cat("PNEM viscosity (head of diag of matrix)",diag(x$visc)[1:6],"\n")
+  if (!is.null(x$rho)) cat("PNEM mass density:",x$rho,"\n")
+  if (!is.null(x$Sample)) cat("MMC Samples:",dim(x$Sample)[1],"\n")
+  if (!is.null(x$proc_time)) cat("Membrane has overall process time ",x$proc_time,"\n") else cat("Membrane has no process_time recorded.\n")
+  if (!is.null(x$comment)) cat("Membrane comment ",x$comment,"\n") else cat("Membrane has no comment.\n")
+  cat("Membrane has a history of length ",length(x$history),"\n")
+  if(is.null(x$Params)) cat(crayon::red("No Parameters - inject by StoreParams(M)->M\n")) else {
+    ul=unlist(x$Params); cat("Params:\n"); print(ul)
+  }
 }
 
+
+#' print some coefficient metadata class MemA
+#' @param x coefficient matrix object class "MemA"
+#' @param ... not needed
+#' @return -
+#' @export print.MemA
 #' @export
-print.MemC<-function(C,...){
+print.MemA<-function(x,...)
+{
+   cat("MemA Coefficient object of size ",dim(x)[1],"x",dim(x)[2],"\n")
+   cat("C0",attr(x,"C0"),"\t") 
+   cat("A0",attr(x,"A0"),"\t") 
+   cat("V0",attr(x,"V0"),"\n")
+   cat("E",attr(x,"E"),"\n")
+   cat("attributes:\n",names(attributes(x)),"\n")
+   invisible(x)
+}
+
+#' print some grid metadata
+#' @param x grid object
+#' @param ... not needed
+#' @return -
+#' @export print.MemGrd
+#' @export
+print.MemGrd<-function(x,...)
+{
+  cat("MemGrid object of ndof ",x$ndof,"\n")
+  cat(x$comment,"\n")
+  cat("Angles arrays dimension:",dim(x$u),"\n")
+  cat("range u",range(x$u)," \nrange v",range(x$v),"\n")
+  invisible(x)
+}
+
+#' print some coordinate object metadata class MemC
+#' @param x coordinate object of class "MemC", like from `updateX()`
+#' @param ... not needed
+#' @return -
+#' @export print.MemC
+#' @export
+print.MemC<-function(x,...){
   cat("MemC coordinate object \n")
-  cat("X    : ",dim(C$X),"\n")
-  cat("Xu ...: ",dim(C$X_u),"\n")
+  cat("X    : ",dim(x$X),"\n")
+  cat("Xu ...: ",dim(x$X_u),"\n")
+  invisible(x)
 }
 
+#' print some coordinate object metadata, where only X is set (class MemC_X)
+#' @param x grid object of class "MemC_X"
+#' @param ... not needed
+#' @return -
+#' @export print.MemC_X
 #' @export
-print.MemC_X<-function(C,...){
+print.MemC_X<-function(x,...){
   cat("MemC coordinate only object \n")
-  cat("X    : ",dim(C$X),"\n")
+  cat("X    : ",dim(x$X),"\n")
+  invisible(x)
 }
 
+#' print some basis metadata class MemBas
+#' @param x basis object of class "MemBas"
+#' @param ... not needed
+#' @return -
+#' @export print.MemBas
 #' @export
-print.MemBas<-function(B,...){
+print.MemBas<-function(x,...){
   cat("MemBas basis functions object \n")
-  cat("Yml      : ",dim(B$Ylm),"\n")
-  cat("Yml_u ...: ",dim(B$Ylm_u),"\n")
+  cat("Yml      : ",dim(x$Ylm),"\n")
+  cat("Yml_u ...: ",dim(x$Ylm_u),"\n")
+  invisible(x)
 }
 
+#' print some Reference metadata class MemRef
+#' @param x grid object of class MemRef as create e.g. by `MakeRef()`
+#' @param ... not needed
+#' @return -
+#' @export print.MemRef
 #' @export
-print.MemRef<-function(R,...)
+print.MemRef<-function(x,...)
 {
-  cat("MemRef memory size",object.size(R),"\n")
-  cat("length tgi ",length(R$tgi),"\n")
-  cat("length giPrep ",length(R$giPrep),"\n")
-  
+  cat("MemRef memory size",object.size(x),"\n")
+  cat("length tgi ",length(x$tgi),"\n")
+  cat("length giPrep ",length(x$giPrep),"\n")
+ invisible(x)  
 }
 
+#' print some SCM Energy metadata class MemESCM
+#' @param x Energy object class "MemESCM"
+#' @param ... not needed
+#' @return -
+#' @export print.MemESCM
 #' @export
-print.MemESCM<-function(E,...)
+print.MemESCM<-function(x,...)
 {
-  cat("MemESCM energy Wb ",E$Wb,"\n")
-  cat("length F ",length(E$FF),"\n")
-  cat("length dA ",length(E$dA),"\n")
-  
+  cat("MemESCM energy Wb ",x$Wb,"\n")
+  cat("length F ",length(x$FF),"\n")
+  cat("length dA ",length(x$dA),"\n")
+  invisible(x)
 }
+
+
+
+#' Plot coefficients by matplot(). 
+#' Colors black, red, green for X, Y, Z coefficients.
+#' @param M membrane to plot spectral coefficients M$A from
+#' @param bar (=TRUE) for L-levels to be color-plotted (bar at y=0)
+#' @param scale_up (=TRUE) plot A scaled-up by sqrt(bas$G.tk)
+#' @param ... parameters handed to matplot
+#' @return -
+#' @examplesIf exists("L_Ylm")
+#' data("M4",package = "MemRBC",envir=environment());
+#' SetParams(M4)
+#' PlotA(M4,scale_up=FALSE)
 #' @export
-UpdateM<-function(M)
-{class(M$bas) = "MemBas"
- class(M$A)   = "MemA"
- class(M$grd) = "MemGrd"
- return(M)
-}
+PlotA<-function(M, bar=TRUE, scale_up=TRUE,...)
+{  plotA_l(M$A, M$bas, bar=bar, scale_up=scale_up, ...) }
+
+
+# no more

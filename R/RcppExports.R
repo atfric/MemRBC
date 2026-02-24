@@ -5,7 +5,3 @@ your_function <- function(m) {
     .Call('_MemRBC_your_function', PACKAGE = 'MemRBC', m)
 }
 
-SRC_GEMINI_get_cotan_Laplacian_cxx <- function(mesh) {
-    .Call('_MemRBC_SRC_GEMINI_get_cotan_Laplacian_cxx', PACKAGE = 'MemRBC', mesh)
-}
-

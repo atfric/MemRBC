@@ -16,28 +16,28 @@
 #' run ALM on an existing membrane object to adjust shape to target curvature, minimizing the residual norm RN.
 #' @param M The input membrane with initial data and reference
 #' @param curv target curvature
-#' @param nsteps number of MMC steps to be run
+#' @param nsteps (=10) number of MMC steps to be run
 #' @param plt (boolean) for plotting
+#' @param ncores (=4) number of parallel cores tu use
+#' @param LAfreq (=5) frequency of recording coeffs A to LA
 #' @param method "SLSQP" for internal nloptr minimizer
-#' @param kTfreq frequency for cooling factor applied on kT
+#' @param maxiter_solver (=100) max. solver iterations
 #' @return membrane object with updates from MMC with data:
 #' @return LA: list of recorded coefficients A
 #' @return A: last coefficients
 #' @return M.mu: last mu value
 #' @return M.lam: last lambda vector
 #' @return history: history of App-calls that created the result
-#' @examples
-#'  if(exists("L_Ylm")) # in --as-cran example tests L_Ylm sometimes vanishes
-#'  { 
+#' @examplesIf exists("L_Ylm")
 #' MemRBC_env$M.C0<-0
 #' M <- MakeStandardRBC(L=3,C0=0)
 #' plot(M,alpha=0.6)
 #'  M <- ALM(M,curv=Curv(M)+2,10,ncores=2)
 #' plot(M,alpha=0.6,col="red")
 #' M
-#' } else cat(crayon::blue("ALM examples not tested\n"))
 #' @export
-ALM<-function(M, curv, nsteps=10,plt=TRUE,method="SLSQP",maxiter_solver=100,ncores=4,LAfreq=15)
+ALM<-function(M, curv, nsteps=10,plt=TRUE,method="SLSQP",
+              maxiter_solver=100,ncores=4,LAfreq=5)
 {
  # energy and gradient for the solver:
  f_list_auglag=function(Ain,grd,bas,Ref1) #  needs bas, grd, Ref1 as global objects
@@ -67,7 +67,6 @@ AugLag_Step=function(A,tau=1.8,eta=1e-3,prec=1e-4,method="SLSQP",curv,maxiter_so
                      "xtol_rel"= prec,
                      "xtol_abs"= prec,
                      "maxeval" = maxiter_solver,
-
                      "print_level" = 0 )
   res_opt<-nloptr::nloptr( x0=c(A),
                    #      ub= rep(50/sqrt(bas$G.tk),3),
@@ -82,7 +81,7 @@ AugLag_Step=function(A,tau=1.8,eta=1e-3,prec=1e-4,method="SLSQP",curv,maxiter_so
   RN=pracma::Norm(R)
   cat("\nALM: Cons:",R,":RN:",RN,"\n")
   # here is the central augmented lagrangian update of lambda and mu
-  if ( (RN)<eta ) MemRBC_env$M.lam<-M.lam + MemRBC_env$M.muk*R else MemRBC_env$M.muk<-M.muk*tau
+  if ( (RN)<eta ) MemRBC_env$M.lam<-MemRBC_env$M.lam + MemRBC_env$M.muk*R else MemRBC_env$M.muk<-MemRBC_env$M.muk*tau
 
   cat("\nChange Norm:",pracma::Norm(res_opt$x0-res_opt$solution),":|R|:",crayon::red(RN),":I:",crayon::red(res_opt$iterations),":S:", res_opt$status,":M:",res_opt$message,"\n")
 

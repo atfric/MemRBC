@@ -25,16 +25,18 @@
 #' without modifying the SEN reference.
 #' rotUV may help to move poles to Z-axis or for more homogeneous distribution of spatial points.
 #'
-#' @param M membrane object to rotate
+#' @param Min membrane object to rotate
 #' @param du angles of rotation relative to Z-axis
 #' @param dv angle of rotation around Z-axis
+#' @param plt (=FALSE) TRUE for 3d plotting
 #' @param transpose (=FALSE) for backward rotation, not verified
-#' @return membrane object with coefficients after rotation, but original SEN reference
-#' @examples
+#' @return membrane MemRBC object with coefficients after rotation, but original SEN reference
+#' @examplesIf exists("L_Ylm")
 #' data("M4",package = "MemRBC")
 #' plot(M4)
 #' rotUV(M4,pi/2,3*pi/4)->M
 #' plot(M)
+#' 
 #' @export
 rotUV<-function(Min,du,dv,plt=FALSE,transpose=FALSE)
 {

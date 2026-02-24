@@ -22,9 +22,11 @@
 #' @param del_min (=1e-7) step-size of SD
 #' @param del_cons (=1e-3) step-size of fix point iteration
 #' @param max_iter (=10) maximum number of constraint iterations
+#' @param Gtol (=1e-4) stop if gradient norm is below Gtol
 #' @param cons_tol (=1e-3) constraint iterations stop if max(abs(Cons_Values)/bas$Target)<Ctol, coded in ConsIter()
 #' @param plt (boolean) for plotting
 #' @param pltfreq number of iterations between plots
+#' @param prn_ci (=FALSE) to print infos on constraint iterations 
 #' @param filter_strength weight of diagonal filter. i.e. 1+f/sqrt(M$bas$G.tk)
 #' @param LAfreq storage frequency into list of coefficients LA
 #' @return membrane object with updates from MMC with data:
@@ -35,18 +37,16 @@
 #' @return SDRC_Sample: recorded quantities (E,A,V,C, CN, IC, ID), where CN ist constraint norm, IC is constraint iteration count, and ID is the run-id.
 #' @return SDRCiter; total SDRC steps, incl. previous calls
 #' @return history: history of App-calls that created the result
-#' @examples
-#' if(exists("E_SCM_cxx")) { # catch problems in cran tests
+#' @examplesIf exists("L_Ylm")
 #' data(M4,package = "MemRBC"); M<-M4
 #' plot(M)
 #' MemRBC_env$M.C0 <- 0
-#' M <- SDRC(M, nsteps=10000, del=1e-6, LAfreq=100)
+#' M <- SDRC(M, nsteps=10000, del_min=1e-6, LAfreq=100, cons_tol=1e-2, Gtol=1e-3)
 #' plot(M)
-#' M
 #' attributes(last(M$LA)) 
-#' }
+#' 
 #' @export
-SDRC <- function (M, nsteps = 100, del_min = 1e-07, del_cons = 0.001,
+SDRC <- function (M, nsteps = 100, del_min = 1e-07, del_cons = 0.001, Gtol=1e-4,
                   max_iter = 10, cons_tol = 0.001, plt = FALSE, pltfreq = 10,
                   LAfreq = 25, filter_strength = 0, prn_ci=FALSE)
 {
@@ -99,7 +99,7 @@ SDRC <- function (M, nsteps = 100, del_min = 1e-07, del_cons = 0.001,
     A_SD[i] = E$Area
     I_SD[i] = CI$cons_iter
     CN[i] = pracma::Norm(CI$Cons_RHS)
-    cat("SDRC:", i, "E", Et/MemRBC_env$M.Es, "C", E$Curv, "CN", CN[i],
+    cat("SDRC:", i, "E", Et/MemRBC_env$M.Es, "C", E$Curv, "GN",pracma::Norm(G$Gprime), "CN", CN[i],
         "del_min", del_min, "C0", MemRBC_env$M.C0, "F", filter_strength,
         "CI", CI$cons_iter, "\n")
     if (plt & (i%%pltfreq == 0)) {
@@ -107,6 +107,7 @@ SDRC <- function (M, nsteps = 100, del_min = 1e-07, del_cons = 0.001,
       plot3b(C$X, grd)
       rgl::title3d(paste("SDRC", i, "E", round(Et/MemRBC_env$M.Es,
                                                4), "C", round(E$Curv, 4)))
+      if(pracma::Norm(G$Gprime)<Gtol & CN[i] < cons_tol*max(CI$Cons_RHS)) {cat(crayon::red("exit SDRC by Gtol and Ctol\n"));break}
     }
     attr(A, "method") = "SDRC"
     attr(A, "E") <- Et

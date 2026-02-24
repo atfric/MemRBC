@@ -19,6 +19,10 @@
 #' @param dt time step
 #' @param rho area mass density
 #' @param plt (boolean) for plotting
+#' @param mass_update_freq (=99) update frequency for mass matrix
+#' @param ncores (=4) for parallel threads in SCM gradient and energy
+#' @param E_crit (=10) 1/M.Es scaled energy threshold to exit
+#' @param pltfreq (=25) plot frequency
 #' @param zero_Av set velocity zero for pure minimization
 #' @param new_Av set velocity according to sd0 random numbers
 #' @param sd0 standard deviation of Gaussian velocity initialization
@@ -34,17 +38,16 @@
 #' @return E_total_PNEM: total energy of all previous PNEMs
 #' @return PNEMiter; total PNEM step counter, incl. previous calls
 #' @return history: history of App-calls that created the result
-#' @examples
+#' @examplesIf exists("L_Ylm")
 #' data(M4,package = "MemRBC")
 #' SetParams(M4)
 #' M.Rcpp=TRUE
 #' M.Rcpp_ncores=4
-#' if(exists("E_SCM_cxx")) { # catch problems in cran tests
 #' M <- PNEM(M4, nsteps=10000, dt=1e-3)
 #' plot(M)
 #' # further data stored as attributes to coefficients A in LA
 #' attributes(M$A)
-#' }
+#' 
 #' @export
 PNEM <-function (M, nsteps = 100, dt = 5e-04, LAfreq = 100, plt = TRUE,
                  rho = 1, sd0 = 0.001, pltfreq = 25, ncores = 4,
@@ -55,8 +58,6 @@ PNEM <-function (M, nsteps = 100, dt = 5e-04, LAfreq = 100, plt = TRUE,
   if (is.null(M$proc_time))
     M$proc_time <- 0
   run_id = rlang::hash(M)
-  if (!exists("M.Rcpp"))
-    stop("Cannot process - probably load_param_MemRBC has not been called.")
   MemRBC_env$M.Rcpp <- TRUE
   MemRBC_env$M.Rcpp_ncores <- ncores
   cl = match.call()

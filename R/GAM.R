@@ -21,12 +21,12 @@
 #' @return GA: result of last GA cycle, needed for restart
 #' @return A: last coefficients
 #' @return history: history of App-calls that created the result
-#' @examples
-#' if(exists("L_Ylm")) { # in cran tests this sometimes would fail
+#' @examplesIf exists("L_Ylm")
 #' data(M4,package = "MemRBC")
 #' M <- GAM(M4,nsteps=3)
 #' plot(M)
-#' M }
+#' M 
+#' 
 #' @export
 GAM<-function(M,nsteps=1,maxiter=50)
 {
@@ -65,7 +65,7 @@ GAM<-function(M,nsteps=1,maxiter=50)
   h2<-E_SCM(A,grd,bas,C)
   S=SEN(A,grd,bas,Ref1,h2)
   e<-E_SEN(A,grd,bas,S,Ref1)
-  W=h2$H2 + e + M.rho*((h2$Volume-bas$Target["Volume"])^2+(h2$Area-bas$Target["Area"])^2)
+  W=h2$H2 + e + MemRBC_env$M.rho*((h2$Volume-bas$Target["Volume"])^2+(h2$Area-bas$Target["Area"])^2)
   return(-W)
   }
   # actual start of GA code

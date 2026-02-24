@@ -15,7 +15,7 @@ update(M,"Coor")->M
 M$Params[["M.C0"]]=0
 print(E_SEN(M$A,M$grd,M$bas,M$SEN,M$Ref))
 print(E_SCM(M$A,M$grd,M$bas,M$C))
-rgl::wire3d(M$C$Obj)
+
 
 D5=M
 structure(class="MemESCM",E_SCM_cxx(D5$A, D5$grd, D5$bas, updateX(D5$A, D5$grd, D5$bas), MemRBC_env$M.C0, MemRBC_env$M.K_b, MemRBC_env$M.K_ADE) )
@@ -50,7 +50,7 @@ cat("E_SCM_cxx tested\n")
     tictoc::toc()
 
     tictoc::tic() # Ryzen7pro :: 2.47 on 6 cores; 2.42 on 3 cores
-    MemRBC_env$M.Rcpp<<-TRUE;MemRBC_env$M.Rcpp_ncores<<-3
+    MemRBC_env$M.Rcpp<-TRUE;MemRBC_env$M.Rcpp_ncores<-3
     G2<-Grad_SCM(h2,grd,bas,C)
 
     cat("parallel Grad_SCM(",MemRBC_env$M.Rcpp_ncores,")")
