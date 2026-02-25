@@ -67,8 +67,13 @@ PSD <- function (M, nsteps = 100, del = 1e-06, plt = FALSE, pltfreq = 10,
     }
     else Ref = NULL
     G <- Grad_FullModel_Penalty(A, grd, bas, Ref, S)
-    G <- G * Filter
+    G <- G / Filter
+    any(is.infinite(G))
+    any(is.na(G))
     A = A - del * matrix(G, ncol = 3)
+    any(is.na(A))
+    any(is.infinite(A))
+
     cat("PSD:", i, ":E:", E$E/MemRBC_env$M.Es, ":C:", E$Curv, ":del:",
         del, ":C0", MemRBC_env$M.C0, ":F:", filter_strength, "|Cons|",
         NCons, "\n")
@@ -94,11 +99,11 @@ PSD <- function (M, nsteps = 100, del = 1e-06, plt = FALSE, pltfreq = 10,
       file.remove("STOP_PSD.txt")
       break
     }
-  }
+  } # step loop
   M$A = A
   E = E_FullModel_Penalty(A, grd, bas, Ref)
   M$E = E$E
-  M$C = E$Curv
+  M$CurvPSD = E$Curv
   if (is.null(M$E_PSD))
     M$E_PSD = E_PSD
   else M$E_PSD = c(M$E_PSD, E_PSD)

@@ -1819,6 +1819,7 @@ MakeGrid_Fourier<-function(n=30,r=1,R=2.5,check_plt=FALSE)
   z=r*sin(grd$u)
   rgl::mesh3d(x,y,z,triangles=q, normals = list(x=x,y=y,z=z) ) -> M
   #  clear3d();
+  Rvcg::vcgUpdateNormals(M)->M
   grd$Obj<-M
   grd$comment<-comment
   grd$type="FOURIER"
@@ -1836,6 +1837,8 @@ MakeGrid_Fourier<-function(n=30,r=1,R=2.5,check_plt=FALSE)
   }
   Obj2ObjQ(grd$Obj,grd)->grd$ObjQ
   Rvcg::vcgUpdateNormals(grd$Obj)->grd$Obj
+  grd$comment="Fourier grid"
+  grd$U=c(grd$u);grd$V=c(grd$v)
   return(grd)
 }
 
@@ -2017,24 +2020,30 @@ MakeBasis_UV<-function (L_max = 4, u, v, Pointsymmetry = FALSE,
   }
   bas$A = LM2A(bas$A, bas)
   mask = double_uv_ind(u, v)
-  bas$mask <- ifelse(is.numeric(mask), mask, 1) # minimum mask needed
+  bas$mask <- ifelse(length(c(mask))>0, mask, 1) # minimum mask needed
   bas$kind=kind
   return(bas) }
+  
   if (kind=="Fourier") {
-    Ai_max=L_max^2*4+1
+    Ai_max=(L_max+1)^2*4
     n.v = length(u)
     if (n.v!=length(v)) stop("u and v have different length in MakeBasis_UV")
-    Ylm=matrix(0.0,length(u),Ai_max)
-    if (!only_Ylm) Ylm_u=Ylm_v=Ylm_uu=Ylm_vv=Ylm_uv=matrix(0.0,length(u),Ai_max)
-    LM=matrix(NA,Ai_max,2)
+    Ylm_=matrix(0.0,n.v,Ai_max)
+    if (!only_Ylm) Ylm_u_=Ylm_v_=Ylm_uu_=Ylm_vv_=Ylm_uv_=matrix(0.0,n.v,Ai_max)
+    LM=matrix(0L,Ai_max,2)
     colnames(LM)=c("L","M")
-    if (KleinBottle) uspace= (1:L)/2 else uspace= 1:L_max
+    if (KleinBottle) uspace= (0:L_max)/2 else uspace= 0:L_max
     cat("U factors:",uspace,"\n")
-    Ylm[,1]=1
-    if (!only_Ylm) {Ylm_u_[,1]=Ylm_v_[,1]=Ylm_vv_[,1]=Ylm_uu_[,1]=Ylm_uv_[,1]=0}
-    k=2
-    for (i in uspace)
-     for (j in 1:L_max){
+    #if (!only_Ylm) {Ylm_u_[,1]=Ylm_v_[,1]=Ylm_vv_[,1]=Ylm_uu_[,1]=Ylm_uv_[,1]=0}
+    k=1
+
+    for (i in uspace){
+     for (j in 0:L_max){
+      LM[k , ] =  c(i,j)#c(paste("s",i),paste("s",j))
+      LM[k+1 ,] = c(i,j)#c(paste("s",i),paste("c",j))
+      LM[k+2 ,] = c(i,j)#c(paste("c",i),paste("c",j))
+      LM[k+3 ,] = c(i,j)#c(paste("c",i),paste("s",j))
+      
       Ylm_[,k] = sin(i*u)*sin(j*v)
     Ylm_[,k+1] = sin(i*u)*cos(j*v)
     Ylm_[,k+2] = cos(i*u)*cos(j*v)
@@ -2050,44 +2059,51 @@ MakeBasis_UV<-function (L_max = 4, u, v, Pointsymmetry = FALSE,
     Ylm_v_[,k+2]= -j*cos(i*u)*sin(j*v)
     Ylm_v_[,k+3]=  j*cos(i*u)*cos(j*v)
 
-    Ylm_uu_[,k]  =  i^2*Ylm_[,k]
-    Ylm_uu_[,k+1]=  i^2*Ylm_[,k+1]
-    Ylm_uu_[,k+2]=  i^2*Ylm_[,k+2]
-    Ylm_uu_[,k+3]=  i^2*Ylm_[,k+3]
+    Ylm_uu_[,k]  =  -i^2*Ylm_[,k]
+    Ylm_uu_[,k+1]=  -i^2*Ylm_[,k+1]
+    Ylm_uu_[,k+2]=  -i^2*Ylm_[,k+2]
+    Ylm_uu_[,k+3]=  -i^2*Ylm_[,k+3]
 
-    Ylm_vv_[,k]  =  j^2*Ylm_[,k]
-    Ylm_vv_[,k+1]=  j^2*Ylm_[,k+1]
-    Ylm_vv_[,k+2]=  j^2*Ylm_[,k+2]
-    Ylm_vv_[,k+3]=  j^2*Ylm_[,k+3]
+    Ylm_vv_[,k]  =  -j^2*Ylm_[,k]
+    Ylm_vv_[,k+1]=  -j^2*Ylm_[,k+1]
+    Ylm_vv_[,k+2]=  -j^2*Ylm_[,k+2]
+    Ylm_vv_[,k+3]=  -j^2*Ylm_[,k+3]
 
-    Ylm_uv_[,k]  = -j*i*cos(i*u)*cos(j*v)
+    Ylm_uv_[,k]  =  j*i*cos(i*u)*cos(j*v)
     Ylm_uv_[,k+1]= -j*i*cos(i*u)*sin(j*v)
-    Ylm_uv_[,k+2]= -i*j*sin(i*u)*sin(j*v)
+    Ylm_uv_[,k+2]=  i*j*sin(i*u)*sin(j*v)
     Ylm_uv_[,k+3]= -i*j*sin(i*u)*cos(j*v)
     }
-     LM[k:(k+3),]= c(i,j)
-     k=k+4
+   k=k+4
      }
-    l=LM[,1]
-    m=LM[,2]
-  w=1:Ai_max # no symmetries
-  mask = double_uv_ind(u, v)
-  bas = list(n.v = n.v, uv = cbind(u, v), Ylm = Ylm_[, w], LM = LM, Ai_max = Ai_max, l = l,
-             m = m,  L_max = L_max, G.tk = l^2*m^2, Wt = l*m, comment = "Fourier basis, no cos(0)",
+    }
+  l=LM[,1]
+  m=LM[,2]
+  w=1:(k-1) # setdiff(1:dim(LM)[1],c(1,2,4,5,6)) # exclusions
+  if (length(w)!=Ai_max) stop("wrong dim len w(k)\n")
+ # if(Ai_max!=length(w))stop("wrong count\n")
+  mask = double_uv_ind(c(u), c(v))
+  Target = c(140, 100); names(Target)=c("Area","Volume")
+  bas = list(n.v = n.v, uv = cbind(u, v), Ylm = Ylm_[, w], LM = LM, Ai_max = Ai_max, 
+             l = l[w], m = m[w],  
+             L_max = L_max, G.tk = ((l+1)^2*(m+1)^2)[w], 
+             Wt = ((l+1)*(m+1))[w], 
+             comment = "Fourier basis, leading cos(0)",
              Nupd = 0, Lset = unique(l), Mset = unique(m), Nc = 2,
              Cons = c("gradA", "gradV"), QCons = c("Area", "Volume"),
-             Target = c(140, 100),  
-             Pointsymmetry = NA)
+             Target = Target,  
+             Pointsymmetry = FALSE)
   if (!only_Ylm) {bas$Ylm_u=Ylm_u_[,w];bas$Ylm_v=Ylm_v_[,w];
                   bas$Ylm_uu=Ylm_uu_[,w];bas$Ylm_uv=Ylm_uv_[,w];
                   bas$Ylm_vv=Ylm_vv_[,w]}
-  bas$LM=LM
+  if(Ai_max!=dim(LM)[1]) stop("dim error\n")
+  bas$LM=LM[w,]
   bas$uv=cbind(c(u),c(v))
-  bas$mask <- ifelse(is.numeric(mask) == 0, mask, 1)
+  bas$mask <- mask
   bas$kind=kind
   bas$KleinB=KleinB
   bas$u=u;bas$v=v
-  bas$A=matrix(0,Ai_max,3)
+  bas$A=matrix(0,Ai_max,3)[w,]
   bas$A=LM2A(bas$A,bas)
   return(structure(class="MemBas",bas))
   }
@@ -4538,7 +4554,7 @@ if(!exists(".dot2")) .dot2=function(x,y) sum(x*y)
       G <- G + 2 * MemRBC_env$M.rho * G_SCM[[bas$Cons[i]]] * (h2[[bas$QCons[i]]] -
                                                                 bas$Target[[bas$QCons[i]]])
     }
-    return(G)
+    return(structure(class="MemGFMP",G))
   }
   
   #' unified model energy with penalties
@@ -4563,9 +4579,9 @@ if(!exists(".dot2")) .dot2=function(x,y) sum(x*y)
     for (i in bas$QCons[1:bas$Nc]) E <- E + MemRBC_env$M.rho * (h2[[i]] -
                                                                   bas$Target[i])^2
     names(E) = NULL
-    return(list(E = E, Wb = h2$Wb, Ws = e, Wuncons = h2$Wb +
+    return(structure(class="MemEFMP",list(E = E, Wb = h2$Wb, Ws = e, Wuncons = h2$Wb +
                   e, dA = h2$dA, S = S, Area = h2$Area, Volume = h2$Volume,
-                Curv = h2$Curv, n = h2$n))
+                Curv = h2$Curv, n = h2$n)))
   }
   
 #' locate Minima from quantity

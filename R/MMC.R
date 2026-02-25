@@ -51,7 +51,7 @@ MMC<-function (M, nsteps = 1000, plt = TRUE, pltfreq = 10, prn = TRUE,
                ...)
 {
   if (C0 != MemRBC_env$M.C0)
-    stop("you should set global MemRBC_env$M.C0 correctly by hand!")
+    stop("you should set global assign('M.C0',C0_value,envir = MemRBC::MemRBC_env) correctly by hand!")
   M$Params[["M.C0"]] <- C0
   t0 = proc.time()
   if (is.null(M$proc_time))

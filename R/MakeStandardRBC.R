@@ -339,23 +339,60 @@ if(plt) plot(res,color="white")
  return(res)
 }
 
-# Make torus membrane, i.e. genus 1
-# ATTENTION: not working yet, so no export
-## @export
-MakeTorus<-function(L=5,plt=FALSE)
+#' Make torus membrane, i.e. genus 1
+#' set SEN reference to initial shape, i.e., E_SEN=0
+#' @param L spectral order
+#' @param n (=L*6) grid dimension
+#' @param r (=1) smaller radius of torus
+#' @param R (=2.5) greater radius of torus
+#' @param plt (=FALSE) for control plots
+#' @return MemRBC object for a torus
+#' @export
+MakeTorus<-function(L=5, n=L*6, R=2.5, r=1, plt=FALSE)
 {
-  G<-MakeGrid_Fourier(n=L*5,check_plt = FALSE)
-  B<-MakeBasis_UV(L,u=G$U,v=G$V,kind = "Fourier")
-  X<-Obj2X(G$Obj)
-  if(plt)rgl::plot3d(X)
-  lm( X ~ B$Ylm - 1 )$coefficients -> A # intercept in Ylm[,1]
-  dim(A)
+  G<-MakeGrid_Fourier(n=n,R=R,r=r,check_plt = plt)
+  #rgl::shade3d(G$Obj)
+  B<-MakeBasis_UV(L, u=G$U, v=G$V, kind = "Fourier")
+  dim(B$A)
   dim(B$Ylm)
-  A[,2]<- -A[,2]
+  X=Obj2X(G$Obj)
+  if(plt) {rgl::open3d()
+   rgl::shade3d(G$Obj,col="red",alpha=0.5)
+  }
+  B$mask=double_uv_ind(G$U,G$V)
+  if(plt) rgl::plot3d(X,aspect=FALSE)
+  lm( X[-B$mask,] ~ B$Ylm[-B$mask,] - 1 )$coefficients -> A # intercept in Ylm
+  
+  w=which(is.na(A[,1]))
+  print(var(B$Ylm[,3]))
+  w=c(3,w) # remove intercept from basis as well
+  length(w)
+  A=A[-w,]
+  B$Ylm=B$Ylm[,-w]
+  B$Ylm_u=B$Ylm_u[,-w]
+  B$Ylm_v=B$Ylm_v[,-w]
+  B$Ylm_uu=B$Ylm_uu[,-w]
+  B$Ylm_uv=B$Ylm_uv[,-w]
+  B$Ylm_vv=B$Ylm_vv[,-w]
+  B$Ai_max=B$Ai_max-length(w)
+  B$LM=B$LM[-w,]; B$l=B$l[-w];B$m=B$m[-w]
+  B$G.tk=B$G.tk[-w];B$Wt=B$Wt[-w]
+  LM2A(A,B)->A
+  
+  head(A,8)
+  dim(A)
+  
   MakeMemRBC(A,G,B)->M
-  A=MakeSphere(G,B)
-  (q<-unlist(Quantities(M)))
-  M$bas<-SetConstraints(M$bas,Cons = c("gradA","gradV"), QCons = c("Area","Volume"), Target = q[1:2])
-  plot(M)
+  print(q<-unlist(Quantities(M)))
+  M<-SetConstraints(M,Cons = c("gradA","gradV"), QCons = c("Area","Volume"), Target = q[1:2])
+  update(M,c("Coor","Class","Obj"))->M
+  if(plt) {plot(M,alpha=0.5,col="white");
+   rgl::open3d()
+   rgl::shade3d(M$grd$Obj,col="red",alpha=0.5)}
+  M=MakeRef(M,M$A)
+  M$ARef=M$A
+  StoreParams(M)->M
+  M$history=list(match.call())
+  M$proc_time=0
   return(M)
 }
