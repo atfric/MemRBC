@@ -378,10 +378,8 @@ MakeTorus<-function(L=5, n=L*6, R=2.5, r=1, plt=FALSE)
   B$LM=B$LM[-w,]; B$l=B$l[-w];B$m=B$m[-w]
   B$G.tk=B$G.tk[-w];B$Wt=B$Wt[-w]
   LM2A(A,B)->A
-  
   head(A,8)
   dim(A)
-  
   MakeMemRBC(A,G,B)->M
   print(q<-unlist(Quantities(M)))
   M<-SetConstraints(M,Cons = c("gradA","gradV"), QCons = c("Area","Volume"), Target = q[1:2])

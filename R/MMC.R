@@ -207,8 +207,9 @@ MMC<-function (M, nsteps = 1000, plt = TRUE, pltfreq = 10, prn = TRUE,
 #' @param sd standard dev. of gaussian
 #' @param flt (=FALSE) to filter for only 3 entries in l=1 
 #' @param n not used
+#' @param ... not used
 #' @export
-pertA_Gauss<-function (A, bas, sd, flt = FALSE, n)
+pertA_Gauss<-function (A, bas, sd,  n, ...)
 {
   N = bas$Ai_max
   sd1 = sd/sqrt(bas$G.tk)
@@ -226,11 +227,11 @@ pertA_Gauss<-function (A, bas, sd, flt = FALSE, n)
 #' Perturbation dA is scaled down by `sqrt(bas$G.tk)`
 #' @param A,bas coefficients and basis
 #' @param sd width of perturbation
-#' @param flt (=FALSE) not used
 #' @param n normal vectors, e.g.from `E_SCM()`
+#' @param ... not used
 #' @return changed coeffs A+dA
 #' @export
-pertA_Unif<-function (A, bas, sd, flt = FALSE, n)
+pertA_Unif<-function (A, bas, sd, n, ...)
 {
   N = bas$Ai_max
   sd1 = sd/sqrt(bas$G.tk)
@@ -254,15 +255,17 @@ pertA_Unif<-function (A, bas, sd, flt = FALSE, n)
 #' @return modified coefficients A+dA
 #' @export
 pertA_complex<-function (A, bas, sd, n, nn = 12)
-{
-  N = dim(bas$Ylm)[1]
+{ M.nn=get("M.nn",envir = .GlobalEnv)
+  N = dim(bas$Ylm)[1] # ndof spatial
   s = sample(1:N, 3)
-  dX = matrix(0, N, 3)
+  dX = matrix(0, N, 3) # global effect to invert
   for (k in s) {
+#    print(M.nn$nn.idx[k,])
     w = M.nn$nn.idx[k, 1:nn]
+#    print(w)
     sc = max(M.nn$nn.dists[k, 1:nn]) * 4
     dX[w[1:nn], ] = dX[w[1:nn], ] + n[w[1:nn], ] * (runif(1) -
-                                                      0.5) * 0.3 * exp(-M.nn$nn.dists[k, 1:nn]^2/sc^2)
+                                               0.5) * 0.3 * exp(-M.nn$nn.dists[k, 1:nn]^2/sc^2)
   }
   dA = FitFast(bas, dX)
   return(A + dA)
@@ -280,7 +283,7 @@ pertA_complex<-function (A, bas, sd, n, nn = 12)
 NNuv <- function (uv, n = 13)
 {
   nn <- RANN::nn2(uv, uv, n + 1)
-  nn$nn.dists = nn$nn.dists * sin(uv[, 1])
+#  nn$nn.dists = nn$nn.dists
   return(nn)
 }
 

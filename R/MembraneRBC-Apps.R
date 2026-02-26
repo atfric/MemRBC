@@ -655,7 +655,7 @@ PlotSample<-function(M,last=dim(M$Sample)[1],title="MMC sample plot",...)
 {
 if (!is.null(M$Sample$Id)) col=as.numeric(as.factor(M$Sample$Id)) else col=1
 par(mfrow=c(2,2),mar=c(4,3.5,0.3,0.5),oma=c(0,0,1.5,0))
-plot(last(M$Sample$Energy,last)/MemRBC_env$MEs,pch=".",xlab="",ylab="",col=col,... )
+plot(last(M$Sample$Energy,last)/MemRBC_env$M.Es,pch=".",xlab="",ylab="",col=col,... )
 title(ylab = "E", cex.lab = 1,
       line = 2)
 title(xlab = "accepted steps", cex.lab = 1,
@@ -668,7 +668,7 @@ title(xlab = "accepted steps", cex.lab = 1,
 
 w = (dim(M$Sample)[1] - last+1) : dim(M$Sample)[1]
 
-plot(Energy/MemRBC_env$MEs~Curv,data=M$Sample[w,],pch=".",xlab="",ylab="",col=col,...)
+plot(Energy/MemRBC_env$M.Es~Curv,data=M$Sample[w,],pch=".",xlab="",ylab="",col=col,...)
 
 title(ylab = "E", cex.lab = 1,
       line = 2)

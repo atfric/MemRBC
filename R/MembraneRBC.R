@@ -4704,6 +4704,16 @@ FitFast<-function (bas, X)
   return((bas$IM %*% X[-mask, ])[-1, ])
 }
 
+
+#' set parameter in MemRBC envorinment
+#' @param x MemRBC parameter, e.g. "M.C0"
+#' @param value value to store
+#' @return set value
+SetParam <- function(x,value)
+{ assign(x,value,envir=MemRBC:::MemRBC_env)
+  return(get(x,envir=MemRBC:::MemRBC_env))
+}
+
 #' Movie
 #' @description
 #' show shapes along recorded coefficients in M$LA

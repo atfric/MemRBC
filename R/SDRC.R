@@ -145,3 +145,26 @@ SDRC <- function (M, nsteps = 100, del_min = 1e-07, del_cons = 0.001, Gtol=1e-4,
   return(M)
 }
 # end of SDRC
+
+#' plot recorded data from SDRC
+#' @param M MemRBC object containing SDRC data in $SDRC_Sample
+#' @param what (=`c("E","C")`) besides energy and curvature, volume and area can be requested, see names(M$SDRC_Sample) with CN = Constraint Norm, CI = Constraint Iteration count, ID = run-ID
+#' @param from,to specifies the step number range to plot 
+#' @param nx,ny number of plots on screen by `par(mfrow(ny,nx))` 
+#' @param ... additional plot parameters, like `type="l"`
+#' @return -
+#' @export
+PlotSDRC <- function(M, what=c("E","C"),from=1,to=dim(M$SDRC_Sample)[1],nx=2,ny=1, ...)
+{ to=min(to,dim(M$SDRC_Sample)[1])
+  cat(from," ",to,"\n")
+  tb=M$SDRC_Sample; 
+  tb$ID=as.numeric(as.factor(tb$ID))
+  tb$ID[is.na(tb$ID)]=1
+  par(mfrow=c(ny,nx),mgp=c(2,0.7,0), 
+      mar=c(3,3,1,1)+0.1,
+      oma=c(0.5,0.5,0.2,0.5))
+  if (!all(what %in% names(M$SDRC_Sample))) stop("error in what")
+  for(w in what)
+   plot(x=from:to,y=tb[from:to,w],ylab=w,xlab="step",xlim=c(from,to),col=tb$ID,...)
+}
+#PlotSDRC(T40mmc_sdrc,nx=2,ny=2,what=c("E","CN","IC"),pch=".")
