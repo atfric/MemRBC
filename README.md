@@ -11,9 +11,8 @@ MemRBC makes use of Rcpp, for faster vectorizing numerics in the energy, gradien
 The idea of continuous parametrization originates from the dissertation thesis\
 Frickenhaus, S. (1999) Modelling of Lipid Translocation - Application to Red Blood Cell Membrane. Shaker Verlag , Aachen, 1999, ISBN: 978-3-8265-6366-9.
 
-### Contributors
-
-Carl Woelper contributed code for a normal motion filter for the update of coefficients in year 2024.
+### Updates
+Updates are found on Github; latest release is 0.4.0
 
 ### Acknowledgement
 
