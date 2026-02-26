@@ -13,9 +13,5 @@ Energy(M)
 vector of energies Wb (bending), Es (stress-shear), E (potetntial energy), Ekin (kinetic energy, optional, if a PNEM was run)
 }
 \description{
-report  energy values for bending and SEN from a membrane object
-}
-\examples{
-data("M1")
-Energy(M1)
+report  energy values for SCM and SEN from a membrane object
 }

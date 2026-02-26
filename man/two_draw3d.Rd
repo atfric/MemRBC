@@ -7,11 +7,15 @@
 two_draw3d(A, M, cont = FALSE, title = "", x = 400, y = 400)
 }
 \arguments{
-\item{A}{coefficients to use}
+\item{A}{coefficients to use for plot}
 
-\item{M}{the input membrane to be plotted}
+\item{M}{the input membrane with $grid and $bas matching A}
 
 \item{cont}{(=FALSE) draw gridlines u=const, v=const}
+
+\item{title}{title text for rgl::title3d()'}
+
+\item{x, y}{dimensions in pixels'}
 }
 \value{
 -
@@ -20,8 +24,10 @@ two_draw3d(A, M, cont = FALSE, title = "", x = 400, y = 400)
 plot membrane object with area stress alpha and shear beta as color
 }
 \examples{
-data("M_stomatocyte_L12"); M<-M_stomatocyte_L12
- perturb original coefficients
-A <- pertA_Gauss(M$A, M$bas, sd=0.2)
-two_screens(); two_draw3d(A, M)
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+data("M4",package = "MemRBC",envir=environment())
+ # perturb original coefficients
+A <- pertA_Gauss(M4$A, M4$bas, sd=0.2)
+two_screens(); two_draw3d(A, M4)
+\dontshow{\}) # examplesIf}
 }

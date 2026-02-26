@@ -16,12 +16,14 @@ FitStomatocyte_L(L = 7, C0 = -3, V0 = 100, dt = 0.001)
 \item{dt}{(=1e-3) time step in PNEM minimizer}
 }
 \value{
-membrane object
+MemRBC object
 }
 \description{
 Fit a stomatocyte shape from data, spectral order L
 }
 \examples{
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
 FitStomatocyte_L(L=4,C0=0.5)->M
 plot(M)
+\dontshow{\}) # examplesIf}
 }

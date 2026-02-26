@@ -4,7 +4,7 @@
 \alias{plot3qs}
 \title{plot3qs}
 \usage{
-plot3qs(X, grd, s, alpha = 1, specular = "black", ...)
+plot3qs(X, grd, s, specular = "black", pal = heat.colors, ...)
 }
 \arguments{
 \item{X}{Coordiates, e.g. in C$X from updateX()}
@@ -12,15 +12,25 @@ plot3qs(X, grd, s, alpha = 1, specular = "black", ...)
 \item{grd}{grid with a basic rgl-object grd$Obj}
 
 \item{s}{scalar to plot as color code on shape}
+
+\item{specular}{(="black") material reflectance}
+
+\item{pal}{(=heat.colors) color palette to use}
+
+\item{...}{further params to shade3d(), e.g. alpha=0.5 for transparency}
+}
+\value{
+-
 }
 \description{
 plot with coordinates C$X (after updateX) and scalar as color code
 }
 \examples{
-data("M1"); SetParams(M1)
- # take required data from M1
- update(M1,"dA")->M1
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+data("M4",package = "MemRBC"); 
+SetParams(M4)
+ update(M4,"dA")->M4
  #plot area sizes as color code
-plot3qs(updateX(M1$A,M1$grd,M1$bas,M1$)$X,M1$grd,M1$dA)
-
+plot3qs(updateX(M4$A,M4$grd,M4$bas)$X,M4$grd,M4$dA)
+\dontshow{\}) # examplesIf}
 }

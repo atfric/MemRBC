@@ -28,9 +28,10 @@ history: history of App-calls that created the result
 run GAM on a precomputed membrane object
 }
 \examples{
-M <- MakeStandardRBC(L=5)
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+data(M4,package = "MemRBC")
+M <- GAM(M4,nsteps=3)
 plot(M)
-M <- GAM(M,nsteps=3)
-plot(M)
-M
+M 
+\dontshow{\}) # examplesIf}
 }

@@ -10,7 +10,7 @@ two_screens3d(x = 400, y = 400)
 \item{x, y}{dimensions in pixels}
 }
 \value{
-global variables M.scr1 and M.scr2 are set
+variables MemRBC_env$M.scr1 and MemRBC_env$M.scr2 are set to device ids
 }
 \description{
 open two screens for 3D-plots by two_draw3d()

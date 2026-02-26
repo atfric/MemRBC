@@ -14,11 +14,13 @@ membrane object, with diagnosis results in $Sparse; drop_norm reports the L2-nor
 }
 \description{
 zero out coefficients upto one (largest magnitude) entry per row (X,Y,Z).
-For diagnosis, the energy values before and after Sparsify are printed and returned.
+For diagnosis, the energy values before and after Sparsify and other diagnostics are returned.
 }
 \examples{
-data("M_stomatocyte_L12")
-Sparsify(M_stomatocyte_L12) -> M_sparse
-plot(M_sparse)
-M_sparse$SparseE
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+data("M4",package = "MemRBC",envir=environment())
+Sparsify(M4) -> M_sparse
+
+M_sparse$Sparse
+\dontshow{\}) # examplesIf}
 }

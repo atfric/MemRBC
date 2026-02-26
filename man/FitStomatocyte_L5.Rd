@@ -2,7 +2,7 @@
 % Please edit documentation in R/MembraneRBC-Apps.R
 \name{FitStomatocyte_L5}
 \alias{FitStomatocyte_L5}
-\title{Fit coefficients to a stomatocyte (mono-invaginated) shape}
+\title{FitStomatocyte_L5}
 \usage{
 FitStomatocyte_L5(C0 = -3, A0 = 140, V0 = 100)
 }
@@ -10,6 +10,9 @@ FitStomatocyte_L5(C0 = -3, A0 = 140, V0 = 100)
 \item{C0}{(=-3) spontaneous curvature to create shape for (usually <0)}
 
 \item{A0, V0}{(=140,=100) target values for constraints on area and volume}
+}
+\value{
+MemRBC object
 }
 \description{
 Fit coefficients to a stomatocyte (mono-invaginated) shape

@@ -4,18 +4,24 @@
 \alias{plot3q}
 \title{plot3q}
 \usage{
-plot3q(X, grd, col = "black", alpha = 1, ...)
+plot3q(X, grd, col = "black", ...)
 }
 \arguments{
 \item{X}{Coordiates, e.g. in C$X from updateX()}
 
 \item{grd}{grid with a basic rgl-object grd$Obj}
+
+\item{col}{(="black") wireframe color}
+
+\item{...}{further parameters to plot3b()}
+}
+\value{
+-
 }
 \description{
 plot coordinates C$X (after updateX) with wireframe of quadrilaterals
 }
 \examples{
-data("M1")
- # take required data from M1
-plot3q(updateX(M1$A,M1$grd,M1$bas,M1$)$X,M1$grd)
+data("M4",package = "MemRBC")  # take required data from M4
+plot3q(updateX(M4$A,M4$grd,M4$bas)$X,M4$grd)
 }

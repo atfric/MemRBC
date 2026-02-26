@@ -10,7 +10,7 @@
 # Frickenhaus S. (2024). MembraneR3 - A spectral model of membrane shape based on Helfrich spontaneous curvature in R. Zenodo. https://doi.org/10.5281/zenodo.13627757 ")}
 #
 
-#' Genetic Algorithm Minizer
+#' Genetic Algorithm Minizer (worked with GA package before 4.5.1)
 #'
 #' run GAM on a precomputed membrane object
 #' @param M The input membrane with initial data and reference
@@ -34,7 +34,11 @@ GAM<-function(M,nsteps=1,maxiter=50)
   cl=match.call()
   pertA<-function(A,bas,sd){ N=dim(A)[1];
   sd1=sd/sqrt(bas$G.tk);
+<<<<<<< Updated upstream
   A[]=A[]+matrix(rnorm(3*N,sd=rep(sd1,3)),ncol=3)
+=======
+  A[]=A[] + matrix(rnorm(3*N,sd=rep(sd1,3)),ncol=3)
+>>>>>>> Stashed changes
   return(A)
   }
   pop.restart<-function(O)

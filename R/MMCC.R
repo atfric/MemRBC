@@ -43,6 +43,7 @@
 #' plot(M)
 #' M 
 #' @export
+<<<<<<< Updated upstream
 MMCC<-function (M, curv = Curv(M), nsteps = 1000, plt = FALSE, pltfreq = 5,
                 LAfreq = 200, sd = 0.004, kT = 0.00411,  pertA = pertA_Unif,
                 kTfac = 1, kTfreq = 100)
@@ -86,6 +87,47 @@ MMCC<-function (M, curv = Curv(M), nsteps = 1000, plt = FALSE, pltfreq = 5,
     if (i%%100 == 99) {
       cat("\n 100 steps ")
       tictoc::toc()
+=======
+MMCC<-function(M, curv=Curv(M), nsteps=1000, plt=FALSE, pltfreq=5, LAfreq=200, sd=0.004, kT=4.11e-3,
+              nm = FALSE, kTfac=1.0, kTfreq=100)
+{ # set kTfac~0.99 < 1 for cooling
+  # kTfreq in terms of accepted steps aa
+  # LAfreq in terms of accepted steps aa
+  # kT at room temperature is 4.11e-21 J = 4.11 E-3 atto J
+  t0=proc.time()
+  if(is.null(M$proc_time)) M$proc_time<-0
+  if(!exists("M.Rcpp")) stop("Cannot process - probably load_param_MemRBC has not been called.")
+  M.Rcpp<<-TRUE; # for faster E_SCM
+  cl=match.call()
+  run_id=rlang::hash(M)
+  bas=M$bas
+
+  bas$Nc=3;bas$Target=c(bas$Target,curv);
+  bas$Cons=c("gradA","gradV","gradC");
+  bas$TNorm=c(bas$TNorm,curv);
+  bas$Qcons=c("Area","Volume","Curv");
+  names(bas$Target)=bas$Qcons
+
+  Cnt=rep(0L,nsteps)
+  Ar=Cv=En=rep(0.0,nsteps); rec=1# records for sampling Area,Curv for Free Energy Perturbation
+  grd=M$grd; Ref=M$Ref
+  W=W0=1e8
+  a=r=aa=rr=0 # acept/reject counters
+  A=M$A # start coefficients
+  if (is.null(M$LA)) LA=list(M$A) else LA=M$LA # MMC records
+  if (is.null(M$MMCCiter)) M$MMCCiter=0 # MMC counter
+  if (is.null(M$kT)) M$kT=kT else if(kT==0) kT=M$kT # MMC restart with kT
+
+  # idea: for a replica exchange one could save exchange candidates A regularly
+  for (i in 1:nsteps){
+    if (i %% 100==0) tictoc::tic()
+    if (i %% 100==99) {cat("\n 100 steps ");tictoc::toc()}
+    #  if (i==250000) kT=0.1
+    A1=pertA_Unif(A,bas,sd)
+    if (i>1 & nm) { # surface normal moves filter; only possible when E$n is known
+      dA = A1-A; make_delta_normal_to_surface(dA,grd,bas,E$n)
+      A1 = A + dA
+>>>>>>> Stashed changes
     }
     A1 = pertA(A, bas, sd, FM$n)
 

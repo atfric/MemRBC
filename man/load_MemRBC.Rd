@@ -4,15 +4,22 @@
 \alias{load_MemRBC}
 \title{load_MemRBC}
 \usage{
-load_MemRBC(file = "MemRBC.rdat", unreduce_basis = TRUE)
+load_MemRBC(file = "MemRBC.rdat", qs2 = length(grep("qs2$", file) == 1))
+}
+\arguments{
+\item{file}{filename to load data from}
+
+\item{qs2}{TRUE if file has ending .qs2, FALSE otherwise, or set by user}
 }
 \value{
 the membrane object loaded from file with $Params to set globally
 }
 \description{
-load membrane object from file and set global data from object
+load membrane object from file and set global parameter data from object
 }
 \examples{
-M<-load_MemRBC("Mmmc.rdat")
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+M<-load_MemRBC("Mmmc.rdat",qs2=FALSE) # may also have saved with qs2=TRUE
 M
+\dontshow{\}) # examplesIf}
 }

@@ -14,8 +14,8 @@ updateX(A, grd, bas)
 \item{bas}{basis function values $Ylm and their derivatives, like $Ylm_u.}
 }
 \value{
-basis object, type is list.
+Coord object of class MemC, with X and derivatives X_u, ... and input Coeff A
 }
 \description{
-updates coordinates C$X and their partial derivatives wrt. u,v, like C$Xu.
+updates coordinates C$X and their partial derivatives wrt. u,v, like C$X_u.
 }

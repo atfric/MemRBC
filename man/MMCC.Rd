@@ -2,7 +2,7 @@
 % Please edit documentation in R/MMCC.R
 \name{MMCC}
 \alias{MMCC}
-\title{Metropolis Montecarlo with Curvature Constraint}
+\title{MMCC}
 \usage{
 MMCC(
   M,
@@ -13,7 +13,7 @@ MMCC(
   LAfreq = 200,
   sd = 0.004,
   kT = 0.00411,
-  nm = FALSE,
+  pertA = pertA_Unif,
   kTfac = 1,
   kTfreq = 100
 )
@@ -27,19 +27,19 @@ MMCC(
 
 \item{plt}{(boolean) for plotting}
 
+\item{pltfreq}{for plotting shape every plotfreq number of accepted steps}
+
 \item{LAfreq}{for storing shape coefficients every LAfreq accepted steps}
 
 \item{sd}{standard deviation parameter to control steps}
 
 \item{kT}{Boltzmann-constant * temperature energy scale}
 
-\item{nm}{(boolen) normal motion filter}
+\item{pertA}{(=pertA_Unif) perturbation scheme}
 
 \item{kTfac}{cooling factor}
 
 \item{kTfreq}{frequency for cooling factor applied on kT in units of accepted steps}
-
-\item{plofreq}{for plotting shape every plotfreq number of accepted steps}
 }
 \value{
 membrane object with updates from MMC with data:
@@ -57,13 +57,18 @@ MMCCiter: total MMCC steps, incl. MMCC from previous calls
 history: history of App-calls that created the result
 }
 \description{
+Metropolis Montecarlo with Curvature Constraint
+
 run MMC on an existing membrane object under penalty constraints for volume, area and curvature
 }
 \examples{
-M <- MakeStandardRBC(L=5)
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+data(M4)
+M<-M4
 plot(M)
 #  annealing simulation (decrease kT by kTfac every Ktfreq accepted steps)
-M <- MMCC(M, curv=Curv(M)+0.25, nsteps=100000, kT=0.00411, kTfac=0.99, kTfreq=100)
+M <- MMCC(M, curv=Curv(M)+0.25, nsteps=10000, kT=0.00411, kTfac=0.99, kTfreq=100)
 plot(M)
-M
+M 
+\dontshow{\}) # examplesIf}
 }

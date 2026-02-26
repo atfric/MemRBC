@@ -18,17 +18,22 @@ Requires update(M,"Ref"), if SEN is used (i.e. M.Ka and/or M.mu not zero.
 It is recommended to save a reduced model with save_MemRBC(...,reduce_basis=FALSE),
 to keep the basis in reduced form in the file.
 For loading, you must then use load_MemRBC(..., unreduce_basis=FALSE) to not overwrite the reduced basis.
+ 
+The reduction on X and Y coeficients makes a Axisymmetric parameterization.
+ Take care: The reduction is also on Z coeffs, 
+ which drastically reduces the representable shape space.
 }
 \examples{
-data("US_L10_de_novo"); SetParams(US_L10_de_novo)
-ReduceM1(US_L10_de_novo) -> L10fast
-# should reduce from 120 to 30 rows in bas$A
-#
-# not needed, since paraneters switch off SEN::
-update(L10,what="Ref")->L10fast
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+#download data with 
+if (interactive()) {
+get_data_ZENODO(L="U17R.rda",local=TRUE)
+load_MemRBC("data/U17R.rda")->U17R;
+SetParams(U17R)
+ReduceM1(U17R) -> L10fast
 plot(L10fast)
-
-MMC(L10fast, 20000)->M10fast_mmc
-PlotSample(L10fast_mmc,last=20000)
-
+ MMC(L10fast, 20000,C0=2.562)->M10fast_mmc
+ PlotSample(L10fast_mmc,last=20000)
+}
+\dontshow{\}) # examplesIf}
 }

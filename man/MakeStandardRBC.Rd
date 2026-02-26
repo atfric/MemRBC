@@ -13,8 +13,7 @@ MakeStandardRBC(
   n = (L + 1) * 5 + 2,
   prn = FALSE,
   del_cons = 0.1,
-  del = 2e-07,
-  dt = 1e-05
+  plt = FALSE
 )
 }
 \arguments{
@@ -26,14 +25,18 @@ MakeStandardRBC(
 
 \item{L}{spectral order l<=L}
 
+\item{C0}{spontaneous curvature}
+
 \item{n}{~sqrt(spatial grid points)}
 
 \item{prn}{boolean, print infos on constraint iteration}
 
-\item{del}{delta>0 for iterations; decrease if convergence fails}
+\item{del_cons}{(=0.1) constraint iterator step size}
+
+\item{plt}{(=FALSE) for control plot}
 }
 \value{
-membrane object with updates from MMC with data:
+membrane object with updates from MMC with:
 
 LA: list of recorded coefficients A
 
@@ -45,7 +48,7 @@ grd: Gauss-Legendre-Simpson-spatial grid
 
 Ref: Cauchy-Riemann tensor data for reference shape
 
-ARef:  coefficients of reference shape
+ARef: coefficients of reference shape
 
 history: history of App-calls that created the result
 }
@@ -53,12 +56,12 @@ history: history of App-calls that created the result
 run MakeStandardRBC() to create a membrane object
 }
 \examples{
-library(MemRBC)
-load_param_MemRBC()
-M.C0=0
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+MemRBC_env$M.C0 <- 0
 # for fast experiments take a low-order L=5:
 M <- MakeStandardRBC(L=5,prn=TRUE)
 plot(M)
 PSD(M,plt=TRUE)
 M
+\dontshow{\}) # examplesIf}
 }

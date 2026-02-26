@@ -19,6 +19,7 @@ M_stoma_L12_rot_MMC 9 .rda
 /R/.Rc
 R/.Rhistory
 /tests/.Rc
+<<<<<<< Updated upstream
 sinica.2008.pdf
 M_stoma_L12_rot_MMC 0 .rda
 M_stoma_L12_rot_MMC 1 .rda
@@ -71,4 +72,32 @@ data/D6_cnm_C00.rda
 STOP_PNEM.txt
 *.qs2
 *.rda
+*.rdat
+=======
+/Rcpp-demos
+A-L16-SS8f-mmc-experiments.rdat
+A-L16-SS8f-mmc-experiments.rdat
+A_L16_C0_-6.5.rdat
+A_L16_C0_-6.5.rdat
+A_L16_C0_0.rdat
+A_L16_C0_20.rdat
+A_L16_C0_30.rdat
+A_L16_C0_40.rdat
+A_L6_C0_-6.5.rdat
+A_L16_C0_15.rdat
+A_L12_C0_-6.5.rdat
+SS8-L16-start.rdat
+SS8-L16.rdat
+SS8f-mmc-highT-pertA_complex-C030-Mrho5.rds
+SS8f-rho5-C030-L16-202k.rdat
+Sf20-PNEM.qs2
+SS8f-rho5-C030-L16.rdat
+SS8f-rho5-C040-L16-202k.qs2
+SS8f-rho5-C040-L16-202k.Rds
+StandardRBC_L16.rdat
+SS8fast-C030-mmc.rdat
+>>>>>>> Stashed changes
+*.rdat
+*.rdat
+SS8fast-C030-mmc.rdat
 *.rdat

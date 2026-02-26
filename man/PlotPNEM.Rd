@@ -4,17 +4,24 @@
 \alias{PlotPNEM}
 \title{PlotPNEM}
 \usage{
-PlotPNEM(M)
+PlotPNEM(M, from = 1, to = length(M$C_PNEM))
 }
 \arguments{
 \item{M}{membrane object to plot energies from}
+
+\item{from, to}{(=1), (=length) range of indices to plot data sets for}
+}
+\value{
+-
 }
 \description{
 plot recorded energies from PNEM runs
 }
 \examples{
-data("M4")
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+data("M4",package = "MemRBC",envir=environment())
 PNEM(M4,1000)->M
 PNEMVM(M,1000)->M1
 PlotPNEM(M1)
+\dontshow{\}) # examplesIf}
 }

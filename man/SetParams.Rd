@@ -9,7 +9,10 @@ SetParams(M)
 \arguments{
 \item{M}{Object to take parameters from (stored in M$Params)}
 }
+\value{
+-
+}
 \description{
-Set parameters from membrane object to global variables
+Set parameters from membrane object to MemRBC_env variables
  since data(...) cannot load multiple global data, after data() you should call SetParams on the loaded object.
 }

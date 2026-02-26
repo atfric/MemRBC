@@ -52,10 +52,21 @@
 #' attributes(last(M$LA))
 #' 
 #' @export
+<<<<<<< Updated upstream
 PNEMVM <- function (M, nsteps = 100, dt = 5e-04, LAfreq = 50, plt = TRUE,
                     filter_delta = ID, rho = 1, sd0 = 0.001, pltfreq = 25, ncores = 4,
                     new_Av = FALSE, visc_fac = 1, visc_matrix = diag(sqrt(M$bas$G.tk[1]/M$bas$G.tk)),
                     zero_Av = FALSE, mass_update_freq = 50)
+=======
+PNEMVM <- function( M, nsteps =100, dt =0.0005,
+                  LAfreq = 50, plt =TRUE,
+                  rho  = 1, sd0 = 1e-3,
+                  pltfreq = 25,
+                  ncores = 4,
+                  new_Av = FALSE, visc_fac = 1,
+                  visc_matrix = diag(sqrt(M$bas$G.tk[1]/M$bas$G.tk)),
+                  zero_Av = FALSE, mass_update_freq = 100 ) # returns a modified MemRBC
+>>>>>>> Stashed changes
 {
   t0 = proc.time()
   if (is.null(M$proc_time))

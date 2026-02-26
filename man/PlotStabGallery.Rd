@@ -4,20 +4,27 @@
 \alias{PlotStabGallery}
 \title{Plot a stability analysis visually on a 3x3 canvas of 3d-plots}
 \usage{
-PlotStabGallery(M, which_n = 1:9, sharedMouse = TRUE, wire = FALSE, ...)
+PlotStabGallery(
+  M,
+  which_n = 1:9,
+  plt_scale = 0.3,
+  sharedMouse = TRUE,
+  wire = FALSE,
+  ...
+)
 }
 \arguments{
 \item{M}{The input membrane with initial data and reference}
 
 \item{which_n}{vector of Ids of eigenvalues, 1:9 is default for lowest nine}
 
+\item{plt_scale}{(=0.3) scale of eigenvectors displacement}
+
 \item{sharedMouse}{(boolean) if FALSE, each subplot can be controlled by mouse individually}
 
-\item{plt_scale}{scale of eigenvectors}
+\item{wire}{(=FALSE) to have wireframe plot on top of shade3d()}
 
-\item{col1}{color of unperturbed shapes}
-
-\item{col2}{color of scaled eigenvector perturbed shapes}
+\item{...}{for further plotting parameters, like setting semi-transparency alpha=0.5; col1 and col2 can be set here (blue,red are default)}
 }
 \value{
 none
@@ -26,10 +33,12 @@ none
 run PlotStabGallery on a membrane object with a Stab in it from MemStab()
 }
 \examples{
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
 M <- MakeStandardRBC(L=5)
 plot(M)
 M <- PSD(M,nsteps=100,del=1e-6,)
 plot(M)
 MemStab(M)->M
 PlotStabGallery(M)
+\dontshow{\}) # examplesIf}
 }

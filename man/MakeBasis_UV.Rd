@@ -4,17 +4,35 @@
 \alias{MakeBasis_UV}
 \title{MakeBasis_UV}
 \usage{
-MakeBasis_UV(L_max = 4, u, v)
+MakeBasis_UV(
+  L_max = 4,
+  u,
+  v,
+  Pointsymmetry = FALSE,
+  only_Ylm = FALSE,
+  kind = "Ylm",
+  KleinBottle = FALSE
+)
+}
+\arguments{
+\item{L_max}{(=4) spectral order of basis}
+
+\item{u, v}{vectors of spehrical angles u (in 0..pi) and v (in 0..2*pi).}
+
+\item{Pointsymmetry}{(=FALSE) for basis without even l terms.}
+
+\item{only_Ylm}{(=FALSE) for excluding derivative computation.}
+
+\item{kind}{(="Ylm") or "Fourier"}
+
+\item{KleinBottle}{(=FALSE) for half-periods in u}
+}
+\value{
+basis, to be stored as $bas in membrane object or for other use. The basis also contains standard constraints for area and volume, which may be modified with SetConstraints()
 }
 \description{
 compute the basis functions on given (u,v) values
 (u,v) are usually from grd$U, grd$V, but you may also use irregular (u,v)
 for example for fitting coefficients to a 3d-object, in which (u,v)-values
 may be given as texture coordinates texccords.
-}
-\details{
-@param L_max (=4) spectral order of basis
- @param u,v vectors of spehrical angles u (in 0..pi) and v (in 0..2*pi).
- @return basis, to be stored as $bas in membrane object or for other use.
- The basis also contains standard constraints for area and volume, which may be modified with SetConstraints()
 }

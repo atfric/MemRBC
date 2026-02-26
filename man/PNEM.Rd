@@ -10,7 +10,6 @@ PNEM(
   dt = 5e-04,
   LAfreq = 100,
   plt = TRUE,
-  filter_delta = ID,
   rho = 1,
   sd0 = 0.001,
   pltfreq = 25,
@@ -19,7 +18,7 @@ PNEM(
   new_Av = FALSE,
   viscosity = 20,
   zero_Av = FALSE,
-  mass_update_freq = 100
+  mass_update_freq = 99
 )
 }
 \arguments{
@@ -37,11 +36,19 @@ PNEM(
 
 \item{sd0}{standard deviation of Gaussian velocity initialization}
 
+\item{pltfreq}{(=25) plot frequency}
+
+\item{ncores}{(=4) for parallel threads in SCM gradient and energy}
+
+\item{E_crit}{(=10) 1/M.Es scaled energy threshold to exit}
+
 \item{new_Av}{set velocity according to sd0 random numbers}
 
 \item{viscosity}{viscosity constant for damping oscillations to zero}
 
 \item{zero_Av}{set velocity zero for pure minimization}
+
+\item{mass_update_freq}{(=99) update frequency for mass matrix}
 }
 \value{
 membrane object with updates from MMC with data:
@@ -68,14 +75,14 @@ history: history of App-calls that created the result
 run PNEM on an existing membrane object to simulate dynamics with viscosity
 }
 \examples{
-data("L5_stomatocyte_equilib")
-SetParams
-M<-L5_stomatocyte_equilib
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+data(M4,package = "MemRBC")
+SetParams(M4)
 M.Rcpp=TRUE
 M.Rcpp_ncores=4
-M <- PNEM(M, nsteps=10000, dt=1e-3)
+M <- PNEM(M4, nsteps=10000, dt=1e-3)
 plot(M)
-M
 # further data stored as attributes to coefficients A in LA
-attributes(last(M$LA))
+attributes(M$A)
+\dontshow{\}) # examplesIf}
 }

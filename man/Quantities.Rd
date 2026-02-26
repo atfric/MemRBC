@@ -10,12 +10,14 @@ Quantities(M)
 \item{M}{The input membrane with initial data and reference}
 }
 \value{
-quantities Area, Volume, curvature Curv and bending energy Wb
+quantities Area, Volume, curvature Curv and bending energy Wb as named vector
 }
 \description{
 report some quantities from a membrane object
 }
 \examples{
-data("M1")
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+data("M1",package = "MemRBC")
 Quantities(M1)
+\dontshow{\}) # examplesIf}
 }

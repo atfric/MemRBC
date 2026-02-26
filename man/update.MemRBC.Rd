@@ -4,16 +4,24 @@
 \alias{update.MemRBC}
 \title{update}
 \usage{
-\method{update}{MemRBC}(M, what = c("dA", "Quantities", "X"), n = 0, L = 5)
+\method{update}{MemRBC}(
+  object,
+  what = c("dA", "Quantities", "X"),
+  n = (L + 1) * 5 + 2,
+  L = 5,
+  ...
+)
 }
 \arguments{
-\item{M}{the input membrane to be updated}
+\item{object}{the input membrane to be updated}
 
-\item{what}{vector of character from "dA", "Quantities", "Basis", "Grid", "Ref", "curv", "SCM", "X", "SEN"}
+\item{what}{vector of character from "dA", "Quantities", "Basis", "Grid", "Ref", "curv", "SCM", "X", "SEN", "Mask", "Time", "Mask"}
 
 \item{n}{for what="Grid": new number of grid points}
 
 \item{L}{for what="Basis": spectral order L}
+
+\item{...}{not used}
 }
 \value{
 updated membrane object
@@ -22,7 +30,9 @@ updated membrane object
 update data in membrane object
 }
 \examples{
-data("M_stomatocyte_L12")
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+get_data_ZENODO(L="M_stomatocyte_L12.rda")
+data("M_stomatocyte_L12",package = "MemRBC",envir=environment())
 update(M_stomatocyte_L12,"X")->M
 plot3d(M$X, aspect=FALSE)
 # make lower spectral order membrane from M
@@ -31,4 +41,5 @@ two_screens3d(); two_draw3d(L8$A, L8)
 rgl::open3d(); plot(L8)
 Quantities(L8)
 Energy(L8)
+\dontshow{\}) # examplesIf}
 }

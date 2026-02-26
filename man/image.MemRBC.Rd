@@ -2,15 +2,23 @@
 % Please edit documentation in R/MembraneRBC-Apps.R
 \name{image.MemRBC}
 \alias{image.MemRBC}
-\title{image}
+\title{îmage from 2d data}
 \usage{
-\method{image}{MemRBC}(M, q = M$SEN$alpha, main = expression(alpha), ...)
+\method{image}{MemRBC}(x, q = x$SEN$alpha, main = expression(alpha), ...)
 }
 \arguments{
-\item{M}{Membrane to use for shape plot}
+\item{x}{Membrane to use for shape plot}
 
 \item{q}{a 2D field to project onto shape, eg. M$SEN$alpha}
+
+\item{main}{(=expression(alpha)) plot title}
+
+\item{...}{parameters to imag()}
+}
+\value{
+-
 }
 \description{
-2D plot of color coded variable on the shape
+2D plot of color coded variable defined on the shape.
+x and y correspond to spherical angles
 }

@@ -7,15 +7,13 @@
 FitDiscocyte_L5(C0 = 0, V0 = 100)
 }
 \arguments{
-\item{C0}{C0-value to use for initial minimization}
+\item{C0}{(=0) C0-value (spontaneous curvature) to use for initial minimization}
+
+\item{V0}{(=100) target volume to use}
 }
 \value{
-membrane object
+MemRBC object
 }
 \description{
 Fit a discocyte from data, spectral order L=5
-}
-\examples{
-FitDiscocyte_L5(C0=0.5)->M
-plot(M)
 }

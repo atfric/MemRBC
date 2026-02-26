@@ -10,6 +10,9 @@
 # Frickenhaus S. (2024). MembraneR3 - A spectral model of membrane shape based on Helfrich spontaneous curvature in R. Zenodo. https://doi.org/10.5281/zenodo.13627757 ")}
 #
 
+#
+# todo: store cumulated time t=sum(dt_i)
+#
 
 #' Penalized Newton Equation of Motion
 #' @description
@@ -54,6 +57,7 @@ PNEM <-function (M, nsteps = 100, dt = 5e-04, LAfreq = 100, plt = TRUE,
                  E_crit = 10, new_Av = FALSE, viscosity = 20, zero_Av = FALSE,
                  mass_update_freq = 99)
 {
+<<<<<<< Updated upstream
   t0 = proc.time()
   if (is.null(M$proc_time))
     M$proc_time <- 0
@@ -95,6 +99,45 @@ PNEM <-function (M, nsteps = 100, dt = 5e-04, LAfreq = 100, plt = TRUE,
   for (iter in (1:nsteps)) {
     A0 = A
     if (iter == 1)
+=======
+  t0=proc.time()
+  if(is.null(M$proc_time)) M$proc_time<-0
+ run_id=rlang::hash(M)
+ if(!exists("M.Rcpp")) stop("Cannot process - probably load_param_MemRBC has not been called.")
+ M.Rcpp<<-TRUE
+ M.Rcpp_ncores<<-ncores # not working on Linux
+  cl=match.call()
+
+  E0=1000
+  E_total=rep(0.0,nsteps)
+  E_kin=rep(0.0,nsteps)
+  type_PNEM=rep("PNEM",nsteps)
+  C_PNEM=rep(0,nsteps)
+  A=M$A; grd=M$grd; bas=M$bas; Ref=M$Ref
+  if (!is.null(M$LA)) LA=M$LA else LA=list(A)
+  C=updateX(A,grd,bas)
+  # we are not working with static mass matrix like this:
+  #if (is.null(M$mass)) {M$mass=massmatrix(M)*rho; M$inv_mass=inv(M$mass)}
+
+  if (is.null(M$LA)) LA=list(M$A) else LA=M$LA # to return the iterated solutions "A" as list elements
+  if (is.null(M$PNEMiter)) M$PNEMiter=0 # new iteration counter
+
+  # introduce velocity in terms of coefficients change per time
+
+  if (is.null(M$Av) | new_Av) {
+    Av=A; Av[]=0; Av=pertA_Gauss(Av,bas,sd=sd0);print("Init Av") } else Av=M$Av
+  if(zero_Av) Av[]=0
+  if(plt){ if (!all(c(M.scr1,M$scr2) %in% rgl::rgl.dev.list())  ) two_screens3d() }
+
+  for (iter in (1:nsteps )) { # bas changed to bas everywhere
+    A0=A
+    if(iter==1)tictoc::tic()
+
+    if (iter==1){ # current accel. needed for Aa; Leapfrog scheme
+      E <- E_FullModel_Penalty_AV(A,grd,bas,Ref)
+      G <- Grad_FullModel_Penalty_AV(A,grd,bas,Ref,E$S)
+     # accelleration = (Force - viscosity_constant * Velocity) / M
+>>>>>>> Stashed changes
       tictoc::tic()
     if (iter == 1) {
       E <- E_FullModel_Penalty(A, grd, bas, Ref)
@@ -121,6 +164,7 @@ PNEM <-function (M, nsteps = 100, dt = 5e-04, LAfreq = 100, plt = TRUE,
       mass <- massmatrix(M, rho)
       inv_mass <- pracma::inv(mass)
     }
+<<<<<<< Updated upstream
     Aa1 <- inv_mass %*% (-G - viscosity * Av)
     Av <- Av + Aa1 * 0.5 * dt
     Xdot <- synthX(bas$Ylm, Av)
@@ -129,14 +173,35 @@ PNEM <-function (M, nsteps = 100, dt = 5e-04, LAfreq = 100, plt = TRUE,
     Ekin <- 0
     for (j in 1:3) Ekin <- Ekin + (0.5 * Av[, j] %*% mass %*%
                                      Av[, j])[1, 1]
+=======
+    Aa1 <-  inv_mass %*% ( - G  - viscosity * Av) # a_i+1 also for next cycles update of Av
+
+    Av <- Av + Aa1 * 0.5 * dt  # i+1/2 -> i+1 - second halve update of velocity for next step
+
+    Xdot <- synthX(bas$Ylm,Av)
+    Ekin_X <- 0.5 * rho * IntegS( apply(Xdot[,]^2,1,sum) * E$dA, grd) # Ekin as integral over mass density times spatial velocity^2
+
+    Ekin <-  0; for (j in 1:3) Ekin <- Ekin + (0.5* Av[,j] %*% mass %*% Av[,j])[1,1]
+
+>>>>>>> Stashed changes
     Etot <- Ekin + E$E
     E_total[iter] <- Etot
     E_kin[iter] <- Ekin
     C_PNEM[iter] <- E$Curv
+<<<<<<< Updated upstream
     print(Ekin)
     if (Ekin/MemRBC_env$M.Es > E_crit) {
       cat(crayon::red("BREAK by energy high\n"))
       break
+=======
+    if (Ekin/M.Es>E_crit) {cat(crayon::red("BREAK by energy high\n"));break}
+    cat("|dAv|:",pracma::Norm(Aa*dt),":  |dA|:",pracma::Norm(Av*dt),":  Ekin:",Ekin/M.Es,": Ekin_X:",Ekin_X/M.Es,":Ekin/Ekin_X:",Ekin/Ekin_X,":Etot:",Etot/M.Es,"\n")
+    cat ("PNEM",iter,"E",E$E/M.Es,"Wb",E$Wb/M.Es,"Ws",E$Ws/M.Es,"C0",M.C0,"C",E$Curv,"A",E$Area,"V",E$Volume,"dt",dt,"v",viscosity,"\n",sep=":")
+    if(plt & iter %% pltfreq==0){
+      two_draw3d(A,M,title = paste("PNEM",iter,"E", round(E$E/M.Es,4),"C",round(E$Curv,4),sep=" "))
+    if(file.exists("STOP_PNEM.txt") ) {cat(crayon::red("exit by presence of file STOP_PNEM\n"));file.remove("STOP_PNEM.txt");break;}
+
+>>>>>>> Stashed changes
     }
     cat("|dAv|:", pracma::Norm(Aa * dt), ":  |dA|:", pracma::Norm(Av *
                                                                     dt), ":  Ekin:", Ekin/MemRBC_env$M.Es, ": Ekin_X:", Ekin_X/MemRBC_env$M.Es,

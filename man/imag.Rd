@@ -7,9 +7,16 @@
 imag(field, grd, nx = grd$nv, ny = grd$nu/2, ...)
 }
 \arguments{
-\item{field}{scalar field, size of grd$nv x grd$nu}
+\item{field}{scalar spatial field}
 
 \item{grd}{the grid of (u,v) on which the scalar is defined}
+
+\item{nx, ny}{dimension of output matrix plot}
+
+\item{...}{additional parameters to `quilt.plot()`}
+}
+\value{
+-
 }
 \description{
 plot a scalar in 2D

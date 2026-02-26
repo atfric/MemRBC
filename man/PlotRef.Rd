@@ -4,17 +4,22 @@
 \alias{PlotRef}
 \title{PlotRef}
 \usage{
-PlotRef(M, ARef = M$Ref$ARef)
+PlotRef(M, ARef = M$ARef)
 }
 \arguments{
 \item{M}{membrane object to plot SEN reference shape from}
 
-\item{Aref}{optional coefficients, eg if the objects ARef is not working}
+\item{ARef}{optional coefficients, eg if the objects ARef is not working}
+}
+\value{
+-
 }
 \description{
 plot SEN reference shape from membrane object
 }
 \examples{
-data("M4")
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+data("M4",package = "MemRBC",envir=environment())
 PlotRef(M4)
+\dontshow{\}) # examplesIf}
 }

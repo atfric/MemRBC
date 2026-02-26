@@ -4,26 +4,32 @@
 \alias{rotUV}
 \title{rotUV}
 \usage{
-rotUV(Min, du, dv, plt = FALSE)
+rotUV(Min, du, dv, plt = FALSE, transpose = FALSE)
 }
 \arguments{
+\item{Min}{membrane object to rotate}
+
 \item{du}{angles of rotation relative to Z-axis}
 
 \item{dv}{angle of rotation around Z-axis}
 
-\item{M}{membrane object to rotate}
+\item{plt}{(=FALSE) TRUE for 3d plotting}
+
+\item{transpose}{(=FALSE) for backward rotation, not verified}
 }
 \value{
-membrane object with coefficients after rotation, but original SEN reference
+membrane MemRBC object with coefficients after rotation, but original SEN reference
 }
 \description{
 rotate membrane coordinates and re-compute coefficients
 without modifying the SEN reference.
-rotUV may help to move poles to Z-axis or for more homogeneous  distribution of spatial points.
+rotUV may help to move poles to Z-axis or for more homogeneous distribution of spatial points.
 }
 \examples{
-data_MemRBC("M_stomatocyte_L12")
-plot(M_stomatocyte_L12)
-rotUV(M_stomatocyte_L12,pi/2,3*pi/4)->M
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+data("M4",package = "MemRBC")
+plot(M4)
+rotUV(M4,pi/2,3*pi/4)->M
 plot(M)
+\dontshow{\}) # examplesIf}
 }

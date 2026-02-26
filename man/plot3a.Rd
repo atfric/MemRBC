@@ -10,7 +10,6 @@ plot3a(
   pnts = FALSE,
   clip = FALSE,
   col = "black",
-  alpha = 1,
   cont = TRUE,
   cont.grid = FALSE,
   fill = TRUE,
@@ -23,13 +22,31 @@ plot3a(
 \item{X}{Coordiates, e.g. in C$X from updateX()}
 
 \item{grd}{grid with a basic rgl-object grd$Obj}
+
+\item{pnts}{(=FALSE) for grid points to plot}
+
+\item{clip}{(=FALSE) for clipplane (0.5,0.5,0)}
+
+\item{col}{(="black")}
+
+\item{cont}{(=TRUE) for contours of X,Y,Z levels}
+
+\item{cont.grid}{(=FALSE) for u,v grid lines}
+
+\item{fill}{(=TRUE) to fill contours}
+
+\item{fn}{(="z") parameter of filled contours}
+
+\item{fn_data}{(="z") for data as filled contour parameter}
+
+\item{...}{parameters to filledContour3d()}
 }
 \description{
 plot coordinates C$X (after updateX)
 }
 \examples{
-data("M1")
- # take required data from M1
-plot3a(updateX(M1$A,M1$grd,M1$bas,M1$)$X,M1$grd)
-
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+data("M4",package = "MemRBC")  # take required data from M5
+plot3a(updateX(M4$A,M4$grd,M4$bas)$X,M4$grd)
+\dontshow{\}) # examplesIf}
 }

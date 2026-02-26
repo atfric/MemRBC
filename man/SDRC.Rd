@@ -2,19 +2,21 @@
 % Please edit documentation in R/SDRC.R
 \name{SDRC}
 \alias{SDRC}
-\title{Steepest Descend Rosen Constraint}
+\title{SDRC}
 \usage{
 SDRC(
   M,
   nsteps = 100,
   del_min = 1e-07,
   del_cons = 0.001,
+  Gtol = 1e-04,
   max_iter = 10,
   cons_tol = 0.001,
   plt = FALSE,
   pltfreq = 10,
   LAfreq = 25,
-  filter_strength = 0
+  filter_strength = 0,
+  prn_ci = FALSE
 )
 }
 \arguments{
@@ -25,6 +27,8 @@ SDRC(
 \item{del_min}{(=1e-7) step-size of SD}
 
 \item{del_cons}{(=1e-3) step-size of fix point iteration}
+
+\item{Gtol}{(=1e-4) stop if gradient norm is below Gtol}
 
 \item{max_iter}{(=10) maximum number of constraint iterations}
 
@@ -37,6 +41,8 @@ SDRC(
 \item{LAfreq}{storage frequency into list of coefficients LA}
 
 \item{filter_strength}{weight of diagonal filter. i.e. 1+f/sqrt(M$bas$G.tk)}
+
+\item{prn_ci}{(=FALSE) to print infos on constraint iterations}
 }
 \value{
 membrane object with updates from MMC with data:
@@ -56,15 +62,19 @@ SDRCiter; total SDRC steps, incl. previous calls
 history: history of App-calls that created the result
 }
 \description{
-run SDRC on an existing membrane object to reduce energy by steepest descend.
-Constraint violation is projected out by Rosen (1961).
-To stay near feasible points,constraint fix point iterations (Frickenhaus, Dissertation thesis, Humboldt-University Berlin, 1999) are performed every step.
+Steepest Descend with Rosen Constraint Solver
+
+Run SDRC on an existing membrane object to reduce energy by steepest descend.
+Constraint violation is projected out by Rosens method (1961).
+To stay near feasible points, constraint fix point iterations (Frickenhaus, Dissertation thesis, Humboldt-University Berlin, 1999) are performed every step.
 }
 \examples{
-M <- MakeStandardRBC(L=5)
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+data(M4,package = "MemRBC"); M<-M4
 plot(M)
-M <- SDRC(M, nsteps=10000, del=1e-6, LAfreq=100)
+MemRBC_env$M.C0 <- 0
+M <- SDRC(M, nsteps=10000, del_min=1e-6, LAfreq=100, cons_tol=1e-2, Gtol=1e-3)
 plot(M)
-M
-attributes(last(M$LA))
+attributes(last(M$LA)) 
+\dontshow{\}) # examplesIf}
 }

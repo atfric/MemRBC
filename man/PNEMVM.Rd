@@ -19,7 +19,7 @@ PNEMVM(
   visc_fac = 1,
   visc_matrix = diag(sqrt(M$bas$G.tk[1]/M$bas$G.tk)),
   zero_Av = FALSE,
-  mass_update_freq = 100
+  mass_update_freq = 50
 )
 }
 \arguments{
@@ -33,19 +33,25 @@ PNEMVM(
 
 \item{plt}{(boolean) for plotting}
 
+\item{filter_delta}{(=ID) name a function to modify for delta(A), eg damping; the filter gives back coeffs A, and it has (A,bas) as input parameters}
+
 \item{rho}{area mass density (scalar)}
 
 \item{sd0}{standard deviation of Gaussian velocity initialization}
+
+\item{pltfreq}{(=25) plot frequency}
+
+\item{ncores}{number of parallel cores in SCM energy and gradient}
 
 \item{new_Av}{set velocity according to sd0 random numbers}
 
 \item{visc_fac}{viscosity scaling factor for damping oscillations to zero}
 
-\item{visc_matrix}{viscosity matrix of size $bas$Ai_max x $bas$Ai_max}
+\item{visc_matrix}{(=diag(sqrt(M$bas$G.tk[1]/M$bas$G.tk)) ) viscosity matrix of size $bas$Ai_max x $bas$Ai_max}
 
 \item{zero_Av}{set velocity zero for pure minimization}
 
-\item{diag_visc}{(boolean) viscosity tensor diagonal, and not ~ mass-matrix}
+\item{mass_update_freq}{(=50) update frequency of mass matrix}
 }
 \value{
 membrane object with updates from MMC with data:
@@ -72,14 +78,16 @@ history: history of App-calls that created the result
 run PNEMVM on an existing membrane object to simulate dynamics with spectral natrix viscosity
 }
 \examples{
-data(L5_stomatocyte_equilib)
-M<-L5_stomatocyte_equilib
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+data(M4)
+M<-M4
 plot(M)
-M.Rcpp=TRUE
-M.Rcpp_ncores=4
-M <- PNEMVM(M, nsteps=10000, del=1e-6)
+MemRBC_env$M.Rcpp=TRUE
+MemRBC_env$M.Rcpp_ncores=4
+M <- PNEMVM(M, nsteps=10000, dt=1e-6)
 plot(M)
 M
 # further data stored as attributes to coefficients A in LA
 attributes(last(M$LA))
+\dontshow{\}) # examplesIf}
 }

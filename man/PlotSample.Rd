@@ -9,7 +9,11 @@ PlotSample(M, last = dim(M$Sample)[1], title = "MMC sample plot", ...)
 \arguments{
 \item{M}{membrane object with $Sample keeping the MMC recorded data}
 
+\item{last}{: integer, how many data from the tail should be plotted}
+
 \item{title}{title of the plot, placed in separate box}
+
+\item{...}{further plot parameters}
 }
 \value{
 -
@@ -18,7 +22,9 @@ PlotSample(M, last = dim(M$Sample)[1], title = "MMC sample plot", ...)
 plot the curvature-energy-data sampled from MMC.
 }
 \examples{
-data("M4")
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+data("M4",package = "MemRBC",envir=environment())
 MMC(M4,1000)->M4mmc
 PlotSample(M4mmc)
+\dontshow{\}) # examplesIf}
 }

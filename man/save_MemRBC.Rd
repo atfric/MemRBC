@@ -4,17 +4,43 @@
 \alias{save_MemRBC}
 \title{save_MemRBC}
 \usage{
-save_MemRBC(M, file = "MemRBC.rdat", reduce_basis = TRUE)
+save_MemRBC(
+  M,
+  file = "MemRBC.rdat",
+  reduce_basis = TRUE,
+  thinLA = TRUE,
+  thinA = TRUE,
+  thinbas = TRUE,
+  qs2 = FALSE
+)
 }
 \arguments{
 \item{M}{The input membrane to be saved}
+
+\item{file}{(="MemRBC.rdat") the filename for saving}
+
+\item{reduce_basis}{(=TRUE) removes derivative data of basis functions}
+
+\item{thinLA}{(=TRUE) removes additional attributes in LA coeff records}
+
+\item{thinA}{(=TRUE) removes additional attributes in coeffs A}
+
+\item{thinbas}{(=TRUE) removes IM matrix from basis}
+
+\item{qs2}{(=FALSE) for faster save in .qs2 file use this. In this case, ".qs2" is appended on filename.}
+}
+\value{
+name of saved file
 }
 \description{
 save membrane object M to file
-erases data from basis M$bas (recomputed when loaded back)
+erases data from basis M$bas (some recomputed when loaded back)
+LA entries get class "MemA" (for older files)
 }
 \examples{
-data("M4")
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+data("M4",package = "MemRBC",envir=environment())
 MMC(M4,10)->M
 save_MemRBC(M,"Mmmc.rdat")
+\dontshow{\}) # examplesIf}
 }

@@ -4,11 +4,13 @@
 \alias{print.MemRBC}
 \title{print}
 \usage{
-\method{print}{MemRBC}(R)
+\method{print}{MemRBC}(x, ...)
 }
 \arguments{
-\item{M}{Membrane to print data from}
+\item{x}{Membrane to print data from}
+
+\item{...}{not used}
 }
 \description{
-print metadata from membrane object
+print metadata from membrane object class MemRBC
 }

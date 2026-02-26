@@ -7,18 +7,11 @@
 StoreParams(M)
 }
 \arguments{
-\item{M}{Membrane to store actual parameters like M.C0, M.K_ADE etc. into}
+\item{M}{Membrane to store actual parameters like MemRBC_env$M.0, M.K_ADE etc. into}
+}
+\value{
+MemRBC object, with Params from `MemRBC_env`
 }
 \description{
-Store current global membrane parameters in $Param the object; useful for load and save
-}
-\examples{
-data("D5")
-data("D6")
-SetParams(D5) # set parameters stored in D5 to global variables
-Storeparams(D6)->D6 # sets parameters from global variables to another object
-# should be equivalent with
-# D6$Params <- D5$Params
-# but the SetParams(D5) sets global parameters for further use
-
+Store current MemRB_env membrane parameters in $Param of the object; useful for load and save
 }

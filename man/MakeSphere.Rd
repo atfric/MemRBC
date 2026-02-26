@@ -17,5 +17,5 @@ MakeSphere(grd, bas, r = 1)
 coefficient matrix, derived from its prototype bas$A
 }
 \description{
-compute unit sphere for given grid and basis
+Compute unit sphere for given grid and basis
 }

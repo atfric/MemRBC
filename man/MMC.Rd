@@ -2,22 +2,24 @@
 % Please edit documentation in R/MMC.R
 \name{MMC}
 \alias{MMC}
-\title{run MMC on an existing membrane object under penalty constraints for volume and area.
-Every 75 rejected steps, the interval size of random numbers added on coefficients is decreased by 5%.
-If the interval size is below 1e-6, it is re-initialized to 0.01.}
+\title{MMC}
 \usage{
 MMC(
   M,
   nsteps = 1000,
-  plt = FALSE,
-  pltfreq = 5,
+  plt = TRUE,
+  pltfreq = 10,
+  prn = TRUE,
   LAfreq = 200,
   sd = 0.004,
   kT = 0.00411,
-  nm = FALSE,
   kTfac = 1,
   kTfreq = 100,
-  filter = ID
+  pertA = pertA_Unif,
+  record_dA = FALSE,
+  timing = FALSE,
+  C0 = M$C0,
+  ...
 )
 }
 \arguments{
@@ -27,21 +29,29 @@ MMC(
 
 \item{plt}{(=FALSE) for plotting}
 
+\item{pltfreq}{(=5) for plotting shape every plotfreq number of accepted steps}
+
+\item{prn}{(=TRUE) for extensive printing}
+
 \item{LAfreq}{(=200) for storing shape coefficients every LAfreq accepted steps}
 
 \item{sd}{(=0.004) standard deviation parameter to control steps}
 
 \item{kT}{(=0.00411) Boltzmann-constant * temperature energy scale}
 
-\item{nm}{(=FALSE) normal motion filter}
-
 \item{kTfac}{(=1.0) cooling factor (0<kTfac<1) or heating factor (kTfac>1)}
 
-\item{kTfreq}{(=100) number of accepted steps between two scalings of kT by kTfac}
+\item{kTfreq}{(=100) cooling/heating frequency}
 
-\item{filter}{(=ID) use ApplyFlt_L1 for fixed overall orientation in L1-coeffs; requires SetFlt_L1(M) before}
+\item{pertA}{(=pertA_Unif) perturbation scheme}
 
-\item{plfreq}{(=5) for plotting shape every plotfreq number of accepted steps}
+\item{record_dA}{(=FALSE) record perturbations}
+
+\item{timing}{(=FALSE)}
+
+\item{C0}{(=M$C0) to verify wanted C0 against MemRBC_env$M.C0}
+
+\item{...}{further plot parameters}
 }
 \value{
 membrane object with updates from MMC with data:
@@ -59,15 +69,16 @@ MMCiter: total MMC steps, incl. MMC from previous calls
 history: history of App-calls that created the result
 }
 \description{
-run MMC on an existing membrane object under penalty constraints for volume and area.
-Every 75 rejected steps, the interval size of random numbers added on coefficients is decreased by 5%.
-If the interval size is below 1e-6, it is re-initialized to 0.01.
+Run Metropolis Montecarlo MMC on an existing membrane object under penalty constraints for volume and area.
+ Constraints are set in M$bas$Target for penalization with strength M.rho.
 }
 \examples{
-M <- MakeStandardRBC(L=5)
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+data(M4,package = "MemRBC"); M<-M4
 plot(M)
 #  annealing simulation (decrease kT by kTfac every Ktfreq accepted steps)
-M <- MMC(M,nsteps=100000, kT=0.00411, kTfac=0.99, kTfreq=100)
-plot(M)
-M
+M1 <- MMC(M,nsteps=100000, kT=0.00411, kTfac=0.99, kTfreq=100, C0=-2)
+plot(M1)
+M1
+\dontshow{\}) # examplesIf}
 }

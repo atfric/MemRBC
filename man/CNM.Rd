@@ -8,15 +8,14 @@ CNM(
   M,
   nsteps = 5,
   del = 0.3,
+  del_control = FALSE,
   diag.reg = 0,
+  pinv = TRUE,
   LAfreq = 1,
   Mtol_Newton = 1e-04,
-  thresh = 0,
-  suppress_low_n = 3,
   ncores = 4,
+  keepEig2A = FALSE,
   plt = TRUE,
-  plt_svd = TRUE,
-  filter_delta = ID,
   cluster = FALSE
 )
 }
@@ -27,15 +26,19 @@ CNM(
 
 \item{del}{(=0.3) update factor delte (<1)}
 
+\item{del_control}{(=FALSE) TRUE for use of statoíc step length del}
+
+\item{diag.reg}{(=0) diagonal regularization of to be inverted matrix}
+
+\item{pinv}{(=TRUE) use pseudo-inverse in solver}
+
 \item{LAfreq}{(=1) storage frequency into list of coefficients LA}
 
-\item{Mtol_Newton}{(=1e-4) stopping criterion for norm of gradient}
+\item{Mtol_Newton}{(=1e-4) stopping criterion for KKT norm and constraints norm}
 
-\item{thresh}{(=0)threshold for pseudoinverse to suppress almost zero sigularvalues in matrix inversion, see alternative parameter suppress_low_n}
+\item{ncores}{(=4) for parallel Hessian on ncores CPU-cores}
 
-\item{suppress_low_n}{(=3) for removing n lowest eigenvalue vectors from inversion, in stead workin with threshold}
-
-\item{ncores}{(=4) for parallel Hessian with ncores}
+\item{keepEig2A}{(=FALSE) to keep eigensystem as attribute "EigsH" in $A (and thus LA[[]] -> high memory demands)}
 
 \item{plt}{(=TRUE) for plotting two figures with alpha/beta stress-shear parameters}
 
@@ -44,23 +47,27 @@ CNM(
 \value{
 membrane object with updated data from CNM:
 
-LA: list of recorded coefficients A
+LA : list of recorded coefficients A
 
-A: last coefficients
+A : last coefficients
 
-history: history of App-calls that created the result
+history : history of App-calls that created the result
 
-E_CNM: vector of nsteps energy values
+E_CNM : vector of nsteps energy values
 
-CNMiter: number of iterations, incl. previous calls
+CNMiter : number of iterations, incl. previous calls
 
-proc_time: aggregated processing time of all Apps called before with this object
+proc_time : aggregated processing time of all Apps called before with this object
 
-Eig: eigensystrem of bordered Hessian
+Eig.H : eigensystem of last energy+constraints Hessian
 
-Eig.H: eigenvsystem of energy Hessian
+Grad : final energy gradient
 
-Hessian: bordered Hessian matrix, i.e. with Lagrangians
+Jacobian : constraint Jacobian
+
+Hessian : full energy Hessian matrix
+
+ConsHessians : Lagrangian Hessians from active constraints
 }
 \description{
 run CNM on an existing membrane object to minimize energy under exact constraints on area and volume
@@ -68,9 +75,13 @@ You may include curvature constraint as well.
 Temperature is controlled by parameter kT.
 }
 \examples{
-M <- MakeStandardRBC(L=5)
-plot(M)
-M <- MMC(M,nsteps=10000,kT=0.00411,kTfac=0.99,kTfreq=100)
-plot(M)
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+data(M4)
+MemRBC_env$M.C0 <- -4
+plot(M4)
+M4<-SDRC(M4,10,del_min=3e-6)
+M4 <- CNM(M4,nsteps=20,cluster=TRUE,ncores=4,del_control=TRUE)
+plot(M4)
 M
+\dontshow{\}) # examplesIf}
 }

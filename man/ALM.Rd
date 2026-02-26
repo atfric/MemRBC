@@ -2,7 +2,7 @@
 % Please edit documentation in R/ALM.R
 \name{ALM}
 \alias{ALM}
-\title{Augmented Lagrangian Minimizer}
+\title{Augmented Lagrangian Minimization}
 \usage{
 ALM(
   M,
@@ -12,7 +12,7 @@ ALM(
   method = "SLSQP",
   maxiter_solver = 100,
   ncores = 4,
-  LAfreq = 15
+  LAfreq = 5
 )
 }
 \arguments{
@@ -20,13 +20,17 @@ ALM(
 
 \item{curv}{target curvature}
 
-\item{nsteps}{number of MMC steps to be run}
+\item{nsteps}{(=10) number of MMC steps to be run}
 
 \item{plt}{(boolean) for plotting}
 
 \item{method}{"SLSQP" for internal nloptr minimizer}
 
-\item{kTfreq}{frequency for cooling factor applied on kT}
+\item{maxiter_solver}{(=100) max. solver iterations}
+
+\item{ncores}{(=4) number of parallel cores tu use}
+
+\item{LAfreq}{(=5) frequency of recording coeffs A to LA}
 }
 \value{
 membrane object with updates from MMC with data:
@@ -45,9 +49,12 @@ history: history of App-calls that created the result
 run ALM on an existing membrane object to adjust shape to target curvature, minimizing the residual norm RN.
 }
 \examples{
-M <- MakeStandardRBC(L=5)
-plot(M)
-M <- ALM(M,curv=86,20,plt=TRUE)
-plot(M)
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+MemRBC_env$M.C0<-0
+M <- MakeStandardRBC(L=3,C0=0)
+plot(M,alpha=0.6)
+ M <- ALM(M,curv=Curv(M)+2,10,ncores=2)
+plot(M,alpha=0.6,col="red")
 M
+\dontshow{\}) # examplesIf}
 }

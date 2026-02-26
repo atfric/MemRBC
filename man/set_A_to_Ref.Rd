@@ -13,5 +13,5 @@ set_A_to_Ref(M)
 modified M2 with new coefficients from M$ARef; spectral order remains unchanged
 }
 \description{
-copy reference shape coefficients to current coeffs.
+copy reference shape coefficients $ARef to current coeffs $A.
 }

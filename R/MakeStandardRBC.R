@@ -67,8 +67,12 @@ MakeStandardRBC <- function(A0=140, V0=100, V0_Ref=148, L=9,
               nsteps = 1000,prn=prn)
   Aref=CI$A
   attr(Aref,"V0")=V0_Ref
+<<<<<<< Updated upstream
   Filter_1_A<-function(A) {A[1,2:3]=A[2,1:2]=A[3,c(1,3)]=0;return(A)}
   Aref=Filter_1_A(Aref)
+=======
+
+>>>>>>> Stashed changes
   updateX(Aref,grd,bas.axi)->C
   if(plt)rgl::plot3d(C$X,aspect=FALSE)
   # now the target L shape by energy minimization
@@ -393,4 +397,151 @@ MakeTorus<-function(L=5, n=L*6, R=2.5, r=1, plt=FALSE)
   M$history=list(match.call())
   M$proc_time=0
   return(M)
+}
+
+#' MakeSpiculated
+#'
+#' create a spiculated cell from a sphere via invag_N() with negative depth.
+#' The basic object started from is a L=16 standard sphere.
+#' The resulting shape is rescaled to obtain the target area specified in data(SS) (usually 140).
+#' You may also set a different volume target (see example code).
+#' WARNING: the reference is taken from unscaled sphere - may need updates!
+#' @param N (=20) (6,8,12,20,32,42) number of regularly arranged spikes
+#' @param w (=0.01) width of spikes; 0.01 is good for N=42
+#' @param d (=-0.35) negative elevation of spikes; 0.35 is good for N=42
+#' @param r (=1) radius of initial sphere. Helps to control initial volume.
+#' @param rz (=1) helps to scale z, rz<1 : oblate, rz>1 : prolate shape
+#' @examples
+#' MakeSpiculated(N=12,w=0.06,d=-0.6,r=0.65) -> ss
+#' ss
+#' ss$bas$Target
+#' # may use ss$bas$Target["Volume"]=Volume(ss)
+#' rgl::open3d()
+#' plot(ss)
+#' ss
+#' M.C0 <- 20
+#' MMC(ss,100000,plt=TRUE,pltfreq=100,LAfreq=1000) -> ss_mmc
+#' @export
+MakeSpiculated<-function(N=42,w=0.01, d=-0.35, r=1, rz=1)
+{
+data(SS) # standard RBC 16
+g=SS$grd
+b=SS$bas
+if (r<=0) stop("non-positive radius; use e.g. r=1")
+a = MakeSphere(g,b) * r
+a[2,3] = a[2,3]*rz
+
+if(N==42) S=Rvcg::vcgSphere(1) else
+  if(N==12) S=Rvcg::vcgIcosahedron() else # for 12 spicules
+   if (N==6) S=Rvcg::vcgOctahedron() else
+     if (N==32) S=Rvcg::vcgDodecahedron()
+
+if (N %in% c(12,42,6,32)) s=S$vb[1:3,] else
+  if (N==20) s=t(Rvcg::vcgBary(Rvcg::vcgSphere(0))) else
+    if (N==8) s=t(Rvcg::vcgBary(Rvcg::vcgOctahedron())) else return(NULL)
+
+# for 20 spicules:
+# s=t(Rvcg::vcgBary(Rvcg::vcgSphere(0)))
+
+W=c()
+uv=(apply(s,2,inv_sph))
+range(uv[2,])
+X<-updateX_only(a,g,b)$X # initial sphere data
+rgl::mfrow3d(3,4,sharedMouse = TRUE)
+for (i in 1:dim(uv)[2]){
+  X<-rotateX(X,uv[1,i],0,uv[2,i],transpose=TRUE) # TRUE important
+  X<-invag_N(X,w,d);
+#  W=c(W,attr(X,"w"))
+  rgl::plot3d(X,aspect=FALSE)
+  X<-rotateX(X,uv[1,i],0,uv[2,i],transpose=FALSE)
+}
+col=rep(1,dim(X)[1])
+#col[as.numeric(names(table(W)))] = table(W)
+rgl::open3d()
+rgl::plot3d(X,aspect=FALSE,col=col)
+#rgl::wire3d(S,add=TRUE)
+
+# now fit spiculated sphaerocyte X into standard cell shapes coefficients
+O=SS$grd$Obj
+X2Obj(O,X)->O
+rgl::wire3d(O)
+
+b$mask
+A <- FitAlm_Tikhonov(X=X,bas=b,lambda=0)
+SS$A=A
+# scale for target area
+a0=Area(SS)
+(la=(SS$bas$Target["Area"]/a0)^(1/2)) # length stretch
+SS$A<-SS$A*la
+v0=Volume(SS)
+a0=Area(SS)
+c0=Curv(SS)
+cat("Quantities A,V,C:",a0,v0,c0,"\n")
+SS$history<-match.call()
+SS$proc_time=NULL
+return(SS)
+}
+
+
+#' MakeInvaginated
+#'
+#' create an invaginated cell from a sphere via positive invag_N.
+#' The basic object started from is a L=16 standard sphere.
+#' The resulting shape is rescaled to obtain the target area specified in data(SS) (usually 140).
+#' You may also set a different volume target (see example code).
+#' WARNING: the reference is taken from unscaled sphere - may need updates!
+#' @param w (=0.01) width of spikes; 0.01 is good for N=42
+#' @param d (=-0.35) negative elevation of spikes; 0.35 is good for N=42
+#' @param r (=1) radius of initial sphere. Helps to control initial volume
+#' @param uv (=c(0,0)) u,v for position of invagiation center in spherical coordinates
+#' @examples
+#' MakeInvaginated(plt=TRUE) -> iv
+#' iv
+#' iv$bas$Target
+#' # to keep like that you may use iv$bas$Target["Volume"]=Volume(iv)
+#' rgl::open3d()
+#' plot(iv)
+#' iv
+#' M.C0 <- -5
+#' MMC(iv,100000,plt=TRUE,pltfreq=100,LAfreq=1000) -> iv_mmc
+#' @export
+MakeInvaginated<-function(w=0.38, d=1.4, r=1.045,f=0.75, uv=c(0,0), plt=FALSE)
+{
+  data(SS) # standard RBC 16, including reference
+
+  g=SS$grd
+  b=SS$bas
+  if (r<=0) stop("non-positive radius; use e.g. r=1")
+  a = MakeSphere(g,b) * r
+  a[2,3] = f*a[2,3]
+  X<-updateX_only(a,g,b)$X # initial sphere data
+  X<-rotateX(X,uv[1],0,uv[2],transpose=TRUE) # TRUE important
+  X<-invag_N(X,w,d);
+  W=c(W,attr(X,"w"))
+  if (plt) rgl::plot3d(X,aspect=FALSE)
+  X<-rotateX(X,uv[1],0,uv[2],transpose=FALSE)
+
+  col=rep(1,dim(X)[1])
+  col[as.numeric(names(table(W)))] = table(W)
+  if (plt){
+  rgl::open3d()
+  rgl::plot3d(X,aspect=FALSE,col=col) }
+  # now fit invaginated sphaerocyte X into standard cell shapes coefficients
+  O=SS$grd$Obj
+  X2Obj(O,X)->O
+  rgl::wire3d(O)
+
+  A <- FitAlm_Tikhonov(X=X,bas=b,lambda=0)
+  SS$A=A
+  # scale for target area
+  a0=Area(SS)
+  (la=(SS$bas$Target["Area"]/a0)^(1/2)) # length stretch
+  SS$A<-SS$A*la
+  v0=Volume(SS)
+  a0=Area(SS)
+  c0=Curv(SS)
+  cat("Quantities A,V,C:",a0,v0,c0,"\n")
+  SS$history<-match.call()
+  SS$proc_time=NULL
+  return(SS)
 }

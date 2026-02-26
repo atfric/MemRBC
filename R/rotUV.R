@@ -21,8 +21,13 @@
 
 #' rotUV
 #'
+<<<<<<< Updated upstream
 #' rotate membrane coordinates and re-compute coefficients
 #' without modifying the SEN reference.
+=======
+#' rotate membrane coordinates and re-compute coefficients,
+#' Warning: without modifying the SEN reference.
+>>>>>>> Stashed changes
 #' rotUV may help to move poles to Z-axis or for more homogeneous distribution of spatial points.
 #'
 #' @param Min membrane object to rotate
@@ -36,7 +41,13 @@
 #' plot(M4)
 #' rotUV(M4,pi/2,3*pi/4)->M
 #' plot(M)
+<<<<<<< Updated upstream
 #' 
+=======
+#' data("SS20"); rgl::open3d();plot(SS20)
+#' rotUV(SS20,-0.44,0)->SS20R
+#' rgl::open3d();plot(SS20R)
+>>>>>>> Stashed changes
 #' @export
 rotUV<-function(Min,du,dv,plt=FALSE,transpose=FALSE)
 {

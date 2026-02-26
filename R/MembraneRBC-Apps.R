@@ -1,5 +1,5 @@
 # MemRBC the R package for spectral shape modeling of red blood cells
-# (C) 2025 Stephan Frickenhaus
+# (C) 2026 Stephan Frickenhaus
 
 # CITATION
 # when using this software for publications you must cite it as:
@@ -50,9 +50,15 @@ image.MemRBC<-function(x,q=x$SEN$alpha,main=expression(alpha),...)
 #' @param ... further plotting options, e.g. col="green"
 #' @export plot.MemRBC
 #' @export
+<<<<<<< Updated upstream
 plot.MemRBC <- function(x,wire=TRUE,wire_col="black",...){
     R<-x
     updateX_only(R$A,R$grd,R$bas)->C
+=======
+plot.MemRBC <- function(R,wire=TRUE,wire_col="black",frame=NULL,...){
+    if (is.null(frame)) A<-R$A else A<-R$LA[[frame]]
+    updateX_only(A,R$grd,R$bas)->C
+>>>>>>> Stashed changes
   #  Rvcg::vcgUpdateNormals(C$Obj)->O
     plot3b(C$X,R$grd,wire=FALSE,...)
     if (is.null(R$grd$ObjQ)) Obj2ObjQ(R$grd$Obj,R$grd)->Q else Q=R$grd$ObjQ
@@ -219,6 +225,7 @@ Quantities<-function(M)
 #' @param M The input membrane with initial data and reference
 #' @return vector of energies Wb (bending), Es (stress-shear), E (potetntial energy), Ekin (kinetic energy, optional, if a PNEM was run)
 #' @export
+<<<<<<< Updated upstream
 Energy<-function (M)
 {
   C <- updateX(M$A, M$grd, M$bas)
@@ -240,6 +247,21 @@ Energy<-function (M)
   if(M$bas$Nc>0) {r[5]=sum((unlist(Quantities(M))[M$bas$QCons]-M$bas$Target)^2)
    names(r)[5]="Econstr"}
   return(r)
+=======
+Energy<-function(M)
+{updateX(M$A,M$grd,M$bas)->C
+  h2=E_SCM(M$A,M$grd,M$bas,C)
+  if(M$SEN) {
+   S=SEN(M$A,M$grd,M$bas,M$Ref,h2)
+   ES=E_SEN(M$A,M$grd,M$bas,S,M$Ref) } else ES=0
+   r=c(h2$Wb,ES,h2$Wb+ES)
+names(r)=c("Wb","Es","E")
+if (!is.null(M$mass) & !is.null(M$Av)) {Ekin <-  0; for (j in 1:3) Ekin <- Ekin + (0.5* M$Av[,j] %*% M$mass %*% M$Av[,j])[1,1]
+ r=c(r,Ekin)
+ names(r)[4]="Ekin"
+}
+return(r)
+>>>>>>> Stashed changes
 }
 
 #' compute area
@@ -318,7 +340,8 @@ two_screens3d<-function(x=400,y=400){
 #' two_screens(); two_draw3d(A, M4)
 #' @export
 two_draw3d<-function(A,M,cont=FALSE,title="",x=400,y=400) # requires S (Stretches) as global variable
-  { grd=M$grd;
+  { if (is.null(M$Ref)) {warning("No SEN for two_draw3d");return(NULL)}
+    grd=M$grd;
     C<-updateX(A,grd,M$bas)
     Wb<-E_SCM(A,grd,M$bas,C)
     S<-SEN(A,grd,M$bas,M$Ref,Wb)
@@ -340,9 +363,15 @@ if(cont){    rgl::contourLines3d(O,grd$U,nlev=15,lwd=1)
 #' update
 #' @description
 #' update data in membrane object
+<<<<<<< Updated upstream
 #' @param object the input membrane to be updated
 #' @param what vector of character from "dA", "Quantities", "Basis", "Grid", "Ref", "curv", "SCM", "X", "SEN", "Mask", "Time", "Mask"
 #' @param n for what="Grid": new number of grid points
+=======
+#' @param M the input membrane to be updated
+#' @param what vector of character from "dA", "Quantities", "Basis", "Grid", "Ref", "curv", "SCM", "X", "SEN"
+#' @param n for what="Grid": new number of grid points (1D)
+>>>>>>> Stashed changes
 #' @param L for what="Basis": spectral order L
 #' @param ... not used
 #' @return updated membrane object
@@ -427,6 +456,7 @@ update.MemRBC <- function(object, what=c("dA","Quantities","X"),n=(L+1)*5+2,L=5,
     C=updateX(M$A,M$grd,M$bas)
     Wb=E_SCM(M$A,M$grd,M$bas,updateX(M$A,M$grd,M$bas))
     M$SEN=SEN(M$A,M$grd,M$bas,M$Ref,Wb)
+    M$SEN=TRUE
   }
   if("Coor" %in% what) {
     C=updateX(M$A,M$grd,M$bas)
@@ -513,6 +543,7 @@ thin_LA<-function(M){
 #' M<-load_MemRBC("Mmmc.rdat",qs2=FALSE) # may also have saved with qs2=TRUE
 #' M
 #' @export
+<<<<<<< Updated upstream
 load_MemRBC<-function (file = "MemRBC.rdat", qs2 = length(grep("qs2$",file)==1))
 { 
   if (file.exists(file))
@@ -531,13 +562,32 @@ load_MemRBC<-function (file = "MemRBC.rdat", qs2 = length(grep("qs2$",file)==1))
     M <- StoreParams(M)
   } else SetParams(M)
   if (is.null(M$bas$Pointymmetry)) M$bas$Pointymmetry = FALSE # assume no point symmetry
+=======
+load_MemRBC<-function(file="MemRBC.rdat")
+{
+  if (file.exists(file)) obj_name=load(file=file) else stop("Membrane file does not exists");
+  M=get(obj_name)
+  if (is.null(M$bas$Ylm_u)) FillBasis_MemRBC(M)->M
+  if (!is.null(M$Sample)) if(! "Id" %in% names(M$Sample)) M$Sample$Id<-1
+  if (is.null(M$Params)) {cat(crayon::red("No $Params found, now filled from environment\n"));StoreParams(M)->M} else SetParams(M)
+  if (is.null(M$bas$Pointymmetry)) M$bas$Pointymmetry=FALSE # support old format
+
+>>>>>>> Stashed changes
   return(M)
 }
 
 # recompute the basis (if deleted on save_MemRBC)
 # not needed, see update(M,"Basis")
+<<<<<<< Updated upstream
+=======
+
+#' FillBasis_MemRBC
+#' insert full basis in M from LM stored in M$bas
+#' @param M MemRBC object with
+#'  @export
+>>>>>>> Stashed changes
 FillBasis_MemRBC<-function(M)
-{  bas=M$bas; L_max=bas$L_max
+{   bas=M$bas; L_max=bas$L_max
     u=M$grd$u;v=M$grd$v
     Ai_max=bas$Ai_max
     LM = bas$LM
@@ -550,6 +600,21 @@ FillBasis_MemRBC<-function(M)
     M$bas$Ylm_uu=Ylm_uu(L_max,u,v,L_Y_u_$P_T)[,-1] / sqrt(4*pi)
     M$bas$Ylm_uv=Ylm_uv(L_max,u,v,L_Ylm_$PLK,L_Y_u_$P_T)[,-1] / sqrt(4*pi)
     l=LM[,1];m=LM[,2]
+<<<<<<< Updated upstream
+=======
+    i=0;w=l;j=1
+    for (ll in 1:max(l)) for (mm in (-ll):ll) {
+      i=i+1;
+      if (ll==l[j] & mm==m[j]) {w[j] = i; j = j+1}
+    }
+#    print(w)
+    M$bas$Ylm=Ylm[,w]
+    M$bas$Ylm_u=Ylm_u[,w]
+    M$bas$Ylm_v=Ylm_v[,w]
+    M$bas$Ylm_uu=Ylm_uu[,w]
+    M$bas$Ylm_uv=Ylm_uv[,w]
+    M$bas$Ylm_vv=Ylm_vv[,w]
+>>>>>>> Stashed changes
     return(M)
 }
 
@@ -576,6 +641,7 @@ set_A_to_Ref<-function(M)
 #' @param M2 membrane object to copy coefficients into
 #' @param plt (=FALSE) TRUE for a 3d plot of resulting shape
 #' @return modified M2 with new coefficients
+<<<<<<< Updated upstream
 #' @examplesIf exists("L_Ylm")
 #' data("M4",package = "MemRBC",envir=environment())
 #' get_data_ZENODO("SS.rda")
@@ -583,6 +649,15 @@ set_A_to_Ref<-function(M)
 #' transplant(SS,M4)->SSmod
 #' SSmod
 #' 
+=======
+#' @examples
+#' data("M4")
+#' SetParams(M4)
+#' data("S5")
+#' StoreParams(S5)->S5
+#' transplant(S5,M4) -> S4mod
+#' S4mod
+>>>>>>> Stashed changes
 #' @export
 transplant <- function(M1,M2,plt=FALSE)
 { i=intersect(rownames(M1$A),rownames(M2$A))
@@ -594,6 +669,7 @@ transplant <- function(M1,M2,plt=FALSE)
   M2$history=append(M2$history,"--- transplatned history end.")
   M2$history=append(M2$history,match.call())
   M2$Target=M1$Target
+  M2$A=M2$bas$A # if M2 has new basis, template should be copied back
   return(M2)
 }
 
@@ -864,6 +940,106 @@ PNEM(S,1000,dt=1e-6,viscosity = 1000,rho=0.1)->S3
 return(S3)
 }
 
+<<<<<<< Updated upstream
+=======
+#' FitProlate_L5
+#'
+#' Fit coefficients from a stick with semi-spherical caps to initiate Undustick.
+#' @param C0 spontaneous curvature for the model (default 2.562 for Undustick)
+#' @param V0 real volume (default 85.66 for Undustick)
+#' @examples
+#' # this sets also membrane parameters such that SEN is switched off
+#' i.e. M.K_ADE=M.mu=M.Ka=0 # no SEN and ADE-term for Undustick
+#' M.C0=2.562 # reference C0 value, see H0 in https://zenodo.org/records/13627757
+#'
+#' FitProlate_L5() -> P5
+#' P5
+#' save_MemRBC(P5,"Undustick-prototype.rdat")
+#' PlotLSeries(P5,3,2)
+#' MMC(P5,100000)->P5mmc
+#' PlotLSeries(P5,3,2)
+#' SDRC(P5,1000,plot=TRUE,pltfreq=1)->P5_sdrc
+#' P5_sdrc
+#' @export
+FitProlate_L5<- function(C0=2.562,V0=85.66,filter_strength=10,no_minim=TRUE)
+{
+  data("M5_Ref", envir = environment())
+
+  M.C0<<-C0
+  M.K_ADE<<-M.mu<<-M.Ka<<-0
+  S=M5_Ref
+{
+  n.grd=5*6+2 # usual grid paraneter for L=5
+  grd=MakeGrid_GaussLegendreSimpson(n.grd)
+  u=grd$u[,1]
+  v=grd$v[1,]
+  x=u
+  X=Z=x # to initialize
+  X[x<pi/4]=sin(2*x[x<pi/4])*0.1
+  X[x>3*pi/4]=sin(pi/2+2*(x[x>3*pi/4]-3*pi/4))*0.1
+
+  Z[x>pi/4 & x<3*pi/4] = 0.5 - (x[x>pi/4 & x<3*pi/4]-pi/4)/(pi/2)
+  X[x>pi/4 & x<3*pi/4] = 0.1
+
+  Z[x<pi/4]=0.1*cos(2*x[x<pi/4])+0.5
+  Z[x>3*pi/4]=0.1*cos(pi/2+2*(x[x>3*pi/4]-3*pi/4))-0.5
+ # plot(X,Z)
+
+  M=array(0,c(grd$nu,grd$nv,3))
+  M[,1,1]=X # initial curve for first v value
+  M[,1,3]=Z
+  M[,1,2]=0
+  p=2*pi/(grd$nv) # angle of rotation increment
+  m=matrix(c(cos(p),-sin(p),0,sin(p),cos(p),0,0,0,1),3,3)
+  for (j in 2:grd$nv)
+    for (i in 1:grd$nu)  {
+      M[i,j,]=m%*%M[i,j-1,]
+    }
+  rgl::open3d();rgl::plot3d(x=M[,,1],y=M[,,2],z=M[,,3],aspect=FALSE)
+  Mflat=matrix(0,prod(dim(M)[1:2]),3)
+  for (k in 1:3) Mflat[,k]=t(M[,,k])
+  bas=MakeBasis_UV(5,t(grd$u),t(grd$v))
+  bas$Target[2]=V0
+
+  A=FitAlm(Mflat, bas )
+  C=updateX(A,grd,bas)
+  rgl::clear3d();plot3b(C$X,grd)
+}
+
+E_SCM(A,grd,bas,C,plt=TRUE) -> H2
+(area0=H2$Area) # starting area; area is free, vol0, curv0 rescaled by R0
+(R0=sqrt(area0/4/pi))
+A<-A/R0*2.85
+
+matplot(A,type="l")
+C=updateX(A,grd,bas  )
+E_SCM(A,grd,bas,C,plt=TRUE) -> H2
+H2$Wb
+H2$Curv
+H2$Area
+H2$Volume
+
+r0=sqrt(140/4/pi)
+v0=4/3*pi*r0^3
+v0_red=0.55*v0
+
+rgl::clear3d();plot3b(C$X,grd)
+S$A=A
+rgl::clear3d();plot(S)
+S$bas$Target[2] <- V0
+
+save_MemRBC(S,"L5-prolate-Fit-b.rdat")
+print(unlist(Quantities(S)))
+rgl::open3d();plot(S);
+if(!no_minim) PSD(S,100,del=4e-8,plt=TRUE,pltfreq=100,filter_strength = filter_strength)->S1 else S1<-S
+S1$history=match.call()
+StoreParams(S1)->S1
+S1$comment="From FitProlate_L5, only 100 steps PSD minimization."
+return(S1)
+}
+
+
+>>>>>>> Stashed changes
 #
 # fit invaginated form (Stomatocyte)
 #   to spherical harmonics in X,Y,Z
@@ -995,6 +1171,10 @@ FitDiscocyte_L5<- function(C0=0,V0=100)
     rgl::open3d();rgl::plot3d(x=M[,,1],y=M[,,2],z=M[,,3],aspect=FALSE)
     Mflat=matrix(0,prod(dim(M)[1:2]),3)
     for (k in 1:3) Mflat[,k]=t(M[,,k])
+<<<<<<< Updated upstream
+=======
+    bas=MakeBasis_UV(5,t(grd$u),t(grd$v))
+>>>>>>> Stashed changes
     A=FitAlm(Mflat, bas )
     C=updateX(A,grd,bas)
     rgl::clear3d();plot3b(C$X,grd)
@@ -1029,6 +1209,7 @@ FitDiscocyte_L5<- function(C0=0,V0=100)
   return(S1pnem)
 }
 
+<<<<<<< Updated upstream
 #' filter for largest coeff. per lm row
 #' @param A,bas coefficient matrix ans basis
 #' @return sparsified coefficient matrix
@@ -1074,6 +1255,8 @@ Sparsify<- function(M)
   return(M)
 }
 
+=======
+>>>>>>> Stashed changes
 #' PlotRef
 #' @description
 #' plot SEN reference shape from membrane object
@@ -1190,11 +1373,26 @@ data_MemRBC<-function(name)
 #'  last entries in LA hold older coeffs, in particular if LAfreq>1 in the last App call 
 #' @param M membrane object with list $LA of recorded coefficients
 #' @param n (=1) how many records to rewind?
+<<<<<<< Updated upstream
 #' @return membrane object with M$A set to `LA[[lengh(LA)-n]]`
 #' @export
 Rewind<-function(M, n=1)
 { if (n<length(M$LA))
    M$A=M$LA[[length(M$LA)-n]] else message("no rewind; n too large\n")
+=======
+#' @param erase (=FALSE) to erase rewinded entries in M$LA
+#' @return membrane object with M$A set to LA[[lengh(LA)-n]]
+#' @export
+Rewind<-function(M,n=1,erase=FALSE)
+{ if (n<length(M$LA)) {
+   M$A=M$LA[[length(M$LA)-n]]
+   if ( erase ) M$LA[(length(M$LA)-n+1):length(M$LA)] = NULL
+   attr(M$A,"rewind")=TRUE
+   append(M$LA,A)->M.LA
+   cl=match.call()
+   M$history <- append(M$history,cl)
+  } else warning("No rewind; n too large\n")
+>>>>>>> Stashed changes
   return(M)
 }
 
@@ -1242,6 +1440,7 @@ ReduceM1<-function(M)
   return(M)
 }
 
+<<<<<<< Updated upstream
 #' GEMINI_Obj_Obj_Intersect
 #' @description
 #' this code from GEMINI intends to locate spatial intersections of 3D-objects
@@ -1553,3 +1752,28 @@ PlotA<-function(M, bar=TRUE, scale_up=TRUE,...)
 
 
 # no more
+=======
+#' @export
+History<-function(M)
+{M$history}
+
+#' @export
+Sample<-function(M)
+{M$Sample}
+
+#' @export
+Records<-function(M)
+{rM$LA}
+
+#' @export
+Coefficients <- function(M)
+{M$A}
+
+
+#' @export
+Movie <- function(M)
+{ rgl::open3d();rgl::points3d(0);for (A in M$LA) {M$A<-A;i=rgl::ids3d();
+    rgl::pop3d(id=i$id[i$type %in% c("triangles","quads")]);
+    plot(M,wire_col="red")}
+}
+>>>>>>> Stashed changes

@@ -132,10 +132,11 @@ cat("E_SCM_cxx tested\n")
 
   grdGL=MakeGrid_GaussLegendreSimpson(120)
   basGL=MakeBasis_UV(2,grdGL$U,grdGL$V)
-  AGL=MakeSphere(grdGL,basGL)
+  AGL=MakeSphere(grdGL,basGL) # unit sphere
   CGL=updateX(AGL,grdGL,basGL)
   MemRBC_env$M.C0<<-0
   H2=E_SCM(AGL,grdGL,basGL,CGL)
+<<<<<<< Updated upstream
   severe(H2$Volume-4/3*pi,0,"Vol",9e-14) # 8.08e-14
   severe(H2$Area-4*pi,0,"Area",1.6e-13)    # 1.51e-13
   severe(H2$Curv-8*pi,0,"Curv",1.5e-13)   # 1.492e-13
@@ -180,3 +181,10 @@ file.remove("tmp_cluster.txt")
 severe(norm(cnmHC$H),norm(cnmHP$H),"CNM seq-par",1e-3) # 0.00187 -> cluster-parallel problem?
 file.remove("tmp_cluster.txt")
 }
+=======
+  severe(H2$Volume-4/3*pi,"Vol",9e-14) # 8.08e-14
+  severe(H2$Area-4*pi,"Area",1.6e-13)    # 1.51e-13
+  severe(H2$Curv-8*pi,"Curv",1.5e-13)   # 1.492e-13
+  severe(H2$H2_BC-16*pi,"BC",8.7e-14) # -8.527e-14
+
+>>>>>>> Stashed changes

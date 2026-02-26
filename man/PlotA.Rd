@@ -2,23 +2,31 @@
 % Please edit documentation in R/MembraneRBC-Apps.R
 \name{PlotA}
 \alias{PlotA}
-\title{PlotA}
+\title{Plot coefficients by matplot(). 
+Colors black, red, green for X, Y, Z coefficients.}
 \usage{
 PlotA(M, bar = TRUE, scale_up = TRUE, ...)
 }
 \arguments{
-\item{M}{membrane to plot M$A from}
+\item{M}{membrane to plot spectral coefficients M$A from}
 
-\item{bar}{(=TRUE)if L-levels should be color-plotted}
+\item{bar}{(=TRUE) for L-levels to be color-plotted (bar at y=0)}
 
 \item{scale_up}{(=TRUE) plot A scaled-up by sqrt(bas$G.tk)}
+
+\item{...}{parameters handed to matplot}
+}
+\value{
+-
 }
 \description{
-plot amplitudes in matplot
+Plot coefficients by matplot(). 
+Colors black, red, green for X, Y, Z coefficients.
 }
 \examples{
-data("M4");SetParams(M4)
-plotA(M4,ylab=expression(A[scaled]))
-plot(M4,scaled_up=FALSE,ylab=expression(A[unscaled]))
-
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+data("M4",package = "MemRBC",envir=environment());
+SetParams(M4)
+PlotA(M4,scale_up=FALSE)
+\dontshow{\}) # examplesIf}
 }

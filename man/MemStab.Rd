@@ -6,15 +6,28 @@
 \usage{
 MemStab(
   M,
-  mc.cores = 5,
+  mc.cores = 4,
   plt = FALSE,
   plt_mode = 1,
   plt_scale = 0.5,
   serial = FALSE
 )
 }
+\arguments{
+\item{M}{MemRBC object}
+
+\item{mc.cores}{(=4) for parallel Hessian}
+
+\item{plt}{(=FALSE) control plot, if wanted (TRUE)}
+
+\item{plt_mode}{(=1) starting mode index, 1 for lowest eigenvalue}
+
+\item{plt_scale}{(=0.5) for second shapes shift in coeffs along Hessians eigenvector}
+
+\item{serial}{(=FALSE) TRUE, if serial Hessian computation is wanted.}
+}
 \value{
-M$Stab with eigensystem of Hessian of energy without constraints
+MemRBC object, M$Stab has eigensystem of Hessian of energy without constraints
 }
 \description{
 analyse membrane shape stability in terms of eigenvectors of Hessian

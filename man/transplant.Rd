@@ -10,6 +10,8 @@ transplant(M1, M2, plt = FALSE)
 \item{M1}{membrane object to copy coefficients from}
 
 \item{M2}{membrane object to copy coefficients into}
+
+\item{plt}{(=FALSE) TRUE for a 3d plot of resulting shape}
 }
 \value{
 modified M2 with new coefficients
@@ -18,8 +20,11 @@ modified M2 with new coefficients
 copy coefficients from one membrane to another
 }
 \examples{
-data("M4")
-data("S5")
-transplant(S5,M4),S4mod
-S4mod
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+data("M4",package = "MemRBC",envir=environment())
+get_data_ZENODO("SS.rda")
+data("SS",package = "MemRBC",envir=environment())
+transplant(SS,M4)->SSmod
+SSmod
+\dontshow{\}) # examplesIf}
 }

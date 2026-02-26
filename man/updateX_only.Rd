@@ -2,7 +2,8 @@
 % Please edit documentation in R/MembraneRBC.R
 \name{updateX_only}
 \alias{updateX_only}
-\title{updateX_only}
+\title{updateX_only
+updates coordinates C$X, NOT the derivatives.}
 \usage{
 updateX_only(A, grd, bas)
 }
@@ -14,8 +15,9 @@ updateX_only(A, grd, bas)
 \item{bas}{basis function values $Ylm}
 }
 \value{
-basis object, type is list.
+class MemC_X object, containing X and input Coeff A
 }
 \description{
+updateX_only
 updates coordinates C$X, NOT the derivatives.
 }

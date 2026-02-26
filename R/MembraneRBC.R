@@ -3,13 +3,14 @@
 
 # CITATION
 # when using this software for publications you must cite it as:
-#  Frickenhaus, S. (2025). MemRBC - a numerical modeling laboratory for the stomatocyte-discocyte-echinocyte-transformation of Red Blood Cell shape, ZENODO, DOI: https://doi.org/10.5281/zenodo.13908340
+#  Frickenhaus, Stephan (2025). MemRBC - a numerical modeling laboratory for the stomatocyte-discocyte-echinocyte-transformation of Red Blood Cell shape, ZENODO, DOI: https://doi.org/10.5281/zenodo.13908340
 
 #
 # ORIGINAL CITATION (->first version)
 # Frickenhaus S. (2024). MembraneR3 - A spectral model of membrane shape based on Helfrich spontaneous curvature in R. Zenodo. https://doi.org/10.5281/zenodo.13627757 ")}
 #
 
+<<<<<<< Updated upstream
 #' @import stats
 #' @import utils
 #' @import graphics
@@ -21,6 +22,14 @@ NULL
 .Last<-function(){
 cat("MemRBC::Final notice:\nerase the cache-dir ",MemRBC_env$cache," now.\n")
   if (length(grep("sourceCpp",list.files(MemRBC_env$cache)))>0) unlink(MemRBC_env$cache,recursive = TRUE)
+=======
+#
+#  global standard model parameters
+#' @export
+load_param_RBC<-function(msg)
+{
+  data(M.mu,M.C0,M.mu,M.Ka,M.K_b,M.K_ADE,M.Es,M.rho,M.a2,M.a3,M.a4,M.b0,M.b1,M.b2,M.rho,M.Rcpp,M.Rcpp_ncores,M.scr1,M.scr2,package = "MemRBC",envir = .GlobalEnv)
+>>>>>>> Stashed changes
 }
 
 #' set parameters to MemRBC environment
@@ -64,7 +73,7 @@ print_param_RBC<-function()
 #' print package citation 
 #' @return -
 #' @export
-citation.MemRBC<-function() {cat("when using this software for publications you must cite it as:\n Frickenhaus, S. (2025). MemRBC - a numerical modeling laboratory for the stomatocyte-discocyte-echinocyte-transformation of Red Blood Cell shape, ZENODO, DOI: https://doi.org/10.5281/zenodo.13908340 \n")}
+citation.MemRBC<-function() {cat("when using this software for publications you must cite it as:\n Frickenhaus, Stephan (2025). MemRBC - a numerical modeling laboratory for the stomatocyte-discocyte-echinocyte-transformation of Red Blood Cell shape, ZENODO, DOI: https://doi.org/10.5281/zenodo.13908340 \n")}
 
 E_glob=EAL_glob=M.nn=NA
 
@@ -1094,6 +1103,204 @@ return( Ret );
 }
 
 
+<<<<<<< Updated upstream
+=======
+// same low speed like with etest inlining
+//[[Rcpp::export]]
+MatrixXd matmatE(Eigen::Map<Eigen::MatrixXd> tm, Eigen::Map<Eigen::MatrixXd> tm2)
+{
+  Eigen::MatrixXd prod = tm*tm2;
+  return(prod);
+}
+
+// not needed like this - use Function updateX_only("updateX_only") in cpp-codes
+//   if needed
+// however, faster code by faster mat-mat could be interesting
+
+//[[Rcpp::export]]
+List updateX_only_cxx(NumericMatrix A, List grd, List bas)
+{
+ Function etest("etest"); //for etest see: https://stackoverflow.com/questions/37191673/matrix-multiplication-in-rcpp
+ List C;
+ NumericMatrix Y=bas["Ylm"];
+ NumericMatrix X=etest(Y,A);
+ // this:
+// NumericMatrix X=MatMat_cxx(bas["Ylm"],A);
+// C["X"]=X;
+// or this:
+//  NumericMatrix X(grd["ndof"],3);
+//  int i,j;
+//  int imax=grd["ndof"];
+//  int Aimax=bas["Ai_max"];
+//  NumericMatrix Y=bas["Ylm"];
+//  Y=transpose(Y);
+//  for (i=0;i<imax;i++){
+//      X(i,0) = sum(Y(_,i)*A(_,0));
+//      X(i,1) = sum(Y(_,i)*A(_,1));
+//      X(i,2) = sum(Y(_,i)*A(_,2));    }
+// loop code needs 6 sec;
+//  etest takes 3 sec. vs 2.7 with R "%*%"
+//
+  C["X"]=X;
+  return(C);
+}
+
+// Todos: if Ref is null, no SEN evaluations wanted!!
+//[[Rcpp::export]]
+List Hessian_SCM_SEN_cxx(NumericMatrix A,List grd, List bas, List Ref, double del, int ncores, double C0, double K_b, double K_ADE)
+{ int Aimax=bas["Ai_max"];
+  NumericMatrix H(Aimax*3,Aimax*3);
+  // NumericMatrix H1(Aimax*3,Aimax*3);
+  int i,j,k,l;
+  NumericMatrix A0(Aimax,3);
+  NumericMatrix A1(Aimax,3);
+  Function updateX("updateX");
+  Function SEN("SEN");
+  Function E_SCM("E_SCM");
+  Function E_SEN("E_SEN");
+  Function Grad_SEN("Grad_SEN");
+  Function Grad_SCM("Grad_SCM");
+  Function synth12("synth12"); //    function(A,C,i,j,k) # spatial k
+  Function mat2vec("mat2vec");
+  Function matdiff2vec("matdiff2vec");
+  Function matadd2vec("matadd2vec");
+  Function symmetrize("symmetrize");
+  List C=updateX(A,grd,bas);
+  List h20=E_SCM(A,grd,bas,C);
+  List  S0=SEN(A,grd,bas,Ref,h20);
+  // double  ES=E_SEN(A,grd,bas,S,Ref);
+  List Gh20=Grad_SCM(h20,grd,bas,C);
+  List GS0=Grad_SEN(A,grd,bas,Gh20,S0,Ref);
+//  NumericVector G0 = matadd2vec(Gh20["grad_SCM"] , GS0["grad_SEN"]);
+  NumericVector G0 = NumericVector(Gh20["grad_SCM"])+NumericVector(GS0["grad_SEN"]);
+  A0=A;
+  l=0;
+  List G;
+  List h2;
+  List Gh2;
+  List GS;
+  List S;
+  NumericVector D;
+  NumericVector G1;
+//
+// #define PARHESS
+// calling R-functions seems to be not thread safe, crashes in the following
+//
+#ifdef PARHESS
+#pragma omp parallel num_threads(ncores) private(k,l,i,A,C,h2,S,Gh2,GS,G,D,G1)
+#endif
+{
+#ifdef PARHESS
+#pragma omp for
+#endif
+  for (k=0;k<3;k++){l=k*Aimax;
+    for (i=0;i<Aimax;i++,l++)
+    {
+      A(i,k)=A(i,k)+del;
+      C=updateX(A,grd,bas);
+      A(i,k)=A(i,k)-del;
+      // sweeping through C$X_uv instead of full update
+      //  C=synth12(A,C,l,l+1, i, i+1,del); // better inline this; use R-numbering
+      //  if (i>0) C$X[,k] = C$X[,k] - bas$Ylm[,i]*del # remove del term
+      //  if(j<dim(A)[1]) C$X[,k] = C$X[,k] + bas$Ylm[,j]*del
+      h2=E_SCM_cxx(A,grd,bas,C,C0,K_b,K_ADE);
+      S=SEN(A,grd,bas,Ref,h2);
+      // double  ES=E_SEN(A,grd,bas,S,Ref);
+      Gh2=Grad_SCM_cxx(h2,grd,bas,C,C0,ncores,K_b,K_ADE);
+      GS=Grad_SEN(A,grd,bas,Gh2,S,Ref);
+      G1 = NumericVector(Gh2["grad_SCM"]) + NumericVector(GS["grad_SEN"]);
+      D = NumericVector(G1-G0);
+      H(_,l)=D;
+    }
+  }
+} // parallel
+
+return(List::create(Named("H")=H,_("G")=G0,
+                    _("gradA")=Gh20["gradA"],_("gradV")=Gh20["gradV"],_("gradC")=Gh20["gradC"],
+                    _["g2"]=Gh20,_["h2"]=h20));
+}
+
+//[[Rcpp::export]]
+List Hessian_SCM_cxx(NumericMatrix A,List grd, List bas, List Ref, double del, int ncores, double C0, double K_b, double K_ADE)
+{ int Aimax=bas["Ai_max"];
+  NumericMatrix H(Aimax*3,Aimax*3);
+  // NumericMatrix H1(Aimax*3,Aimax*3);
+  int i,j,k,l;
+  NumericMatrix A0(Aimax,3);
+  NumericMatrix A1(Aimax,3);
+  Function updateX("updateX");
+  Function SEN("SEN");
+  Function E_SCM("E_SCM");
+  Function E_SEN("E_SEN");
+  Function Grad_SEN("Grad_SEN");
+  Function Grad_SCM("Grad_SCM");
+  Function synth12("synth12"); //    function(A,C,i,j,k) # spatial k
+  Function mat2vec("mat2vec");
+  Function matdiff2vec("matdiff2vec");
+  Function matadd2vec("matadd2vec");
+  Function symmetrize("symmetrize");
+  List C=updateX(A,grd,bas);
+  List h20=E_SCM(A,grd,bas,C);
+//  List  S0=SEN(A,grd,bas,Ref,h20);
+  // double  ES=E_SEN(A,grd,bas,S,Ref);
+  List Gh20=Grad_SCM(h20,grd,bas,C);
+//  List GS0=Grad_SEN(A,grd,bas,Gh20,S0,Ref);
+  NumericVector G0 = NumericVector(Gh20["grad_SCM"]); // +NumericVector(GS0["grad_SEN"]);
+  A0=A;
+  l=0;
+  List G;
+  List h2;
+  List Gh2;
+  List GS;
+  List S;
+  NumericVector D;
+  NumericVector G1;
+//
+// #define PARHESS 1
+// calling R-functions is not thread safe in the following
+//
+#ifdef PARHESS
+#pragma omp parallel num_threads(ncores) private(k,l,i,A,C,h2,S,Gh2,GS,G,D,G1)
+#endif
+{
+#ifdef PARHESS
+#pragma omp for
+#endif
+  for (k=0;k<3;k++){l=k*Aimax;
+    for (i=0;i<Aimax;i++,l++)
+    {
+      A(i,k)=A(i,k)+del;
+      C=updateX(A,grd,bas);
+      A(i,k)=A(i,k)-del;
+      // sweeping through C$X_uv instead of full update
+      //  C=synth12(A,C,l,l+1, i, i+1,del); // better inline this; use R-numbering
+      //  if (i>0) C$X[,k] = C$X[,k] - bas$Ylm[,i]*del # remove del term
+      //  if(j<dim(A)[1]) C$X[,k] = C$X[,k] + bas$Ylm[,j]*del
+      h2=E_SCM_cxx(A,grd,bas,C,C0,K_b,K_ADE);
+ //     S=SEN(A,grd,bas,Ref,h2);
+      // double  ES=E_SEN(A,grd,bas,S,Ref);
+      Gh2=Grad_SCM_cxx(h2,grd,bas,C,C0,ncores,K_b,K_ADE);
+  //    GS=Grad_SEN(A,grd,bas,Gh2,S,Ref);
+      G1 = NumericVector(Gh2["grad_SCM"]) ;//+ NumericVector(GS["grad_SEN"]);
+      D = NumericVector(G1-G0);
+      H(_,l)=D;
+    }
+  }
+} // parallel
+return(List::create(Named("H")=H,_("G")=G0,
+                  _("gradA")=Gh20["gradA"],
+                  _("gradV")=Gh20["gradV"],
+                  _("gradC")=Gh20["gradC"],
+                  _["g2"]=Gh20,_["h2"]=h20));
+}
+')
+} # sourceCPP
+
+citation.MemRBC();
+utils::data(M.mu,M.C0,M.mu,M.Ka,M.K_b,M.K_ADE,M.Es,M.rho,M.a2,M.a3,M.a4,M.b0,M.b1,M.b2,M.rho,M.Rcpp,M.Rcpp_ncores,package = "MemRBC",envir = .GlobalEnv)
+M.scr1=M.scr2=-1
+}
+>>>>>>> Stashed changes
 
 HAVE_DEPRECATED=FALSE
 
@@ -1108,6 +1315,7 @@ M.TEST=FALSE
 #' @param what id for test_that call
 #' @param tol (=1e-12) absolute tolerance for equality
 #' @export
+<<<<<<< Updated upstream
 severe<-function(q1,q2, what="some test", tol=1e-12)
 { testthat::test_that(what,{testthat::expect_equal(q1,q2,tolerance=tol)})}
 
@@ -1118,6 +1326,13 @@ severe<-function(q1,q2, what="some test", tol=1e-12)
 #
 # not working when Rcpp-code is loaded
 #cleanCache<-function(){cat("clean up ",MemRBC_env$cache,"\n");file.remove(MemRBC_env$cache)}
+=======
+severe<-function(q, what="some test", tol=1e-12)
+{ testthat::test_that(what,{testthat::expect_equal(q,0,tolerance=tol)})}
+#{cat(q,":");if (all(abs(q)>tol)) {stop("severe imprecision, STOP")} else
+#  cat(crayon::green("OK:",what,"\n"))
+#}
+>>>>>>> Stashed changes
 
 #
 # Functionals
@@ -1419,7 +1634,7 @@ Membrane_Curvatures<-function(Wb, grd, plt.K=FALSE)
 #
 
 #
-# sum of squares of principal stretches from trace of  right Cauchy-Green-tensor
+# sum of squares of principal stretches from trace of right Cauchy-Green-tensor
 #   trace can to be differentiated analytically
 #
 
@@ -1530,12 +1745,16 @@ SEN<-function (A, grd, bas, Ref, Wb_cur)
               A = A, G = G)))
 }
 
+<<<<<<< Updated upstream
 #' E_SEN
 #' energy of Shear-Elastic Network (SEN)
 #' @description
 #' Compute the SEN energy
 #' @param A,grd,bas,S,Ref Coefficients, grid, basis, SEN and reference objects
 #' @return list with alpha and beta as well as trace m of right Cauchy-Green
+=======
+# energy of Shear-Elastic Network (SEN)
+>>>>>>> Stashed changes
 #' @export
 E_SEN<-function(A,grd,bas,S,Ref)
 { if (!is.null(Ref)){
@@ -1942,9 +2161,17 @@ imag.obj<-function(obj,f,pal=rainbow) {
 #' plot a scalar in 2D
 #' @param field scalar spatial field
 #' @param grd the grid of (u,v) on which the scalar is defined
+<<<<<<< Updated upstream
 #' @param nx,ny dimension of output matrix plot
 #' @param ... additional parameters to `quilt.plot()`
 #' @return -
+=======
+#' @examples
+#' data(D5)
+#' C=updateX(D5$A,D5$grd,D5$bas)
+#' H=E_SCM(D5$A,D5$grd,D5$bas,C)
+#' imag(H$curv_sq,D5$grd)
+>>>>>>> Stashed changes
 #' @export
 imag<-function (field, grd, nx = grd$nv, ny = grd$nu/2, ...)
 {
@@ -1952,13 +2179,17 @@ imag<-function (field, grd, nx = grd$nv, ny = grd$nu/2, ...)
                      ylab = "u", ...)
 }
 
+
 #' MakeBasis_UV
 #'
-#' compute the basis functions on given (u,v) values
-#' (u,v) are usually from grd$U, grd$V, but you may also use irregular (u,v)
+#' compute the basis functions on all given (u,v) values
+#' (u,v) are usually from grd$U, grd$V, but you may also use irregular (u,v),
 #' for example for fitting coefficients to a 3d-object, in which (u,v)-values
-#' may be given as texture coordinates texccords.
+#' may be given as texture coordinates texccords from Brechbuehler.Init.uv.2().
+#' The object returned contains a mask index of double entries (u,v), which is
+#' needed to get correct center of mass, or least-squares fits without l=0 terms.
 #'
+<<<<<<< Updated upstream
 #' @param L_max (=4) spectral order of basis
 #' @param u,v vectors of spehrical angles u (in 0..pi) and v (in 0..2*pi).
 #' @param Pointsymmetry (=FALSE) for basis without even l terms.
@@ -2036,6 +2267,74 @@ MakeBasis_UV<-function (L_max = 4, u, v, Pointsymmetry = FALSE,
     cat("U factors:",uspace,"\n")
     #if (!only_Ylm) {Ylm_u_[,1]=Ylm_v_[,1]=Ylm_vv_[,1]=Ylm_uu_[,1]=Ylm_uv_[,1]=0}
     k=1
+=======
+#'  @param L_max (=4) spectral order of basis
+#'  @param Pointsymmetry (=FALSE) if TRUE,the basis is reduced by even l terms
+#'  @param u,v vectors of spherical angles u (in 0..pi) and v (in 0..2*pi).
+#'  @return basis, to be stored as $bas in membrane object or for other use.
+#'  The basis also contains standard constraints for area and volume, which may be modified with SetConstraints()
+#'  mask contains indices of masked points. See double_uv_ind(u,v).
+#' @export
+MakeBasis_UV<-function(L_max=4,u,v,  Pointsymmetry=FALSE ) #
+{ # create X,Y,Z inclusion lists for excluding certain l,m modes spatial-direction X-Y-Z specific
+  # based on Axysymmetry="X" and/or Pointsymmetry=TRUE
+  # Planesymmetry may be sth like "XY", "XZ" or "YZ".
+
+  # it was found that without X-Y-Z-specific basis functions,
+  # no significant speedup can be reached
+  # within the updateX mat-vec routines, since k=1...3 loop is needed, such that
+  #  X-Y-Z is not vectorizeable anymore
+  #
+
+  # give back Boschs Ylm with normalization 1/sqrt(4*pi)
+  Ai_max=(L_max+1)^2-1
+  LM = data.frame(l=rep(0L,Ai_max),m=rep(0L,Ai_max))
+  AI=1
+  for (l in 1:L_max) for (m in (-l):l) {LM[AI,]=c(l,m);AI<-AI+1}
+  L=LM[,1]
+  M=LM[,2]
+
+  # now filter/shorten LM for pointsymmetry
+  LM1=LM
+  if (Pointsymmetry)  {
+     w = which(L %% 2 > 0 ) # needed in Ylm[w,] later
+     LM <- LM[w, ] # exclude even l terms, take only odd
+     L=LM[,1]
+     M=LM[,2]
+  } else w=(1:Ai_max)
+  Ai_max=length(L)
+  L_max=max(L)
+  n.v=length(u)
+  if(length(v)!=n.v) stop("u not same length like v")
+
+  L_Ylm=L_Ylm(L_max, u,  v)
+  Ylm=L_Ylm$Ylm[,-1]  / sqrt(4*pi)
+  Ylm_v=Ylm_v(L_max, u,  v, L_Ylm$PLK)[,-1] / sqrt(4*pi)
+  Ylm_vv=Ylm_vv(L_max, u,  v, L_Ylm$PLK)[,-1] / sqrt(4*pi)
+  L_Y_u=L_Ylm_u(L_max,u,v,L_Ylm$PLK)
+  Ylm_u=L_Y_u$Ylm_u[,-1] / sqrt(4*pi)
+  Ylm_uu=Ylm_uu(L_max,u,v,L_Y_u$P_T)[,-1] / sqrt(4*pi)
+  Ylm_uv=Ylm_uv(L_max,u,v,L_Ylm$PLK,L_Y_u$P_T)[,-1] / sqrt(4*pi)
+  l=LM[,1];m=LM[,2]
+  # next, w is used to return the actually needed basis functions
+  bas=list(n.v=n.v,uv=cbind(u,v),
+           Ylm=Ylm[,w],Ylm_u=Ylm_u[,w],Ylm_v=Ylm_v[,w],
+           Ylm_uu=Ylm_uu[,w],Ylm_uv=Ylm_uv[,w],Ylm_vv=Ylm_vv[,w],
+           LM=LM,Ai_max=Ai_max,
+           l=l, m=m,
+           A=matrix(0,Ai_max,3), # zero amplitudes to start with
+           L_max=L_max, G.tk=l^2*(l+1)^2, Wt=l*(l+1), # weigths for Weighted_FitAlm
+           comment="(for double entries masked) irregular or Gauss-Legendre-Simpson basis from (u,v), computed with W. Bosch/ K. Khairy codes excluding l=0, A/V constraints set",
+           Nupd=0,
+           Lset=unique(l),
+           Mset=unique(m),
+           Nc=2, Cons=c("gradA","gradV"), # default constraints; unit sphere, spontaneous curvature model
+           QCons=c("Area","Volume"),# could be enhanced by Curv in SetConstraints
+           Target=c(140,100), # standard RBC values
+           TNorm =c(140,100),
+           Pointsymmetry=Pointsymmetry
+  )
+>>>>>>> Stashed changes
 
     for (i in uspace){
      for (j in 0:L_max){
@@ -2105,12 +2404,67 @@ MakeBasis_UV<-function (L_max = 4, u, v, Pointsymmetry = FALSE,
   bas$u=u;bas$v=v
   bas$A=matrix(0,Ai_max,3)[w,]
   bas$A=LM2A(bas$A,bas)
+<<<<<<< Updated upstream
   return(structure(class="MemBas",bas))
   }
   warning ("Maybe wrong kind specified! return NULL.")
   return(NULL)
 }
 
+=======
+  mask = double_uv_ind(u,v) #
+
+  bas$mask <- ifelse(is.numeric(mask)==0, mask, 1)
+
+  return(bas)
+} # G.tk is diag Tikhonov, Gamma^T Gamma
+>>>>>>> Stashed changes
+
+
+#' MakeBasis_Y_UV
+#'
+#' compute the basis functions on given (u,v) values
+#' (u,v) are usually from grd$U, grd$V, but you may also use irregular (u,v)
+#' for example for fitting coefficients to a 3d-object, in which (u,v)-values
+#' may be given as texture coordinates texccords.
+#' Only Y_lm(u,v) are computed (derivatives Y', Y'')
+#' to save memory for high L, e.g. L=85
+#' No symmetry restrictions possible here.
+#'
+#'  @param L_max (=4) spectral order of basis
+#'  @param u,v vectors of spehrical angles u (in 0..pi) and v (in 0..2*pi).
+#'  @return basis, to be stored as $bas in membrane object or for other use.
+#'  The basis also contains standard constraints for area and volume, which may be modified with SetConstraints()
+#' @export
+MakeBasis_Y_UV <- function (L_max = 4, u, v)
+{ # no derivatives of X given back
+  Ai_max = (L_max + 1)^2 - 1
+  LM = data.frame(l = rep(0L, Ai_max), m = rep(0L, Ai_max))
+  AI = 1
+  for (l in 1:L_max) for (m in (-l):l) {
+    LM[AI, ] = c(l, m)
+    AI <- AI + 1
+  }
+  n.v = length(u)
+  if (length(v) != n.v)
+    stop("u not same length like v")
+  L_Ylm = L_Ylm(L_max, u, v)
+  Ylm = L_Ylm$Ylm[, -1]/sqrt(4 * pi)
+  l = LM[, 1]
+  m = LM[, 2]
+  bas = list(n.v = n.v, uv = cbind(u, v), Ylm = Ylm, Ylm_u = NULL,
+             Ylm_v = NULL, Ylm_uu = NULL, Ylm_uv = NULL, Ylm_vv = NULL,
+             LM = LM, Ai_max = Ai_max, l = l, m = m, A = matrix(0,  Ai_max, 3), L_max = L_max, G.tk = l^2 * (l + 1)^2,
+             comment = "irregular or Gauss-Legendre/Simpson basis from (u,v), computed with W. Bosch/ K. Khairy codes excluding l=0, A/V constraints set; no derivatives",
+             Nupd = 0, Lset = unique(l), Mset = unique(m), Nc = 2,
+             Cons = c("gradA", "gradV"), QCons = c("Area", "Volume"),
+             Target = c(140, 100), TNorm = c(140, 100))
+  names(bas$Cons) = names(bas$QCons) = names(bas$TNorm) = names(bas$Target) = c("Area", "Volume")
+  bas$A = LM2A(bas$A, bas)
+  mask = double_uv_ind(u,v) #which(v==max(v))
+  bas$mask=mask
+  return(bas)
+}
 
 #' updateX
 #'
@@ -2122,6 +2476,7 @@ MakeBasis_UV<-function (L_max = 4, u, v, Pointsymmetry = FALSE,
 #' @export
 updateX<-function (A, grd, bas)
 {
+<<<<<<< Updated upstream
   X <- bas$Ylm %*% A
   X_u <- bas$Ylm_u %*% A
   X_v <- bas$Ylm_v %*% A
@@ -2130,6 +2485,28 @@ updateX<-function (A, grd, bas)
   X_vv <- bas$Ylm_vv %*% A
   return(structure(class="MemC",list(X = X, X_u = X_u, X_v = X_v, X_uu = X_uu, X_vv = X_vv,
               X_uv = X_uv, Coeff = A)))
+=======
+#  if (is.null(bas$Axisymmetry)) {
+  bas$Ylm %*% A -> X
+  bas$Ylm_u %*% A -> X_u
+  bas$Ylm_v %*% A -> X_v
+  bas$Ylm_uu %*% A -> X_uu
+  bas$Ylm_uv %*% A -> X_uv
+  bas$Ylm_vv %*% A -> X_vv
+#  } else {
+#  X=X_u=X_v=X_uu=X_uv=X_vv=matrix(0,grd$ndof,bas$Ai_max)
+#  for (k in 1:3) # too bad that this is not vectorized in k:
+#    {I=bas$J[[k]]
+#    bas$Ylm[,I] %*% A[I,k] -> X[,k]
+#    bas$Ylm_u[,I] %*% A[I,k] -> X_u[,k]
+#    bas$Ylm_v[,I] %*% A[I,k] -> X_v[,k]
+#    bas$Ylm_uu[,I] %*% A[I,k] -> X_uu[,k]
+#    bas$Ylm_uv[,I] %*% A[I,k] -> X_uv[,k]
+#    bas$Ylm_vv[,I] %*% A[I,k] -> X_vv[,k] }
+#  }
+  # returned value usually stored as "C" for "Coordiinates"
+  return(list(X=X,X_u=X_u,X_v=X_v,X_uu=X_uu,X_vv=X_vv,X_uv=X_uv,Amp=A))
+>>>>>>> Stashed changes
 }
 
 
@@ -2145,8 +2522,20 @@ updateX<-function (A, grd, bas)
 #' @export
 updateX_only<-function(A, grd, bas)
 {
+#  if(is.null(bas$Axisymmetry))
   bas$Ylm %*% A -> X
+<<<<<<< Updated upstream
   return(structure(class="MemC_X",list(X=X, Coeff=A)))
+=======
+  #else {
+#     X=matrix(0,grd$ndof,bas$Ai_max)
+#      for (k in 1:3)
+#      { if (k==1) I=bas$Xincl else if(k==2) I=bas$Yincl else I=bas$Zincl
+#      bas$Ylm[,I] %*% A[I,k] -> X[,k]
+#      }
+#     }
+  return(list(X=X,Amp=A))
+>>>>>>> Stashed changes
 }
 
 
@@ -2492,6 +2881,7 @@ Weighted_FitAlm <- function (X, bas, sigma = 0.001, CL = 0.95)
         Xresid_L = Xresid
       }
     }
+<<<<<<< Updated upstream
     p[l, 2] = (SSEkm1 - SSEk)/(2 * l + 1)
   }
   cat("\n")
@@ -2557,6 +2947,435 @@ FitAlm_Tikhonov<-function (X, bas, lambda = 0,
 #' give angles  (u,v) from spherical or star-like shape 3D point X
 #' @param X 3d-coordinate
 #' @return uv vector of spherical angles c(u,v)
+=======
+  # basis return:
+  l=LM[,1];m=LM[,2]
+  bas=list(n.v=n.v,uv=uv,
+           Ylm=Ylm,Ylm_u=Ylm_u,Ylm_v=Ylm_v,
+           Ylm_uu=Ylm_uu,Ylm_uv=Ylm_uv,Ylm_vv=Ylm_vv,
+           LM=LM,Ai_max=Ai_max,del=del,
+           l=l, m=m,
+           A=matrix(0,Ai_max,3), # zero amplitudes to start with
+           L_max=L_max,G.tk=l^2*(l+1)^2,
+           comment=paste(c("irregular or Gauss-Legendre/Simpson basis from (u,v), excluding l %in% ",exclude,"and including m %in% ",include_m),collapse=" " ),uv=cbind(uv),Nupd=0,
+           Lset=unique(l),
+           Mset=unique(m),
+           Nc=2, Cons=c("gradA","gradV"), # default constraints; unit sphere, spontaneous curvature model
+           QCons=c("Area","Volume"), # could be enhanced by Curv in SetConstraints
+           Target=c(4*pi,4/3*pi),    # sphere values
+           TNorm =c(4*pi,4/3*pi)     # ,8*pi)) # keep Norms for A, V, set C separately in SetConstraints
+  )
+  names(bas$Cons)=names(bas$QCons)=names(bas$TNorm)=names(bas$Target)=c("Area","Volume")
+  bas$A=LM2A(bas$A,bas)
+  return(bas)
+} # G.tk is diag Tikhonov, Gamma^T Gamma
+}
+
+
+
+#
+# if you have an initial form in X2fit (been computed with u,v according to basis for Ylm!!)
+#   Fit without regularization
+#
+
+#  fit from objects vertices X to Alm
+#' FitAlm(X,bas)
+#'
+#' least squares fit of Fourier coefficients Alm to vertex coordinates
+#' @param X spatial coordinates at spherical coords U,V used for bas
+#' @param bas basis functions precomputed from U,V corresponding to vertices
+#' @return Fourier-coefficients Alm
+#' @examples
+#' # X4 is a surface object (of genus 0) from rgl::writeOBJ()
+#' data(X4)
+#' BB <- Brechbuehler.Init.uv.2(X4) # not well documented
+#' spreadout.uv(BB$uv)->uv
+#' bas <- MakeBasis_UV(L_max=12, uv[,1], uv[,2])
+#' A <- FitAlm(Obj2X_centre(O), bas)
+#' G <- MakeGrid_GaussLegendreSimpson(n=30)
+#' M <- structure(class="MemRBC",list(bas=bas,grd=G,A=A))
+#' plot(M) # problem to fit an armed structure with Brechbühlers initial (u,v)
+#'
+#' @export
+FitAlm <- function(X,bas)
+{ mask=bas$mask; if (is.null(mask))
+  {warning("no mask given in basis");X1=X;Y=bas$Ylm} else {X1=X[-mask,];Y=bas$Ylm[-mask,]}
+  A<-array(0,c(bas$Ai_max,3)) # amplitudes for x,y,z
+  apply(X1,2,mean)->M
+  if (any(abs(M)>1e-15)) warning("X seems not centered")
+X1 <- apply(X1, 2, function(x) x-mean(x))# before fitting we have to re-center the sample
+for (k in 1:3) { m<-lm(X1[,k]~bas$Y);m$coefficients[-1]->A[,k]} # drop intercept
+LM2A(A,bas)->A
+attr(A,"FitAlm by lm()")=TRUE
+return(A)
+}
+
+# Weighted SPHARM fit
+#' Weighted_FitAlm(X,bas,sigma)
+#'
+#' kernel regularized least squares fit of Fourier coefficients Alm to vertex coordinates
+#' @param X spatial coordinates at spherical coords U,V used for bas
+#' @param bas basis functions precomputed from U,V corresponding to vertices
+#' @return list with coeffs "A", smoothed "Xestim",
+#' @examples
+#' # X4 is a surface object (of genus 0) from rgl::writeOBJ()
+#' data(X4)
+#' BB <- Brechbuehler.Init.uv.2(X4) # not well documented
+#' spreadout.uv(BB$uv)->uv
+#' bas <- MakeBasis_UV(L_max=12, uv[,1], uv[,2])
+#' A <- Weighted_FitAlm(Obj2X_centre(O), bas, 0.001)
+#' G <- MakeGrid_GaussLegendreSimpson(n=30)
+#' M <- structure(class="MemRBC",list(bas=bas,grd=G,A=A))
+#' plot(M) # problem to fit an armed structure with Brechbühlers initial (u,v)
+#'...
+#' @export
+Weighted_FitAlm <- function (X, bas, sigma = 0.001, CL=0.95)
+{ mask=bas$mask; if (is.null(mask))
+{warning("no mask given in basis");X1=X;Y=bas$Ylm} else {X1=X[-mask,];Y=bas$Ylm[-mask,]}
+# start iterate with l=1 ; l=0 removed by center of mass to origin
+  apply(X1,2,mean)->M
+  n <- dim(X1)[1]
+  alpha <- 1 - CL
+  p <- matrix(0,bas$L_max,2) # 1 for Fk in conf-interval of F-stats
+  if (any(abs(M)>1e-15)) warning("masked X seems not centered")
+  X1 <- apply(X1, 2, function(x) x-mean(x))# before fitting we have to re-center the sample
+  A <- array(0, c(dim(bas$Ylm)[2], 3)) # smoothed Fourier coeffs, start from zeros
+  Asmooth <- A # for coeffs with the damping exp-term
+
+  Y <- Y[,1:3] # portion of basis for solver matrix for l=1 (m=-1,0,1)
+  Ycommon <- pracma::inv(t(Y)%*%Y)%*%t(Y) # solver matrix
+  for (k in 1:3) A[1:3, k] <- Ycommon %*% X1[, k]
+  Asmooth[1:3, ] <- A[1:3,]
+
+  Xsmooth <- Y %*% A[1:3,]
+  Xestim <- Xsmooth
+
+  L<-NA
+  for (l in 2:bas$L_max)
+  { cat("Fit order l=",l,"\r")
+    Xresid <- X1 - Xestim # r_(l-1)
+    s <- which(bas$LM[["l"]]==l) # indices of l
+    Y <- Y[,s] # l-portion of basis for solver matrix for l>1
+    Ycommon <- pracma::inv(t(Y)%*%Y)%*%t(Y)
+    betal<-matrix(0,2*l+1,3)
+    for (k in 1:3) betal[,k] <- Ycommon %*% Xresid[,k]
+    A[s, ] <- betal
+    Asmooth[s,] <- betal*exp(-l*(l+1)*sigma)
+
+    Xsmooth <- Y %*% betal
+    Xestim <- Xestim + exp(-l*(l+1)*sigma)*Xsmooth
+    # statistics of model fit increase:
+    SSEk<-sum((X1-Xestim)^2)
+    SSEkm1<-sum(Xresid^2)
+    # F-test: the additional delta_SSE
+    # compared to previous SSE
+    Fk<-(SSEkm1-SSEk)/(2*l+1) / (SSEkm1/(n-(l+1)^2))
+
+    p_val <- pf(Fk, df1 = 2*l+1, df2 = (n-(l+1)^2), lower.tail = FALSE)
+
+    if( p_val > 1-CL ) # mark non-signif.
+    {
+      p[l,1] = 1;
+      if (is.na(L)) {L=l; Xresid_L = Xresid}
+    }
+    p[l,2]=(SSEkm1-SSEk)/(2*l+1)
+  }
+  cat("\n")
+  colnames(p)=c("sig","delta_SSE")
+  LM2A(A,bas)->A
+  attr(A,"sigma_Weighted") <- sigma
+  attr(A,"conf.level_Weighted") <- CL
+  attr(Xestim,"sigma_Weighted")<- sigma
+  attr(Xestim,"conf.level_Weighted")<- CL
+  cat("sufficient L:",L,"\n")
+  return(list(A=A,X=Xestim,Asmooth=Asmooth,
+              p.value=p,
+              sufficient_L=L,Xresid_L=ifelse(is.na(L),NA,Xresid_L),sigma=sigma))
+}
+
+#' X_center_masked(X,bas)
+#'
+#' remove center of mass by translation
+#' uses masked X to avoid double counting v=0 and v=2pi points
+#' @param X spatial coordinates at spherical coords U,V used for bas
+#' @param bas basis functions precomputed from U,V corresponding to vertices
+#' @return centered X
+#' @examples
+#' N=50
+#' g=MakeGrid_GaussLegendreSimpson(N)
+#' b=MakeBasis_UV(8,g$U,g$V)
+#' a=MakeSphere(g,b)
+#' X=updateX_only(a,g,b)$X # initial sphere data
+#' X<-invag_N(X,g,0.3,1)
+#' rgl::plot3d(X_center_masked(X))
+#' @export
+X_center_masked<-function(X,bas) #
+{return(apply(X,2,function(x) x-mean(x[-bas$mask])))}
+
+#
+# version with l=0 fit
+#
+# Weighted SPHARM fit
+#' Weighted_FitAlm_l0(X,bas,sigma)
+#'
+#' kernel regularized least squares fit of Fourier coefficients Alm to vertex coordinates
+#' @param X spatial coordinates at spherical coords U,V used for bas
+#' @param bas basis functions precomputed from U,V corresponding to vertices
+#' @return list with coeffs "A", smoothed "Xestim",
+#' @examples
+#' # X4 is a surface object (of genus 0) from rgl::writeOBJ()
+#' data(X4)
+#' BB <- Brechbuehler.Init.uv.2(X4) # not well documented
+#' spreadout.uv(BB$uv)->uv
+#' bas <- MakeBasis_UV(L_max=12, uv[,1], uv[,2])
+#' A <- Weighted_FitAlm_l0(Obj2X_centre(O), bas, 0.001)
+#' G <- MakeGrid_GaussLegendreSimpson(n=30)
+#' M <- structure(class="MemRBC",list(bas=bas,grd=G,A=A))
+#' plot(M) # problem to fit an armed structure with Brechbühlers initial (u,v)
+#'...
+#' @export
+Weighted_FitAlm_l0 <- function (X, bas, sigma = 0.001, CL=0.95)
+{ mask=bas$mask;if (is.null(mask))
+{warning("no mask given in basis");X1=X;Y=bas$Ylm} else {X1=X[-mask,];Y1=bas$Ylm[-mask,]}
+
+# start iterate with l=1 ; l=0 removed by center of mass to origin
+
+n <- dim(X1)[1]
+alpha <- 1 - CL
+p <- matrix(0,bas$L_max,2) # 1 for Fk in conf-interval of F-stats
+
+A <- array(0, c(dim(bas$Ylm)[2]+1, 3)) # smoothed Fourier coeffs, start from zeros
+Ylm=cbind(1/sqrt(4*pi),Y1) # include l=0
+
+Asmooth <- A # for coeffs with the damping exp-term
+Y <- Ylm[,1]
+Ycommon <- pracma::inv(t(Y)%*%Y)%*%t(Y) # solver matrix
+for (k in 1:3) A[1, k] <- Ycommon %*% X1[, k]
+Asmooth[1, ] <- A[1,]
+
+Xsmooth <- cbind(Y * A[1,1],Y*A[1,2],Y*A[1,3])
+Xestim <- Xsmooth
+L<-NA
+for (l in 1:bas$L_max)
+{ cat("Fit order l=",l,"\r")
+  Xresid <- X1 - Xestim # r_(l-1)
+  s <- 1+which(bas$LM[["l"]]==l) # indices of l with l=0 trailing
+  Y <- Ylm[,s] # l-portion of basis for solver matrix for l>1
+  Ycommon <- pracma::inv(t(Y)%*%Y)%*%t(Y)
+  betal<-matrix(0,2*l+1,3)
+  for (k in 1:3) betal[,k] <- Ycommon %*% Xresid[,k]
+  A[s, ] <- betal
+  Asmooth[s,] <- betal*exp(-l*(l+1)*sigma)
+  Xsmooth <- Y %*% betal
+  Xestim <- Xestim + exp(-l*(l+1)*sigma)*Xsmooth
+  # statistics of model fit increase:
+  SSEk<-sum((X1-Xestim)^2)
+  SSEkm1<-sum(Xresid^2)
+  # F-test: the additional delta_SSE
+  # compared to previous SSE
+  Fk<-(SSEkm1-SSEk)/(2*l+1) / (SSEkm1/(n-(l+1)^2))
+
+  p_val <- pf(Fk, df1 = 2*l+1, df2 = (n-(l+1)^2), lower.tail = FALSE)
+
+  if( p_val > 1 - CL ) # mark non-signif.
+  {
+    p[l,1] = 1;
+    if (is.na(L)) {L=l; Xresid_L = Xresid}
+  }
+  p[l,2]=(SSEkm1-SSEk)/(2*l+1)
+}
+
+cat("\n")
+colnames(p)=c("sig","delta_SSE/delta_ndof")
+LM2A(A[-1,],bas)->A # throw l=0
+attr(A,"sigma_Weighted") <- sigma
+attr(A,"conf.level_Weighted") <- CL
+attr(Xestim,"sigma_Weighted")<- sigma
+attr(Xestim,"conf.level_Weighted")<- CL
+cat("sufficient L:",L,"\n")
+return(list(A=A,X=Xestim,Asmooth=Asmooth[-1,],
+            p.value=p,
+            sufficient_L=L,Xresid_L=ifelse(is.na(L),NA,Xresid_L),sigma=sigma))
+}
+
+# Weighted SPHARM fit
+#' Weighted_FitAlm_L3(X,bas,sigma)
+#'
+#' kernel regularized least squares fit of Fourier coefficients Alm to vertex coordinates
+#' first fitted block is l=0...3; any l=0 coeffient (=translation dof) is dropped on return
+#' @param X spatial coordinates at spherical coords U,V used for bas
+#' @param bas basis functions precomputed from U,V corresponding to vertices
+#' @return list with coeffs "A", smoothed "Xestim",
+#' @examples
+#' # X4 is a surface object (of genus 0) from rgl::writeOBJ()
+#' data(X4)
+#' BB <- Brechbuehler.Init.uv.2(X4) # not well documented
+#' spreadout.uv(BB$uv)->uv
+#' bas <- MakeBasis_UV(L_max=12, uv[,1], uv[,2])
+#' A <- Weighted_FitAlm_L3(Obj2X_centre(O), bas, 0.001)
+#' G <- MakeGrid_GaussLegendreSimpson(n=30)
+#' M <- structure(class="MemRBC",list(bas=bas,grd=G,A=A))
+#' plot(M) # problem to fit an armed structure with Brechbühlers initial (u,v)
+#'...
+#' @export
+Weighted_FitAlm_L3 <- function (X, bas, sigma = 0.001, CL=0.95)
+{ mask=bas$mask; if (is.null(mask))
+{warning("no mask given in basis");X1=X;Y=bas$Ylm} else {X1=X[-mask,];Y1=bas$Ylm[-mask,]}
+
+ if(bas$L_max<3) stop("L<3 not allowed for Weighted_FitAlm_L3")
+ X1=X[-mask,] # filter out double data
+# start iterate with l=1 ; l=0 removed by center of mass to origin
+
+ n <- dim(X1)[1]
+ alpha <- 1 - CL
+ p <- matrix(0,bas$L_max,2) # 1 for Fk in conf-interval of F-stats
+
+ A <- array(0, c(dim(bas$Ylm)[2]+1, 3)) # smoothed Fourier coeffs, start from zeros
+ Ylm=cbind(1/sqrt(4*pi),Y1) # filter out double predictor points, add 1 prdictor for center of mass
+ Asmooth <- A # for coeffs with the damping exp-term
+ s=1:(1+3+5+7)
+ Y <- Ylm[,s] # first fit block contains l = 0,1,2,3
+ Ycommon <- pracma::inv(t(Y)%*%Y)%*%t(Y) # solver matrix
+ for (k in 1:3) A[s, k] <- Ycommon %*% X1[, k]
+ Asmooth[s, ] <- A[s,]
+ Xsmooth <- Y %*% A[s,]
+ Xestim <- Xsmooth
+ L<-NA
+for (l in 4:bas$L_max)
+{ cat("Fit order l=",l,"\r")
+  Xresid <- X1 - Xestim # r_(l-1)
+  s <- 1 + which(bas$LM[["l"]]==l) # indices of l with l=0 trailing inserted
+  Y <- Ylm[,s] # l-portion of basis for solver matrix for l>1
+  Ycommon <- pracma::inv(t(Y)%*%Y)%*%t(Y)
+  betal<-matrix(0,2*l+1,3) # block size
+  for (k in 1:3) betal[,k] <- Ycommon %*% Xresid[,k]
+  A[s, ] <- betal
+  Asmooth[s,] <- betal*exp(-l*(l+1)*sigma)
+  Xsmooth <- Y %*% betal
+  Xestim <- Xestim + exp(-l*(l+1)*sigma)*Xsmooth
+  # statistics of model fit increase:
+  SSEk<-sum((X1-Xestim)^2)
+  SSEkm1<-sum(Xresid^2)
+  # F-test: the additional delta_SSE
+  # compared to previous SSE
+  Fk<-(SSEkm1-SSEk)/(2*l+1) / (SSEkm1/(n-(l+1)^2))
+
+  p_val <- pf(Fk, df1 = 2*l+1, df2 = (n-(l+1)^2), lower.tail = FALSE)
+
+  if( p_val > 1 - CL ) # mark non-signif.
+  {
+    p[l,1] = 1;
+    if (is.na(L)) {L=l; Xresid_L = Xresid}
+  }
+  p[l,2]=(SSEkm1-SSEk)/(2*l+1)
+
+}
+cat("\n")
+colnames(p)=c("sig","delta_SSE")
+LM2A(A[-1,],bas)->A # throw l=0
+attr(A,"sigma_Weighted") <- sigma
+attr(A,"conf.level_Weighted") <- CL
+attr(Xestim,"sigma_Weighted")<- sigma
+attr(Xestim,"conf.level_Weighted")<- CL
+cat("sufficient L:",L,"\n")
+return(list(A=A,X=Xestim,Asmooth=Asmooth[-1,],
+            p.value=p,
+            sufficient_L=L,Xresid_L=ifelse(is.na(L),NA,Xresid_L),sigma=sigma))
+}
+
+
+# fit with regularization and weights:
+# filtering high frequencies in least squares
+#   lambda should can adjusted systematically, e.g., by L curve discussion
+#' FitAlm_Tikhonov
+#' tu fit spectral coefficients to 3d spatial coordinates.
+#' The basis, fitted to, must contain a mask of spatial indices to exclude.
+#' If not present, the mask is set to 1.
+#' The mask is necessary to exclude double points in X (which are given in updateX()$X)
+#' for faster computation/plotting.
+#' Fits to scalar 2D fields are not yet implemented.
+#' @param X 3d datapoints to fit
+#' @param bas basis object, e.g. M$bas, for which coefficients are fitted
+#' @param WX real valued weights of size nrow(X)
+#' @param lambda filter strength, i.e. offset to diagonal of inversion matrix
+#' @examples
+#' data(S20)
+#' data(S42)
+#' C <- updateX(S20$A,S20$grd,S20$bas)
+#' FitAlm_Tikhonov(C$X,S42$bas,W=1/sqrt(S42$bas$G.tk),lambda=0)->B
+#' B # coefficients in higher order basis after re-fitting
+#'
+#' @export
+FitAlm_Tikhonov<-function(X,bas,lambda=0.0385,WX=rep(1,nrow(X)),keepIM=TRUE,newIM=FALSE) # this lambda is random
+{ mask=bas$mask; if (is.null(mask)) stop("no mask in bas; create at least bas$mask=1")
+  A <- matrix(0, bas$Ai_max+1, 3)
+#  cat(length(WX),nrow(X),"\n")
+  if (length(WX)!=nrow(X)) {stop("wrong number of spatial weights WX")}
+  if (any(WX<0)) warning("negative spatial weights in FitAlm_Tikhonov - abs(WX) is taken")
+  WX=abs(WX)
+#  print(mask)
+#  X1<-X[-mask,]
+#  Y=cbind(1,bas$Ylm[-mask,])
+#  Yt=t(Y)
+#  B=Yt %*% (diag(WX[-mask]) %*% Y)
+#  InvB1=pracma::inv(B + lambda * diag(c(1,bas$G.tk)))
+#  IM=InvB1 %*% (Yt %*% diag(WX[-mask]))
+#  for (k in 1:3) A[,k]=IM %*% X1[,k]
+  WX=WX[-mask]
+  X1<-X[-mask,]
+  if (is.null(bas$IM)) newIM=TRUE
+  if (newIM){
+  Y=cbind(1,bas$Ylm[-mask,])
+  YtW=t(Y)%*%diag(WX)
+  B=YtW %*% Y
+  InvB1=pracma::inv(B + lambda * diag(c(0,bas$G.tk)))
+  IM = InvB1 %*% YtW
+  # str(IM) IM is for masked data X1 only
+  } else IM=bas$IM
+  for (k in 1:3) A[,k] = IM %*% X1[,k]
+  cat("dropped A(l=0):",A[1,],"\n")
+  LM2A(A[-1,],bas)->A
+  attr(A,"lambda_Tikhonov")=lambda
+  attr(A,"Fit spatial weights")=WX
+#  if (keepIM) {rlang::env=parent.env();unlockBinding("bas", env);
+#    assign(deparse(substitute(bas)), {bas$IM=IM} , env=env)
+#  }
+  if (keepIM) attr(A,"IM")<-IM
+  return(A)
+}
+
+#
+#' FitFast
+#' apply IM from basis to new data X (unmasked data)
+#' e.g. for a complex MMC-step based on displacement data
+#' @export
+FitFast<-function(bas,X)
+{ if (is.null(bas$IM)) stop("first create bas$IM with MakeIM(bas)->bas")
+  mask=bas$mask
+  return((bas$IM %*% X[-mask,])[-1,])
+}
+
+#
+#' MakeIM
+#' compute the solver matrix for regression of data
+#'  to be stored in bas for easy application in
+#'  consecutive fits, e.g. MMC moves in normal directions
+#'  @param bas basis to compute IM for
+#'  @return basis containing solver matrix IM (1 row/column more than coefficients for Intercept!)
+#'  on application IM%*%Y[-bas$mask,], the first row of resulting coeffs. must be suppressed
+#' @export
+MakeIM<-function(bas, lambda=0, WX=rep(1,dim(bas$Ylm)[1])) # no weights
+{mask=bas$mask
+ Y=cbind(1,bas$Ylm[-mask,])
+ YtW=t(Y) %*% diag(WX[-mask]) # maybe faster in a loop
+ B=YtW %*% Y
+ InvB1=pracma::inv(B + lambda * diag(c(0,bas$G.tk)))
+ IM = InvB1 %*% YtW
+ bas$IM<-IM
+ return(bas)
+}
+# give angles from spherical 3D coordinates
+>>>>>>> Stashed changes
 #' @export
 inv_sph<-function(X)
 { r=sqrt(sum(X^2)) # see https://mathworld.wolfram.com/SphericalCoordinates.html
@@ -2694,6 +3513,7 @@ loadAlm<-function(file,bas)
   return(A)
 }
 
+<<<<<<< Updated upstream
 #' rotateX
 #' rotation first around x by px, then y then z-axis
 #' @param X input coordinates matrix (n x 3)
@@ -2717,6 +3537,21 @@ rotateX<-function (X, px = pi, py = 0, pz = 0, transpose = FALSE)
   else if (is.matrix(X))
     return(t(apply(X, 1, function(x) R %*% x)))
   else stop("X is not a 3d vector, nor a matrix of 3d vectors")
+=======
+#' rotateX(X,px,py,pz)
+# rotation of 3d vector(s) first around x by px, then y then z-axis
+#' @param X input coordinates
+#' @param px,py,pz angles to rotate
+#' @export
+rotateX<-function(X,px=pi,py=0,pz=0,transpose=FALSE)
+{ R.mz=matrix(c(cos(pz),-sin(pz),0,sin(pz),cos(pz),0,0,0,1),3,3)
+  R.mx=matrix(c(1,0,0, 0,cos(px),-sin(px), 0,sin(px),cos(px)),3,3)
+  R.my=matrix(c(cos(py),0,-sin(py), 0,1,0, sin(py),0,cos(py)),3,3)
+  R<-R.mz%*%R.my%*%R.mx
+  if(transpose) R<-t(R)
+  if (is.vector(X))
+    return(R%*%X) else if (is.matrix(X)) return(t(apply(X,1,function(x) R%*%x))) else stop("X is not a 3d vector, nor a matrix of 3d vectors")
+>>>>>>> Stashed changes
 }
 
 # internal use
@@ -2758,6 +3593,7 @@ rotateA <-function (A, bas, grd, px = pi/2, py = -pi/2, pz = pi/2, plt = FALSE)
               rot_err = pracma::Norm(C1$X-X1)))
 }
 
+<<<<<<< Updated upstream
 # plotLseries
 # shows a series of up to nr x nc images and "rep" values for the l>0 present in bas
 # (truncation plot)
@@ -2817,6 +3653,49 @@ plotLseries<-function (nr = 4, nc = 5, A, C, grd, bas,
     colnames(M) = c("A", "V", "C", "H2", "H2_BC", "E","||A_l||")
     M = as.data.frame(M)
     return(M)
+=======
+#
+# perturb coeffs a bit, but damped by Tikhonov diagonal
+#
+
+
+#
+# shows a series of up to nr x nc images and "rep" values for the l>0 present in bas
+#
+#' @export
+plotLseries<-function(nr=4,nc=5,A,C,grd,bas,reduced=FALSE,rec=FALSE,fill=TRUE, rep="H2",S=NULL,Ref=NULL,stretch=!is.null(Ref) )
+{
+ # rgl::open3d()
+  rgl::mfrow3d(nr,nc,sharedMouse = TRUE)
+  if(rec) M=matrix(0,length(unique(bas$LM[,1])),7) # to return summed up quantities and Norm of coeffs
+  k=1
+  nrm=c(1,1,1,1,1,1,sum(abs(A[bas$LM[,1]==1,])))
+  names(nrm)=c("Area","Volume","Curv","H2","H2_BC","ES","Norm")
+  for (l in bas$Lset) # works with "exclude" in basis, but 0 may not be excluded
+  {w=which(bas$LM[,1]==l)
+  last=w[length(w)] #; print(last)
+  Y=synthX(bas$Ylm[,1:last],A[1:last,])
+  #plot3d(0,0,0,deco=FALSE,col="white")
+  A1=A;A1[]=0;A1[1:last,]=A[1:last,]
+  updateX(A1,grd,bas)->C2
+  h2<-E_SCM(A1,grd,bas,C2)
+  if ( stretch ) E=E_SEN(A,grd,bas,S,Ref) else E=0
+  if(rec){
+   M[k,1]=h2$Area
+   M[k,2]=h2$Volume
+   M[k,3]=h2$Curv
+   M[k,4]=h2$Wb
+   M[k,5]=h2$H2_BC
+   if(stretch) M[k,6]=E
+   M[k,7]=sum(abs(A[bas$LM[,1]==l,]))
+  }
+  if (is.null(S)) S=list(alpha=0)
+  plot3qs(Y,grd,S$alpha)
+  rgl::title3d(paste(l,": E",round((h2$Wb+E)/M.Es,3)," C",round(h2$Curv,3)))
+  k=k+1
+  if(k>nr*nc) break() # exit loop if screen is full
+  if(l<last(bas$Lset)) rgl::next3d()
+>>>>>>> Stashed changes
   }
   else return("Plot L Series done")
 }
@@ -3507,6 +4386,7 @@ PlotPaths<-function(O,P,LVPath=TRUE)
 }
 
 #
+<<<<<<< Updated upstream
 #' Brechbuehler.Init.uv.2
 #' @description
 #' computes spherical coordinates (u,v) for vertices of a 3D-object X
@@ -3522,6 +4402,14 @@ PlotPaths<-function(O,P,LVPath=TRUE)
 #' @param file.out (="Brechbuehler-init-uv-2.obj")
 #' @param rxy (=0.01) tolerance parameter
 #' @return List containing uv (angles) and 3d mesh object O
+=======
+# implements Brechbuehler solver to find initial (u,v)
+#
+#
+# Brechbuehler
+#' Brechbuehler.Init.uv.2
+#' computes spherical angles
+>>>>>>> Stashed changes
 #' @export
 Brechbuehler.Init.uv.2<-function (X1, Fit_order = 12, InitFit = FALSE, 
                                   poles.axis = 2,
@@ -3638,6 +4526,7 @@ Brechbuehler.Init.uv.2<-function (X1, Fit_order = 12, InitFit = FALSE,
     u.bb.numb = c(0, u.s, pi)
     u.bb = u
   }
+<<<<<<< Updated upstream
   u.0 = u
   ia = c(X$it[1, ], X$it[2, ], X$it[3, ])
   ja = c(X$it[2, ], X$it[3, ], X$it[1, ])
@@ -3670,9 +4559,55 @@ Brechbuehler.Init.uv.2<-function (X1, Fit_order = 12, InitFit = FALSE,
         north.south.new[cnt] = take
         here = take
         cnt = cnt + 1
+=======
+
+  # save u from above
+  u.0=u
+  # compare against direct solve
+  # plot(u.0,u.bb) # perfect
+
+  ia=c(X$it[1,],X$it[2,],X$it[3,]);ja=c(X$it[2,],X$it[3,],X$it[1,])
+  N<-max(max(ia),ja); TN <- Matrix::sparseMatrix(dims=c(N,N),i=ia,j=ja,x=rep(1,length(ia)),
+                                         use.last.ij=FALSE)
+  ig <-igraph::graph_from_adjacency_matrix(TN,mode="undirected",diag = FALSE)
+  # recompute  u directly from Laplacian
+  B=rep(0,n.v)
+  L=igraph::laplacian_matrix(ig,normalized = FALSE,sparse = TRUE)
+  # if (mat.mode=="cotan.lapl")   L<-cotan.Laplacian.Matrix(X,L) # overwrite sparse matrix with cotan-Laplacian
+  #  if (mat.mode=="cotan.chi")   L<-cotan.Chi.Matrix(X,L) # or with Chi-Laplacian
+  L.ret=L# give full Laplacian matrix back for later use
+  L[f1,]=0 ; L[f1,f1]=1 ; B[f1]=0  # to fix pole to zero
+  L[f2,]=0 ; L[f2,f2]=1 ; B[f2]=pi # to fix pole to pi ;
+  # later this is 2pi for East reference in v computation
+
+  solve(L,B)->u ##    re-solve for u
+  plot(u,u.0,main="compare Brechbuehler and Laplace-solver") # compare - diffenernce due to alternative Laplacian
+  #
+  # solve v with NS on v=0 and West on v=2*pi-epsilon
+
+  # create set of vertices on data-line N-pole to S-pole
+  (north.south <- igraph::shortest_paths(ig,from=f1,to=f2,output="vpath")$vpath[[1]])
+  # better take largest increases in u as north-south
+  #   check halo for better path
+  #
+  # no improvements by the following observed:
+  if(TRUE)
+    for (i in 1:3){
+      here=f1
+      north.south.new=as.numeric(north.south)
+      cnt=2 # start to set 2nd
+      while(here != f2)
+      {
+        n.here=as.numeric(igraph::neighbors(ig,here))
+        take=n.here[which.max(u[n.here])]
+        north.south.new[cnt]=take
+        here=take
+        cnt=cnt+1 # next
+>>>>>>> Stashed changes
       }
       north.south = north.south.new
     }
+<<<<<<< Updated upstream
   halo = unique(unlist(igraph::ego(ig, order = 1, north.south)))
   pure.halo = setdiff(halo, north.south)
   col = rep("black", n.v)
@@ -3695,6 +4630,36 @@ Brechbuehler.Init.uv.2<-function (X1, Fit_order = 12, InitFit = FALSE,
       dS = X$vb[1:3, chk] - X$vb[1:3, here]
       D = det(matrix(c(dV, dS, dN), 3, 3))
       EW[chk] = ifelse(D < 0, "E", "W")
+=======
+
+  # check visually
+  halo=unique(unlist(igraph::ego(ig,order=1,north.south)))
+  pure.halo=setdiff(halo,north.south)
+  col=rep("black",n.v) ; col[north.south]="green"
+  col[pure.halo]="red"
+  rgl::wire3d(X,col=col,lwd=2)
+
+  # try to do it similar to Brechbuehler
+  EW=rep("",n.v)
+  here=f1
+  cnt=2 # start to set 2nd
+  done=f1
+  while(here != f2)
+  {
+    n.here=as.numeric(igraph::neighbors(ig,here))
+    take=n.here[which.max(u[n.here])] # next
+    n.take=igraph::neighbors(ig,take)
+    done=c(done,take)
+
+    (check=intersect(n.here,n.take))
+    #check=setdiff(check,EW!="") # already marked not to check
+    dV=X$vb[1:3,take]-X$vb[1:3,here]
+    dN=X$normals[1:3,here]
+    for (chk in check)
+    {dS=X$vb[1:3,chk]-X$vb[1:3,here]
+    D=det(matrix(c(dV,dS,dN),3,3)) # this is my solution to classify East vs. West
+    EW[chk]=ifelse(D<0,"E","W")
+>>>>>>> Stashed changes
     }
     here = take
     cnt = cnt + 1
@@ -3709,6 +4674,7 @@ Brechbuehler.Init.uv.2<-function (X1, Fit_order = 12, InitFit = FALSE,
   rest = setdiff(pure.halo, which(EW != ""))
   length(rest)
   length(pure.halo)
+<<<<<<< Updated upstream
   East = which(EW == "E")
   West = which(EW == "W")
   n.n = igraph::neighbors(ig, f1)
@@ -3723,6 +4689,39 @@ Brechbuehler.Init.uv.2<-function (X1, Fit_order = 12, InitFit = FALSE,
     n.i = igraph::neighbors(ig, i)
     ew = EW[n.i]
     tb = table(ew)
+=======
+
+  # just fill up with "E" between two "E"
+  East=which(EW=="E")
+  West=which(EW=="W")
+
+  # remove north/southpoles neighbours that are not to check
+  n.n=igraph::neighbors(ig,f1)
+  mark=setdiff(n.n,which(EW!=""))
+  EW[mark] =" "
+  n.s=igraph::neighbors(ig,f2)
+  mark=setdiff(n.s,which(EW!=""))
+  EW[mark] =" "
+
+  #  open3d()
+  #  wire3d(X,lwd=1)
+
+  #  spheres3d(t(X$vb[1:3,West]),rad=0.05,col="green")
+  #  spheres3d(t(X$vb[1:3,East]),rad=0.05,col="blue")
+  #  spheres3d(t(X$vb[1:3,rest]),rad=0.06,col="black")
+
+  # for vertices with only a single linkage to north wets:
+  #    take EW from the neighbours EW
+  #
+
+  rest=setdiff(rest,c(f1,f2))
+
+  for (i in rest) # rest has no poles
+  { print(i)
+    n.i=igraph::neighbors(ig,i)
+    ew=EW[n.i];
+    tb=table(ew)
+>>>>>>> Stashed changes
     print(tb)
     if (any(names(tb) %in% c("W", "E"))) {
       if (("E" %in% names(tb)) & ("W" %in% names(tb))) {
@@ -3768,7 +4767,12 @@ Brechbuehler.Init.uv.2<-function (X1, Fit_order = 12, InitFit = FALSE,
   if (InitFit) {
     uv = t(X$texcoords)
     dim(uv)
+<<<<<<< Updated upstream
     bas.i <- MakeBasis_UV(Fit_order, uv[, 1], uv[, 2])
+=======
+
+    bas.i<-MakeBasis_UV(Fit_order,uv[,1],uv[,2])
+>>>>>>> Stashed changes
     dim(bas.i$Ylm)
     a_v <- VertexAreasOBJ(X)
     A.init <- FitAlm_Tikhonov(x, bas.i, lambda = 0.1)
@@ -3993,6 +4997,59 @@ Lowess_vcg_meanvbOBJ<-function(x,O) # return mean curvature
 }
 
 
+<<<<<<< Updated upstream
+=======
+
+
+
+
+# reduce basis according to a set of Ylm LM-indices
+#' Reduce_basis
+#' remove unwanted Ylm
+#'  e.g. for point symmetry, remove all even l
+#'
+#' @examples
+#' # remove even l from basis of undustick model U17R
+#' data(U17R)
+#' SetParams(U17R) # sets model constants
+#' Volume(U17R)
+#' Area(U17R)
+#' U17R$bas$Target
+#' red<-Reduce_Basis(U17R$bas,U17R$A,which(U17R$bas$l%%2==0))
+#' U17R$A <- red$A # feed back to MemRBC object
+#' U17R$bas <- red$bas
+#' plot(U17R) # does it still work?
+#' Volume(U17R)
+#' red$excluded_Ylm # which l,m where excluded from basis
+#' @export
+Reduce_Basis<-function(bas,A,w)
+{
+  # remove certain data
+  # also give back a reduced version of A to continue work with
+  del=w # deletion candidates
+  rownames(bas$A)[del]->excluded_Ylm
+  # now reduce
+  bas$Ylm <-bas$Ylm[,-del]
+  bas$Ylm_u <-bas$Ylm_u[,-del]
+  bas$Ylm_v <-bas$Ylm_v[,-del]
+  bas$Ylm_vv<-bas$Ylm_vv[,-del]
+  bas$Ylm_uu<-bas$Ylm_uu[,-del]
+  bas$Ylm_uv<-bas$Ylm_uv[,-del]
+  bas$LM<-bas$LM[-del,]
+  bas$l=bas$LM[,1]
+  bas$m=bas$LM[,2]
+  bas$Lset=unique(bas$l)
+  bas$Mset=unique(bas$m)
+  bas$Ai_max=dim(bas$LM)[1]
+  bas$comment=paste("Reduced basis by ",rownames(A)[excluded_Ylm])
+  A<-A[-del,]
+  bas$A<-A
+  bas$G.tk<-bas$G.tk[-del]
+  return(list(bas=bas,A=A,excluded_Ylm=excluded_Ylm))
+}
+
+
+>>>>>>> Stashed changes
 #
 # dense regions in u,v can be stretched by this
 #  - coserves triangulation quality
@@ -4007,7 +5064,6 @@ Lowess_vcg_meanvbOBJ<-function(x,O) # return mean curvature
 spreadout.uv<-function(uv)
 {
   N=dim(uv)[1]
-
   u.order=order(uv[,1])
   v.order=order(uv[,2])
 
@@ -4091,6 +5147,10 @@ ConsIter<-function(A,grd,bas,C,g2, Ctol=1e-3, nsteps=20,
     sol<- (- Pm %*%Cons_RHS)[,1]
     names(sol)=names(bas$Cons)
     delta <- sol[1]*dFm[,1] ; for (i in 2:Nc) delta<-delta + sol[i]*dFm[,i]
+<<<<<<< Updated upstream
+=======
+
+>>>>>>> Stashed changes
     A <- A + del_cons * delta
 
     updateX(A,grd,bas) -> C
@@ -4114,6 +5174,7 @@ ConsIter<-function(A,grd,bas,C,g2, Ctol=1e-3, nsteps=20,
 #   constraints are treated outside with Langrangian, involving Jacobians of constraint functions, registered in basis as strings of gradient names (bas$QCons)
 #
 
+<<<<<<< Updated upstream
 #' FullModelHessian
 #' @description
 #' computes the full model Hessian of the energy, as used in CNM.
@@ -4158,6 +5219,33 @@ FullModelHessian<-function (A, grd, bas, Ref, del = 1e-06, Ctol = 0.001)
       L[[m]][, j] = (Gh2[[m]] - Gh20[[m]])/del
     }
     H[, j] = Gj/del
+=======
+#' @export
+FullModelHessian<-function(A,grd,bas,Ref,del=1e-5,Ctol=1e-3,nm=FALSE,SEN=!is.null(Ref))
+{ tictoc::tic()
+  Ai_max=bas$Ai_max
+  C=updateX(A,grd,bas)
+  h20=E_SCM(A,grd,bas,C)
+  if (SEN)
+  {S=SEN(A,grd,bas,Ref,h20)
+   ES=E_SEN(A,grd,bas,S,Ref)} else {ES=0;S=NULL}
+  Gh20=Grad_SCM(h20,grd,bas,C)
+  if (SEN) { GS0=Grad_SEN(A,grd,bas,Gh20,S,Ref)
+    G0=c(Gh20$grad_SCM + GS0$grad_SEN) } else { G0=c(Gh20$grad_SCM) ; ES=0; S=NULL}
+  if(nm) G0=make_delta_normal_to_surface(G0,grd,bas,h20$n)
+  H=matrix(0, Ai_max*3, Ai_max*3)
+  for (j in 1:(3*Ai_max))
+  { if (j %% 10==0) cat(" ",round(j/(3*Ai_max)*100,1),"\r")
+    A1=A; A1[j]=A1[j]+del
+    C=updateX(A1,grd,bas)
+    h2=E_SCM(A1,grd,bas,C)
+    if (SEN) S=SEN(A1,grd,bas,Ref,h2) else S=NULL
+    Gh2=Grad_SCM(h2,grd,bas,C)
+    if (SEN) { GS=Grad_SEN(A1,grd,bas,Gh2,S,Ref)
+      Gj=c(Gh2$grad_SCM) }  else { Gj=c(Gh2$grad_SCM ); ES=0; GS=0}
+    if(nm) Gj=make_delta_normal_to_surface(Gj,grd,bas,h20$n)
+    H[,j]= (Gj-G0)/del
+>>>>>>> Stashed changes
   }
   for (m in bas$Cons[1:bas$Nc]) L[[m]] = 0.5 * (L[[m]] + t(L[[m]]))
   tictoc::toc()
@@ -4453,8 +5541,13 @@ ConsJacobian<-function(g2,bas)
 {
   RosenA<-c(g2[[bas$Cons[1]]]) # first gradient, bas$Cons has names of gradients
   for (ii in 2:bas$Nc) # further gradients to add
+<<<<<<< Updated upstream
   RosenA<-rbind(RosenA,c(g2[[ bas$Cons[ii] ]] ))
   return(RosenA)
+=======
+    RosenA<-rbind(RosenA,c(g2[[ bas$Cons[ii] ]] ))
+    return(RosenA)
+>>>>>>> Stashed changes
 }
 
 #' RosenProjection
@@ -4494,6 +5587,7 @@ return(Cons_RHS)
 # if you decide to erase dot2 from Rcpp-code:
 if(!exists(".dot2")) .dot2=function(x,y) sum(x*y)
 
+<<<<<<< Updated upstream
 
 #' Rosen_filter_delta
 #' @description remove constraint-violating components from coefficient step delta
@@ -4504,6 +5598,16 @@ if(!exists(".dot2")) .dot2=function(x,y) sum(x*y)
 #' @param nm (=TRUE) for normal motion filter
 #' @returns projected delta as n x 3 matrix
 #' @export
+=======
+#' @export
+Cons_filter_delta<-function(delta,grd,bas,H2,nm=TRUE)
+  {
+    if (nm)  delta=make_delta_normal_to_surface(delta,grd,bas,H2$n)
+    delta=delta/(1+ll.a*sqrt(bas$G.tk))
+    return(matrix(delta,bas$Ai_max,3))
+  }
+
+>>>>>>> Stashed changes
   Rosen_filter_delta<-function(delta,grd,bas,H2,nm=TRUE)
   { if(nm)  delta=make_delta_normal_to_surface(delta,grd,bas,H2$n)
   delta=delta/(1+MemRBC_env$ll.a*sqrt(bas$G.tk))
@@ -4540,6 +5644,7 @@ if(!exists(".dot2")) .dot2=function(x,y) sum(x*y)
 #' @param S from SEN()
 #' @return Gradient of full penalized energy in coefficient space, vector
 #' @export
+<<<<<<< Updated upstream
   Grad_FullModel_Penalty <- function (A, grd, bas, Ref, S)
   {
     C <- updateX(A, grd, bas)
@@ -4555,6 +5660,52 @@ if(!exists(".dot2")) .dot2=function(x,y) sum(x*y)
                                                                 bas$Target[[bas$QCons[i]]])
     }
     return(structure(class="MemGFMP",G))
+=======
+E_FullModel_Penalty_AV<-function(A,grd,bas,Ref)
+{
+  updateX(A,grd,bas)->C
+  h2<-E_SCM(A,grd,bas,C) # Wb contains full SCM energy, but not + K_b/2* M.C0^2 * Area
+  if (!is.null(Ref))  {S<-SEN(A,grd,bas,Ref,h2)
+  e<-E_SEN(A,grd,bas,S,Ref) } else {e=0; S=NULL}
+
+  E<-h2$Wb + e + M.rho*((h2$Volume - bas$Target["Volume"])^2 + (h2$Area - bas$Target["Area"])^2) #+ K_b/2*C0^2*140
+  names(E)=NULL # otherwise Volume is taken as name
+  return(list(E=E, Wb=h2$Wb, Ws=e, E_uncons=h2$Wb + e, dA=h2$dA, S=S, Area=h2$Area, Volume=h2$Volume, Curv=h2$Curv, n=h2$n))
+}
+
+#' @export
+Grad_FullModel_Penalty_AV<-function(A,grd,bas,Ref,S)
+{
+  updateX(A,grd,bas)->C
+  h2<-E_SCM(A,grd,bas,C)
+  Grad_SCM(h2,grd,bas,C)->G_SCM
+  # gradH2=grad_SCM=  M.K_b/2 * (gradH2BC  - 2*M.C0*gradC ) +
+  #  + M.K_ADE * (2 * H2$Curv * gradC / H2$Area - gradA * H2$Curv^2 / H2$Area^2 )
+  if (!is.null(Ref)) {
+  Grad_SEN(A,grd,bas,G_SCM,S,Ref)->G_SEN
+  G <- G_SCM$grad_SCM + G_SEN$grad_SEN + 2*M.rho*( G_SCM$gradV*(h2$Volume-bas$Target["Volume"]) +
+                                                  + G_SCM$gradA*(h2$Area-bas$Target["Area"]))
+  } else G <- G_SCM$grad_SCM + 2*M.rho*( G_SCM$gradV*(h2$Volume-bas$Target["Volume"]) +
+                                                            + G_SCM$gradA*(h2$Area-bas$Target["Area"]))
+
+#  W=h2$Wb + e + M.rho*((h2$Volume - bas$Target["Volume"])^2 + (h2$Area - bas$Target["Area"])^2) #+ K_b/2*C0^2*140
+#  str(G)
+  return(G)
+}
+
+  #' @export
+  E_FullModel_Penalty_AVC<-function(A,grd,bas,Ref)
+  {
+    updateX(A,grd,bas)->C
+    h2<-E_SCM(A,grd,bas,C) # Wb contains full SCM energy, but not + K_b/2* M.C0^2 * Area
+    if (!is.null(Ref)) {
+    S<-SEN(A,grd,bas,Ref,h2)
+    e<-E_SEN(A,grd,bas,S,Ref) }  else {e=0;S=NULL}
+  #  print(names(bas$Target))
+    E<-h2$Wb + e + M.rho*((h2$Volume - bas$Target["Volume"])^2 + (h2$Area - bas$Target["Area"])^2 + (h2$Curv - bas$Target["Curv"])^2) #+ K_b/2*C0^2*140
+    names(E)=NULL # otherwise Volume is taken as name
+    return(list(E=E, Wb=h2$Wb, Ws=e, E_uncons=h2$Wb + e, dA=h2$dA, S=S, Area=h2$Area, Volume=h2$Volume, Curv=h2$Curv))
+>>>>>>> Stashed changes
   }
   
   #' unified model energy with penalties
@@ -4565,6 +5716,7 @@ if(!exists(".dot2")) .dot2=function(x,y) sum(x*y)
   #' @export
   E_FullModel_Penalty <- function (A, grd, bas, Ref)
   {
+<<<<<<< Updated upstream
     C <- updateX(A, grd, bas)
     h2 <- E_SCM(A, grd, bas, C)
     if (!is.null(Ref)) {
@@ -4582,6 +5734,25 @@ if(!exists(".dot2")) .dot2=function(x,y) sum(x*y)
     return(structure(class="MemEFMP",list(E = E, Wb = h2$Wb, Ws = e, Wuncons = h2$Wb +
                   e, dA = h2$dA, S = S, Area = h2$Area, Volume = h2$Volume,
                 Curv = h2$Curv, n = h2$n)))
+=======
+    updateX(A,grd,bas)->C
+    h2<-E_SCM(A,grd,bas,C)
+    Grad_SCM(h2,grd,bas,C)->G_SCM
+    # gradH2=grad_SCM=  M.K_b/2 * (gradH2BC  - 2*M.C0*gradC ) +
+    #  + M.K_ADE * (2 * H2$Curv * gradC / H2$Area - gradA * H2$Curv^2 / H2$Area^2 )
+    if (!is.null(Ref))  { Grad_SEN(A,grd,bas,G_SCM,S,Ref)->G_SEN
+      G <- G_SCM$grad_SCM + G_SEN$grad_SEN + 2*M.rho*( G_SCM$gradV*(h2$Volume-bas$Target["Volume"]) +
+                                                       + G_SCM$gradA*(h2$Area-bas$Target["Area"])+
+                                                       + G_SCM$gradC*(h2$Curv-bas$Target["Curv"]))
+    } else  G <- G_SCM$grad_SCM + 2*M.rho*( G_SCM$gradV*(h2$Volume-bas$Target["Volume"]) +
+                                                          + G_SCM$gradA*(h2$Area-bas$Target["Area"])+
+                                                          + G_SCM$gradC*(h2$Curv-bas$Target["Curv"]))
+
+
+    #  W=h2$Wb + e + M.rho*((h2$Volume - bas$Target["Volume"])^2 + (h2$Area - bas$Target["Area"])^2) #+ K_b/2*C0^2*140
+    #  str(G)
+    return(G)
+>>>>>>> Stashed changes
   }
   
 #' locate Minima from quantity
@@ -4649,6 +5820,7 @@ history_MemRBC<-function(M)
   print(paste(M$history))
 }
 
+<<<<<<< Updated upstream
 #' make inversion matrix for fast least squares 
 #' @param bas Basis to compute inversion matrix from
 #' @param lambda (=0) for additional diagonal term
@@ -4814,6 +5986,218 @@ Empty<-function(M)
   for (i in names(M)[-(which(names(M) %in% c("grd","bas","Ref","A","Params","SEN")))])
     M[[i]]=NULL
   return(M)
+=======
+#' KD-Tree accelerated candidate search
+#' @param meshA,meshB mesh3d objects
+rvcg_kdtree_candidates <- function(meshA, meshB) {
+
+  # 1. Calculate a safe search radius
+  # A safe r is the maximum distance from a triangle centroid to its furthest vertex
+  # For simplicity, we can use the average edge length or a small user-defined epsilon
+  max_edge <- max(Rvcg::vcgMeshres(meshB)$edgelength)
+  # 2. Query the KD-tree
+  # vcgKDtree finds indices of vertices in meshB closest to vertices in meshA
+  # We use the 'radius' search to catch all potential overlaps
+  kd_search <- Rvcg::vcgKDtree(meshB, meshA, k=1)
+
+  # kd_search$index contains the indices of vertices in Mesh B
+  # that are within 'max_edge' of vertices in Mesh A.
+
+  # 3. Identify Candidate Triangles
+  # Get indices of vertices in Mesh A that had at least one neighbor in B
+  hits_in_A <- which(sapply(kd_search$index, length) > 0)
+
+  if (length(hits_in_A) == 0) return(NULL)
+
+  # Map these "close" vertices of A to their Triangles
+  # A triangle is a candidate if ANY of its vertices are "hits"
+  triA_candidates <- which(colSums(matrix(meshA$it %in% hits_in_A, nrow=3)) > 0)
+
+  # For each candidate triangle in A, find the closest triangle in B
+  # We use vcgClost here because it uses a fast AABB-tree/KD-tree internally
+  # to find the EXACT closest face.
+  final_pairs <- list()
+
+  # Vectorized closest face search for the candidate centroids
+  centroidsA <- (meshA$vb[1:3, meshA$it[1, triA_candidates]] +
+                   meshA$vb[1:3, meshA$it[2, triA_candidates]] +
+                   meshA$vb[1:3, meshA$it[3, triA_candidates]]) / 3
+
+  closest_in_B <- Rvcg::vcgClost(t(centroidsA), meshB)
+
+  candidates <- data.frame(
+    triA = triA_candidates,
+    triB = closest_in_B$faceptr
+  )
+
+  return(unique(candidates))
+}
+
+#' KD-Tree accelerated triangle-triangle-intersection search
+#' @param S1,S2 mesh3d objects to check for intersection; without S2 self intersection is checked
+#' @export
+Obj_Obj_Intersect <- function(S1,S2=S1) {
+
+tri_tri_intersect_3d <- function(T1, T2) {
+    epsilon <- 1e-9
+
+    # Helper function for cross product
+    cross_prod <- function(a, b) {
+      c(a[2]*b[3] - a[3]*b[2],
+        a[3]*b[1] - a[1]*b[3],
+        a[1]*b[2] - a[2]*b[1])
+    }
+
+    # --- Step 1: Plane equation of T2 ---
+    v1 <- T2[,2] - T2[,1]
+    v2 <- T2[,3] - T2[,1]
+    N2 <- cross_prod(v1, v2)
+    d2 <- -sum(N2 * T2[,1])
+
+    # Signed distances from T1 vertices to Plane 2
+    dists1 <- apply(T1, 2, function(p) sum(N2 * p) + d2)
+
+    # Reject if all vertices are on the same side (and not on the plane)
+    if (all(dists1 > epsilon) || all(dists1 < -epsilon)) return(FALSE)
+
+    # --- Step 2: Plane equation of T1 ---
+    v1 <- T1[,2] - T1[,1]
+    v2 <- T1[,3] - T1[,1]
+    N1 <- cross_prod(v1, v2)
+    d1 <- -sum(N1 * T1[,1])
+
+    # Signed distances from T2 vertices to Plane 1
+    dists2 <- apply(T2, 2, function(p) sum(N1 * p) + d1)
+
+    # Reject if all vertices are on the same side
+    if (all(dists2 > epsilon) || all(dists2 < -epsilon)) return(FALSE)
+
+    # --- Step 3: Compute intersection line direction ---
+    D <- cross_prod(N1, N2)
+
+    # Check for coplanar triangles (D is effectively zero)
+    # This implementation treats coplanar triangles as non-intersecting for 3D crossing.
+    if (sum(D^2) < epsilon) {
+      return(FALSE)
+    }
+
+    # --- Step 4: Compute Intervals on the intersection line ---
+    compute_interval <- function(Tri, dists, D) {
+      # Project vertices onto the line direction D
+      # Note: We project onto D itself to get a scalar parameterization
+      projs <- apply(Tri, 2, function(p) sum(D * p))
+      intervals <- c()
+
+      for (i in 1:3) {
+        j <- (i %% 3) + 1
+        s1 <- dists[i]
+        s2 <- dists[j]
+
+        # Check if edge crosses the plane
+        if ((s1 > epsilon && s2 < -epsilon) || (s1 < -epsilon && s2 > epsilon)) {
+          # Intersection point parameter t along the edge
+          t <- s1 / (s1 - s2)
+          # Projected point on D
+          p <- projs[i] + t * (projs[j] - projs[i])
+          intervals <- c(intervals, p)
+        } else if (abs(s1) <= epsilon) {
+          # Vertex is on the plane
+          intervals <- c(intervals, projs[i])
+        } else if (abs(s2) <= epsilon) {
+          # Vertex is on the plane (will be caught by next iteration usually, but safe to add)
+          intervals <- c(intervals, projs[j])
+        }
+      }
+      if (length(intervals) == 0) return(NULL)
+      return(range(intervals)) # Returns c(min, max)
+    }
+
+    r1 <- compute_interval(T1, dists1, D)
+    r2 <- compute_interval(T2, dists2, D)
+
+    # If either triangle doesn't touch the line (shouldn't happen if rejection passed), return FALSE
+    if (is.null(r1) || is.null(r2)) return(FALSE)
+
+    # --- Step 5: Check Interval Overlap ---
+    # r1 = [min1, max1], r2 = [min2, max2]
+    if (r1[2] < r2[1] || r2[2] < r1[1]) {
+      return(FALSE)
+    }
+
+    return(TRUE)
+  }
+
+  cand=rvcg_kdtree_candidates(S1,S2)
+  for (i in 1:dim(cand)[1])
+    if (tri_tri_intersect_3d( S1$vb[1:3,S1$it[,cand[i,1] ]],
+                              S2$vb[1:3,S2$it[,cand[i,2] ]]                          )
+    ) return(TRUE)
+  return(FALSE)
+}
+
+# invaginate or spike shape at Northpole by subtracting from z
+# subtract in z direction a gaussian on northpole
+# u: Noth = 0 to South = pi
+# v: 0 to 2pi
+#' Invag_N
+#' invagination by subtraction of gaussian (width,depth) around northpole in Z-coordinates
+#' z-coords identified from angles u derived from starlike assumption on X (see inv_sph()) are used.
+#' Therefore, parameter width is given in radian, while depth is in length units of maximum Z-displacement.
+#' The resulting coordinates can be used to fit spectral coefficients, e.g. with FitAlm().
+#' @param X 3D coordinates
+#' @param width,depth gaussian parameters; take negative depth for pulling out spikes
+#' @return invaginated X
+#' @examples
+#' # example code
+#' N<-50
+#' g <- MakeGrid_GaussLegendreSimpson(N)
+#' b <- MakeBasis_UV(8,g$U,g$V)
+#' a <- MakeSphere(g,b)
+#' X <- updateX_only(a,g,b)$X # initial sphere data
+#' X <- invag_N_new(X,g,0.3,1)
+#' rgl::plot3d(X)
+#'
+#' @export
+invag_N <-function (X,width=0.1,depth=0.1)
+{
+ u <- apply(X,1,inv_sph)[1,]
+ w <- which(exp(-(u^2)/width)*abs(depth)>1e-3)
+ X[w,3] <- X[w,3]-exp(-(u[w]^2)/width)*depth
+ attr(X,"w")<-w
+ return(X)
+}
+#' double_uv_ind
+#' computes the second index of double entries of pairs (u,v)
+#' @param u,v vectors or matrices of angles (u same shape as v)
+#' @param digits (=7) parameter for equality of sin/cos terms of u/v.
+#' @export
+double_uv_ind<-function(u,v,digits=7)
+{ l=length(u)
+  p=round(cbind(sin(u),cos(u),sin(v),cos(v)),digits)
+  pc=apply(p,1,paste,sep="",collapse="")
+#head(pc)
+  pt=table(pc)
+  dbl=names(pt)[which(pt==2)]
+  d=rep(NA,length(dbl))
+  for (i in 1:length(dbl)) d[i]=which(pc==dbl[i])[2]
+  return(d)
+}
+
+
+
+#' @export
+"*.MemRBC"<- function(a,b) {
+  if(class(a)=="MemRBC" & is.numeric(b)) {a$A=a$A*b;return(a)} else
+  if(class(b)=="MemRBC" & is.numeric(a)) {b$A=b$A*a;return(b)} else
+    if(class(a)=="MemRBC" & class(b)=="MemRBC") {
+      lset=intersect(a$bas$Lset,b$bas$Lset)
+      cat(lset,"\n")
+      for (l in lset) for (k in 1:3) {
+        p = dot2(a$A[a$bas$l==l,k], b$A[b$bas$l==l,k]);
+        n=pracma::Norm(b$A[b$bas$l==l,k]);
+        a$A[a$bas$l==l,k] = p/n^2*b$A[b$bas$l==l,k]}
+      return(a)} else {message("wrong type of data, multiplication of membrane failed");return(NA)}
+>>>>>>> Stashed changes
 }
 
 
@@ -4929,6 +6313,7 @@ own.imagePlot<-function (..., add = FALSE, breaks = NULL, nlevel = 64, col = NUL
 #' use this to create some data for experimenting further...
 #' @return -
 #' @export
+<<<<<<< Updated upstream
 create_data <- function()
 { print("this is a long-runner to create data for MemRBC")
   p=paste(.libPaths(),"MemRBC")
@@ -4992,4 +6377,21 @@ get_data_ZENODO <- function(local=FALSE,folder="data",L=NULL){
   }
   cat("data left in folder ",folder,"\n")
   return(L0)
+=======
+"+.MemRBC"<- function(a,b) {if(class(a)=="MemRBC" & class(b)=="MemRBC") {a$A=a$A+b$A;return(a)} else {message("wrong type of data, m1+m2 failed");return(NA)}
 }
+
+#' @export
+"-.MemRBC"<- function(a,b) {if(class(a)=="MemRBC" & class(b)=="MemRBC") {a$A=a$A-b$A;return(a)} else {message("wrong type of data, m1-m2 failed");return(NA)}
+>>>>>>> Stashed changes
+}
+
+
+#
+# change things in M if called as argument
+#
+
+#' @export
+scale_MemRBC_inplace<-function(m,s)
+{ assign(deparse(substitute(m)), {ifelse (is.numeric(s),{m$A=m$A*s;"scaled m in place"},NULL)} , env=rlang::env_parent()) }
+

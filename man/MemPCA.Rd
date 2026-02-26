@@ -4,10 +4,12 @@
 \alias{MemPCA}
 \title{MemPCA}
 \usage{
-MemPCA(M)
+MemPCA(M, WX = rep(1, M$grd$ndof))
 }
 \arguments{
 \item{M}{the input membrane to be rotated}
+
+\item{WX}{(=1) spatial weights for the fit of coefficients, try sin(grd$U) to downweight pole influence}
 }
 \value{
 membrane object with new coefficients of PCA-rotated spatial coordinates.
@@ -17,8 +19,9 @@ rotate Membrane coefficients to coordinates of principle axes of inertia.
 Remark: the reference SEN in $Ref remains unchanged.
 }
 \examples{
-data("M_stomatocyte_L12"); SetParams(M_stomatocyte_L12)
-plot(M_stomatocyte_L12)
-MemPCA(M_stomatocyte_L12)->M2
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+data("M4",envir=environment())
+MemPCA(M4)->M2
 plot(M2)
+\dontshow{\}) # examplesIf}
 }

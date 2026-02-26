@@ -29,6 +29,8 @@ PSDC(
 \item{pltfreq}{(=10) for plotting every pltfreq step}
 
 \item{LAfreq}{(=100) storage frequency into list of coefficients $LA}
+
+\item{ncores}{(=4) parallel threads in SCM energy and gradient}
 }
 \value{
 membrane object with updates from MMC with data:
@@ -52,11 +54,12 @@ run PSDC on an existing membrane object to reduce energy by gradient steps.
 Here, curvature is an additional constraint (by penalty).
 }
 \examples{
-M <- MakeStandardRBC(L=5)
-plot(M)
-M <- PSDC(M,nsteps=10000,del=1e-6,)
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+data("M4",package = "MemRBC")
+M <- PSDC(M4,nsteps=10000,del=1e-6,)
 plot(M)
 M
 attributes(last(M$LA))
 attr(M$A,"method")
+\dontshow{\}) # examplesIf}
 }

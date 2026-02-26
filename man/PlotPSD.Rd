@@ -13,12 +13,17 @@ PlotPSD(M, lastE = length(M$E_PSD), lastC = lastE)
 
 \item{lastC}{(=lastE) number of trailing curvature points to plot}
 }
+\value{
+-
+}
 \description{
 plot recorded energies from PSD runs
 }
 \examples{
-data("M4")
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+data("M4",package = "MemRBC",envir=environment())
 PSD(M4,1000) -> M
 PSDC(M, curv=Curv(M), 1000) -> M1
 PlotPSD(M1, lastE=750)
+\dontshow{\}) # examplesIf}
 }

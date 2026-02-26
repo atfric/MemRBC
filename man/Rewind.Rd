@@ -2,7 +2,11 @@
 % Please edit documentation in R/MembraneRBC-Apps.R
 \name{Rewind}
 \alias{Rewind}
-\title{Rewind}
+\title{Rewind to set coefficient M$A by n records back from end of list of recorded coeffs M$LA
+- practically you do the same with
+M$A=M$LA[[length(M$LA)-n]]
+ATTENTION: while M$A usually holds the lasrt coefficients from an App
+ last entries in LA hold older coeffs, in particular if LAfreq>1 in the last App call}
 \usage{
 Rewind(M, n = 1)
 }
@@ -12,10 +16,12 @@ Rewind(M, n = 1)
 \item{n}{(=1) how many records to rewind?}
 }
 \value{
-membrane object with M$A set to LA[[lengh(LA)-n]]
+membrane object with M$A set to `LA[[lengh(LA)-n]]`
 }
 \description{
-rewind coefficients in M$A by n records from the list of recorded coeffs M$LA
- - practically you do the same with
- M$A=M$LA[[length(M$LA)-n]]
+Rewind to set coefficient M$A by n records back from end of list of recorded coeffs M$LA
+- practically you do the same with
+M$A=M$LA[[length(M$LA)-n]]
+ATTENTION: while M$A usually holds the lasrt coefficients from an App
+ last entries in LA hold older coeffs, in particular if LAfreq>1 in the last App call
 }

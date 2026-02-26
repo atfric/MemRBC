@@ -8,40 +8,38 @@ SetConstraints(
   bas,
   Cons = c("gradA", "gradV"),
   QCons = c("Area", "Volume"),
-  Target = c(140, 100),
-  TNorm = c(140, 100)
+  Target = c(140, 100)
 )
 }
 \arguments{
-\item{bas}{basis to modify constraints, e.g. M$bas (M MemRBC object)}
+\item{bas}{either basis like M$bas or MemRBC-object M}
 
-\item{Cons}{vector of character of constraint gradients, from "gradA","gradV" and "gradC"}
+\item{Cons}{(=c("gradA","gradV")) vector of character of constraint gradients, from "gradA","gradV" and "gradC"}
 
-\item{QCons}{vector of constraint names, from "Area","Volume","Curv", same order as Cons}
+\item{QCons}{(=c("Area","Volume")) vector of constraint names, from "Area","Volume","Curv", same order as Cons}
 
-\item{Target}{vector of constraint values, like c(140,100,88) for Area, Volume and Curv}
-
-\item{TNorm}{vector of normalization constants for calculating the norm, i.e. degree of total constraint violation}
+\item{Target}{(=c(140,100))vector of constraint values, like c(140,100,88) for Area, Volume and Curv}
+}
+\value{
+MemRBC object, if input bas is a MemRBC-object, or updated basis; bas$Nc is length(Cons)
 }
 \description{
 set the constraint target values and store information in basis.
 Without parameters Cons, ..., the standard area and volume constraints are set with values (140, 100).
-If you set a third constraint, for CNM you have to give M$Lambda a third component.
+If you set a third constraint, for `CNM()` you have to give M$Lambda a third component.
+Default constraints are 140 area, 100 volume
 }
 \examples{
-data(D5); SetParams(D5)
-
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+data("M4",package = "MemRBC"); SetParams(M4)
 # add curvature constraint:
-SetConstraints(D5$bas,Cons=c("gradA","gradV","gradC"),
+SetConstraints(M4$bas, Cons=c("gradA","gradV","gradC"),
   QCons=c("Area","Volume","Curv"),
-  Target=c(140,100,121),
-  TNorm=c(140,100,121)) -> D5$bas  # store modified basis back into membranes D5 basis
+  Target=c(140,100,121) ) -> M4$bas  # store modified basis back into membranes D5 basis
 
 # minimize with steepest descend under Rosen Constraint Projection
-
-SDRC(D5,1000)->D5sdrc
-
+SDRC(M4,100)->M4sdrc
 # pair-plots of target quantities and energy E
-plot(D5sdrc$SDRC_Sample[c("E","A","V","C")])
-
+plot(M4sdrc$SDRC_Sample[c("E","A","V","C")])
+\dontshow{\}) # examplesIf}
 }

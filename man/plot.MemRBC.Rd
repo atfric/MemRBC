@@ -4,14 +4,16 @@
 \alias{plot.MemRBC}
 \title{plot}
 \usage{
-\method{plot}{MemRBC}(R, wire = TRUE, wire_col = "black", ...)
+\method{plot}{MemRBC}(x, wire = TRUE, wire_col = "black", ...)
 }
 \arguments{
+\item{x}{Membrane to use for shape plot}
+
 \item{wire}{(boolean) FALSE if  to suppress mesh quads plotted}
 
-\item{...}{further plotting options, e.g. col="green"}
+\item{wire_col}{(="black")}
 
-\item{M}{Membrane to use for shape plot}
+\item{...}{further plotting options, e.g. col="green"}
 }
 \description{
 3D plot of membrane shape

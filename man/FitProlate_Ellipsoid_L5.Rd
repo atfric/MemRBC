@@ -9,17 +9,14 @@ FitProlate_Ellipsoid_L5(C0 = 2.562, V0 = 85.66)
 \arguments{
 \item{C0}{(=2.562) Undustick spontaneous curvature}
 
-\item{Vp}{(=85.66) Undustick volume, which is reduced volume 0.55}
+\item{V0}{(=85.66) Undustick volume, which is reduced volume 0.55}
 }
 \value{
-mebrane object of prolate shape to be optimized further, e.g. for Undustick
+MemRBC object of prolate shape to be optimized further, e.g. for Undustick
 }
 \description{
 Fit an ellipsoid of prolate shape e.g. with Undustick parameters.
-Global parameters are set for Lipid modeling, i.e. SEN is switched off.
-}
-\examples{
-FitProlate_Ellipsoid_L5() -> M
-plot(M)
-
+Parameters are set for Lipid modeling, i.e. SEN is switched 
+off (mu=Ka=0).
+This is a long-runner over 2800 PSD steps
 }

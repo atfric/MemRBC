@@ -9,13 +9,21 @@ PlotLSeries(M, nr = 4, nc = 3, ...)
 \arguments{
 \item{M}{membrane object to plot truncation series from}
 
-\item{nr, nc}{(=4,=3) number of rows and columns on screen}
+\item{nr, nc}{(=4,=3) number of rows and columns of sub-plots on screen}
+
+\item{...}{parameters plot function}
+}
+\value{
+-
 }
 \description{
-plot series of shapes from a single object for truncated to lower spectral orders
+plot series of shapes from a single object.
+This visualizes truncation effects on shape and energy.
 }
 \examples{
-data("M4")
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+data("M4",package = "MemRBC",envir=environment())
 M4
 PlotLSeries(M4,2,3)
+\dontshow{\}) # examplesIf}
 }

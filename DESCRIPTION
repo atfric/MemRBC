@@ -1,7 +1,12 @@
 Package: MemRBC
 Type: Package
+<<<<<<< Updated upstream
 Title: Red Blood Cell Shape Modelling Code Laboratory
 Version: 0.4.0
+=======
+Title: Red Blood Cell shape modelling code laboratory
+Version: 0.3.0
+>>>>>>> Stashed changes
 Authors@R: c(
     person(
       "Stephan", "Frickenhaus",
@@ -20,6 +25,7 @@ LazyData: true
 LazyDataCompression: gzip
 RoxygenNote: 7.3.3
 VignetteBuilder: knitr
+<<<<<<< Updated upstream
 Depends: R (>= 3.5)
 Imports: crayon, fields, igraph, Matrix, pracma, Rcpp, rgl, 
         RSpectra, Rvcg, tictoc, nloptr, GA, qs2, RANN, rlang, 
@@ -32,3 +38,28 @@ Packaged: 2026-02-09 15:38:14 UTC; sfricken
 Author: Stephan Frickenhaus [aut, cre, cph] (ORCID=0000-0002-0356-9791),
   Carl Woelper [ctb]
 Maintainer: Stephan Frickenhaus <Stephan.Frickenhaus@awi.de>
+=======
+Depends: 
+    R (>= 3.5)
+Imports: 
+    crayon,
+    fields,
+    igraph,
+    Matrix,
+    pracma,
+    Rcpp,
+    RcppEigen,
+    rgl,
+    RSpectra,
+    Rvcg,
+    tictoc,
+    nloptr
+Suggests: 
+    knitr,
+    rmarkdown,
+    testthat (>= 3.0.0),
+    MemRBCdata
+Config/testthat/edition: 3
+LinkingTo: 
+    cpp11
+>>>>>>> Stashed changes

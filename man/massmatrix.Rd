@@ -18,7 +18,9 @@ massmatrix in spectral space
 compute the mass matrix for PNEM
 }
 \examples{
-data("M4")
-mass <- massmatrix(m4,rho=2)
+\dontshow{if (exists("L_Ylm")) withAutoprint(\{ # examplesIf}
+#' data("M4",package = "MemRBC")
+mass <- massmatrix(M4,rho=2)
 image(mass)
+\dontshow{\}) # examplesIf}
 }
